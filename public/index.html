@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melaleuca Content QA Tester</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .mode-selector {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      margin-top: 32px;
+    }
+
+    @media (max-width: 1200px) {
+      .mode-selector {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .mode-selector {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .mode-card {
+      background: var(--bg-item);
+      border: 2px solid var(--border-color);
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .mode-card:hover {
+      border-color: #10b981;
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(16, 185, 129, 0.2);
+    }
+
+    .mode-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .mode-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .mode-description {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .mode-card.sku .mode-icon {
+      color: #10b981;
+    }
+
+    .mode-card.banner .mode-icon {
+      color: #3b82f6;
+    }
+
+    .mode-card.pslp .mode-icon {
+      color: #8b5cf6;
+    }
+
+    .mode-card.mixinad .mode-icon {
+      color: #ec4899;
+    }
+
+    .mode-card.mixinad:hover {
+      border-color: #ec4899;
+      box-shadow: 0 20px 40px rgba(236, 72, 153, 0.2);
+    }
+
+    .mode-card.sku:hover {
+      border-color: #10b981;
+      box-shadow: 0 20px 40px rgba(16, 185, 129, 0.2);
+    }
+
+    .mode-card.banner:hover {
+      border-color: #3b82f6;
+      box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2);
+    }
+
+    .mode-card.pslp:hover {
+      border-color: #f59e0b;
+      box-shadow: 0 20px 40px rgba(245, 158, 11, 0.2);
+    }
+
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 16px;
+    }
+
+    .feature-tag {
+      background: var(--bg-hover);
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .header-center {
+      text-align: center;
+    }
+
+    .version {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      font-size: 12px;
+      color: #475569;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="card">
+      <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">
+        <span class="theme-icon" id="theme-icon">&#9788;</span>
+        <span id="theme-text">Light</span>
+      </button>
+      <div class="header-center">
+        <h1>Melaleuca Content QA Tester</h1>
+        <p class="subtitle">Choose a testing mode to get started</p>
+        <div style="display:flex;gap:12px;justify-content:center;margin-top:12px;">
+          <a class="secondary" href="credentials.html">Manage Credentials</a>
+          <a class="secondary" href="category-manager.html">⚙️ Manage Categories</a>
+        </div>
+      </div>
+
+      <div class="mode-selector">
+        <a href="sku-tester.html" class="mode-card sku">
+          <div class="mode-icon">&#128230;</div>
+          <div class="mode-title">Test SKUs</div>
+          <div class="mode-description">
+            Navigate to product pages (PDPs), extract product data, capture screenshots, and optionally add products to
+            cart.
+          </div>
+          <div class="features">
+            <span class="feature-tag">Product Data</span>
+            <span class="feature-tag">Screenshots</span>
+            <span class="feature-tag">Add to Cart</span>
+            <span class="feature-tag">Login Support</span>
+          </div>
+        </a>
+
+        <a href="banner-tester.html" class="mode-card banner">
+          <div class="mode-icon">&#128444;</div>
+          <div class="mode-title">Test Banners</div>
+          <div class="mode-description">
+            Capture category page banners at multiple viewport widths with mobile device emulation.
+          </div>
+          <div class="features">
+            <span class="feature-tag">Multiple Widths</span>
+            <span class="feature-tag">Mobile Emulation</span>
+            <span class="feature-tag">All Regions</span>
+            <span class="feature-tag">Categories</span>
+          </div>
+        </a>
+
+        <a href="pslp-tester.html" class="mode-card pslp">
+          <div class="mode-icon">&#127968;</div>
+          <div class="mode-title">Test PSLP</div>
+          <div class="mode-description">
+            Test Product Store Landing Page by capturing screenshots and extracting component data.
+          </div>
+          <div class="features">
+            <span class="feature-tag">8 Components</span>
+            <span class="feature-tag">6 Viewports</span>
+            <span class="feature-tag">Data Extraction</span>
+            <span class="feature-tag">Login Support</span>
+          </div>
+        </a>
+
+        <a href="mixinad-tester.html" class="mode-card mixinad">
+          <div class="mode-icon">&#128202;</div>
+          <div class="mode-title">Test Mix-In Ads</div>
+          <div class="mode-description">
+            Capture mix-in ads within category product grids at multiple viewport widths.
+          </div>
+          <div class="features">
+            <span class="feature-tag">Multiple Widths</span>
+            <span class="feature-tag">Mobile Emulation</span>
+            <span class="feature-tag">All Categories</span>
+            <span class="feature-tag">In-Grid Detection</span>
+          </div>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="version">Content QA Tester v1.0.0</div>
+
+  <script>
+    function toggleTheme() {
+      const body = document.body;
+      const icon = document.getElementById('theme-icon');
+      const text = document.getElementById('theme-text');
+
+      body.classList.toggle('light-mode');
+      const isLight = body.classList.contains('light-mode');
+
+      icon.innerHTML = isLight ? '&#9790;' : '&#9788;';
+      text.textContent = isLight ? 'Dark' : 'Light';
+
+      localStorage.setItem('testerTheme', isLight ? 'light' : 'dark');
+    }
+
+    // Check for saved theme preference on load
+    (function initTheme() {
+      const savedTheme = localStorage.getItem('testerTheme');
+      if (savedTheme === 'light') {
+        document.body.classList.add('light-mode');
+        document.getElementById('theme-icon').innerHTML = '&#9790;';
+        document.getElementById('theme-text').textContent = 'Dark';
+      }
+    })();
+  </script>
+</body>
+
+</html>

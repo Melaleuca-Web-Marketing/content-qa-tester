@@ -1,0 +1,571 @@
+// pslp-processor.js - PSLP (Product Store Landing Page) testing engine
+
+import { BaseProcessor, log } from './base-processor.js';
+import { config, getBaseUrl, buildPslpUrl, validatePslpConfig } from '../config.js';
+
+// Component extractors
+import { extractHeroCarouselData } from './pslp-components/heroCarousel.js';
+import { extractVariableWindowsData } from './pslp-components/variableWindows.js';
+import { extractFullWidthBannerData } from './pslp-components/fullWidthBanner.js';
+import { extractMonthlySpecialsData } from './pslp-components/monthlySpecials.js';
+import { extractFeaturedCategoriesData } from './pslp-components/featuredCategories.js';
+import { extractSeasonalCarouselData } from './pslp-components/seasonalCarousel.js';
+import { extractBrandCTAWindowsData } from './pslp-components/brandCTAWindows.js';
+import { extractProductCarouselData } from './pslp-components/productCarousel.js';
+
+const componentExtractors = {
+  heroCarousel: extractHeroCarouselData,
+  variableWindows: extractVariableWindowsData,
+  fullWidthBanner: extractFullWidthBannerData,
+  monthlySpecials: extractMonthlySpecialsData,
+  featuredCategories: extractFeaturedCategoriesData,
+  seasonalCarousel: extractSeasonalCarouselData,
+  brandCTAWindows: extractBrandCTAWindowsData,
+  productCarousel: extractProductCarouselData
+};
+
+export class PSLPProcessor extends BaseProcessor {
+  constructor() {
+    super('PSLP');
+  }
+
+  async start(options) {
+    log('info', '========================================');
+    log('info', 'STARTING PSLP TEST PROCESS');
+    log('info', '========================================');
+    log('info', 'Options received', options);
+
+    if (this.isRunning) {
+      log('error', 'Test already in progress');
+      throw new Error('Test already in progress');
+    }
+
+    this.isRunning = true;
+    this.shouldStop = false;
+    this.results = [];
+    this.currentOptions = options;
+
+    const startTime = Date.now();
+
+    // Validate options
+    const errors = validatePslpConfig(options);
+    if (errors.length > 0) {
+      this.isRunning = false;
+      this.emit('error', { message: errors.join(', ') });
+      throw new Error(errors.join(', '));
+    }
+
+    const pslpUrl = buildPslpUrl(options.environment, options.region, options.culture);
+    if (!pslpUrl) {
+      this.isRunning = false;
+      this.emit('error', { message: 'Could not build PSLP URL' });
+      throw new Error('Could not build PSLP URL');
+    }
+
+    const baseUrl = getBaseUrl(options.environment, options.region);
+
+    this.emit('status', {
+      type: 'started',
+      componentCount: options.components.length,
+      screenshotCount: (options.screenWidths && options.screenWidths.length > 0)
+        ? options.screenWidths.length
+        : config.pslp.screenWidths.length
+    });
+
+    let screenshots = [];
+    let componentReports = [];
+
+    try {
+      // Launch browser
+      await this.launchBrowser({ headless: false });
+      await this.createContext({ viewport: { width: 1920, height: 1080 } });
+      await this.createPage();
+
+      this.emit('progress', { type: 'navigation', status: 'Navigating to home page...' });
+      await this.page.goto(baseUrl, { waitUntil: 'load', timeout: config.pslp.timeouts.pageLoad });
+      await this.page.waitForTimeout(2000);
+
+      if (this.shouldStop) throw new Error('Operation stopped by user');
+
+      // Handle Microsoft authentication for stage/UAT environments
+      // User must manually sign in, then click Resume
+      if (options.environment === 'stage' || options.environment === 'uat') {
+        const isMicrosoftLogin = this.page.url().includes('login.microsoftonline.com') ||
+          this.page.url().includes('login.windows.net');
+        if (isMicrosoftLogin) {
+          log('info', 'Detected Microsoft login page, waiting for user to sign in...');
+          await this.waitForManualAuth(options.environment.toUpperCase());
+
+          // Navigate back to the base URL after auth
+          await this.page.goto(baseUrl, { waitUntil: 'load', timeout: config.pslp.timeouts.pageLoad });
+          await this.page.waitForTimeout(2000);
+        }
+      }
+
+      if (this.shouldStop) throw new Error('Operation stopped by user');
+
+      // Login
+      this.emit('progress', { type: 'login', status: 'Opening login form...' });
+      const signInButton = await this.page.$(config.pslp.selectors.login.homePageSignInButton);
+      if (!signInButton) {
+        throw new Error('Sign in button not found on home page');
+      }
+      await signInButton.click();
+      await this.page.waitForSelector(config.pslp.selectors.login.username, { timeout: config.pslp.timeouts.loginWait });
+
+      this.emit('progress', { type: 'login', status: 'Logging in...' });
+      await this.page.fill(config.pslp.selectors.login.username, options.username);
+      await this.page.fill(config.pslp.selectors.login.password, options.password);
+
+      try {
+        await Promise.all([
+          this.page.waitForNavigation({ timeout: config.pslp.timeouts.loginWait }),
+          this.page.click(config.pslp.selectors.login.loginButton)
+        ]);
+      } catch (e) {
+        await this.page.waitForTimeout(3000);
+      }
+
+      await this.page.waitForLoadState('domcontentloaded').catch(() => { });
+      await this.page.waitForTimeout(500);
+
+      try {
+        await this.page.waitForURL((url) => !url.href.includes('singlesignon'), {
+          timeout: 20000,
+          waitUntil: 'load'
+        });
+
+        if (this.page.url().includes('LoadProfile')) {
+          await this.page.waitForURL((url) => !url.href.includes('LoadProfile'), {
+            timeout: 30000,
+            waitUntil: 'load'
+          });
+        }
+      } catch (e) {
+        await this.page.waitForTimeout(1000);
+      }
+
+      const loginErrorLocator = this.page.locator(config.pslp.selectors.login.errorMessage).first();
+      if (await loginErrorLocator.isVisible().catch(() => false)) {
+        const errorText = await loginErrorLocator.textContent().catch(() => '');
+        throw new Error(errorText?.trim() || 'Login failed: invalid username or password');
+      }
+
+      const loginFieldVisible = await this.page.locator(config.pslp.selectors.login.username).first()
+        .isVisible()
+        .catch(() => false);
+      if (loginFieldVisible) {
+        throw new Error('Login failed - still on login page');
+      }
+
+      await this.dismissModalIfPresent();
+
+      if (this.shouldStop) throw new Error('Operation stopped by user');
+
+      // Navigate to PSLP
+      this.emit('progress', { type: 'navigation', status: `Navigating to PSLP: ${pslpUrl}...` });
+      await this.page.goto(pslpUrl, { waitUntil: 'domcontentloaded', timeout: config.pslp.timeouts.pageLoad });
+      await this.page.waitForTimeout(1500);
+      await this.dismissModalIfPresent();
+
+      // Wait for components to load
+      this.emit('progress', { type: 'step', step: 'Components', status: 'Waiting for components to load...' });
+      await this.waitForComponentsToLoad(options.components);
+      await this.dismissModalIfPresent();
+      await this.primeMonthlySpecialsSlides(options.components);
+
+      if (this.shouldStop) throw new Error('Operation stopped by user');
+
+      const screenWidths = Array.isArray(options.screenWidths) && options.screenWidths.length > 0
+        ? options.screenWidths
+        : config.pslp.screenWidths;
+
+      // Take screenshots at different widths
+      this.emit('progress', { type: 'screenshot', status: 'Preparing screenshots...', current: 0, total: screenWidths.length });
+      const totalSteps = screenWidths.length + options.components.length;
+      let completedSteps = 0;
+
+      for (const width of screenWidths) {
+        if (this.shouldStop) throw new Error('Operation stopped by user');
+
+        completedSteps++;
+        const progress = (completedSteps / totalSteps) * 100;
+
+        this.emit('progress', {
+          type: 'screenshot',
+          status: `Taking screenshot at ${width}px...`,
+          progress,
+          width,
+          current: completedSteps,
+          total: screenWidths.length
+        });
+
+        await this.page.setViewportSize({ width, height: 1080 });
+        await this.applyCarouselStacking({ stackMonthlySpecials: width >= 768 });
+        await this.normalizeTabletLayout(width);
+        await this.prepareForScreenshot();
+        await this.dismissModalIfPresent();
+
+        const screenshotBuffer = await this.page.screenshot({
+          fullPage: true,
+          type: 'jpeg',
+          quality: 80
+        });
+
+        screenshots.push({
+          width,
+          data: screenshotBuffer.toString('base64')
+        });
+
+        await this.page.waitForTimeout(500);
+      }
+
+      // Extract component data
+      for (const componentName of options.components) {
+        if (this.shouldStop) throw new Error('Operation stopped by user');
+
+        completedSteps++;
+        const progress = (completedSteps / totalSteps) * 100;
+
+        this.emit('progress', {
+          type: 'component',
+          status: `Extracting data: ${config.pslp.componentNames[componentName] || componentName}...`,
+          progress,
+          component: componentName,
+          componentName: config.pslp.componentNames[componentName] || componentName,
+          current: completedSteps - config.pslp.screenWidths.length,
+          total: options.components.length
+        });
+
+        const extractor = componentExtractors[componentName];
+        if (extractor) {
+          await this.dismissModalIfPresent();
+          const data = await extractor(this.page, config.pslp.selectors);
+          componentReports.push({ name: componentName, data });
+        }
+
+        await this.page.waitForTimeout(config.pslp.timeouts.betweenComponents);
+      }
+
+      await this.removeCarouselStacking();
+
+      this.results = {
+        environment: options.environment,
+        region: options.region,
+        culture: options.culture,
+        screenshots,
+        componentReports,
+        options
+      };
+
+    } catch (err) {
+      log('error', 'PSLP test error', { error: err.message, stack: err.stack });
+      this.emit('error', { message: err.message });
+    } finally {
+      await this.closeBrowser();
+      this.isRunning = false;
+
+      const duration = Date.now() - startTime;
+
+      if (!this.shouldStop && this.results) {
+        log('info', '========================================');
+        log('info', 'PSLP TEST COMPLETE');
+        log('info', '========================================');
+
+        this.emit('status', {
+          type: 'completed',
+          results: this.results,
+          duration,
+          screenshotCount: screenshots.length,
+          componentCount: componentReports.length
+        });
+      } else {
+        this.emit('status', {
+          type: 'cancelled',
+          duration
+        });
+      }
+    }
+
+    return {
+      results: this.results,
+      duration: Date.now() - startTime
+    };
+  }
+
+  async dismissModalIfPresent() {
+    const modal = this.page.locator(config.pslp.selectors.modal.dialog);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const count = await modal.count();
+      if (count === 0) return false;
+
+      const visible = await modal.first().isVisible().catch(() => false);
+      if (!visible) return false;
+
+      const closeButton = modal.locator(config.pslp.selectors.modal.closeButton);
+      if (await closeButton.count()) {
+        await closeButton.first().click({ timeout: 2000 }).catch(() => { });
+      } else {
+        await this.page.keyboard.press('Escape').catch(() => { });
+      }
+
+      await this.page.waitForTimeout(500);
+      const remaining = await modal.count();
+      if (remaining === 0 || !(await modal.first().isVisible().catch(() => false))) {
+        return true;
+      }
+    }
+
+    return true;
+  }
+
+  async waitForComponentsToLoad(components = []) {
+    if (!components.length) return;
+
+    const selectorsByComponent = {
+      heroCarousel: config.pslp.selectors.heroCarousel?.slide,
+      variableWindows: config.pslp.selectors.variableWindows?.window,
+      fullWidthBanner: config.pslp.selectors.fullWidthBanner?.link,
+      monthlySpecials: config.pslp.selectors.monthlySpecials?.card,
+      featuredCategories: config.pslp.selectors.featuredCategories?.item,
+      seasonalCarousel: config.pslp.selectors.seasonalCarousel?.slide,
+      brandCTAWindows: config.pslp.selectors.brandCTAWindows?.link,
+      productCarousel: config.pslp.selectors.productCarousel?.card
+    };
+
+    for (const componentName of components) {
+      const selector = selectorsByComponent[componentName];
+      if (!selector) continue;
+      try {
+        await this.page.waitForSelector(selector, { timeout: config.pslp.timeouts.componentLoad });
+      } catch (e) {
+        // Ignore missing components
+      }
+    }
+  }
+
+  async primeMonthlySpecialsSlides(components = []) {
+    if (!components.includes('monthlySpecials')) return;
+    const selectorConfig = config.pslp.selectors?.monthlySpecials || {};
+    const dotSelector = selectorConfig.dot || 'button[data-testid="button-monthlySpecialDot"], .o-monthlySpecial__dot';
+
+    const component = await this.page.$('.o-monthlySpecial');
+    if (!component) {
+      return;
+    }
+
+    const dots = await this.page.$$(dotSelector);
+    if (!dots.length) {
+      return;
+    }
+
+    log('info', 'Priming Monthly Specials slides', { dotCount: dots.length });
+    for (let i = 0; i < dots.length; i++) {
+      await dots[i].evaluate((el) => el.click()).catch(() => { });
+      await this.page.waitForTimeout(400);
+    }
+  }
+
+  async prepareForScreenshot() {
+    await this.hydrateLazySources();
+    await this.warmLazyImages();
+    await this.waitForImagesToLoad(15000);
+  }
+
+  async normalizeTabletLayout(width) {
+    if (width < 768 || width >= 992) return;
+    await this.page.evaluate(() => {
+      const selectors = [
+        'body > div',
+        '#app',
+        '#root',
+        'main',
+        '.o-page',
+        '.o-page__content',
+        '.o-productStore',
+        '.o-productStore__content',
+        '.o-layout',
+        '.o-main'
+      ];
+      const elements = new Set();
+      selectors.forEach((selector) => {
+        document.querySelectorAll(selector).forEach((el) => elements.add(el));
+      });
+
+      elements.forEach((el) => {
+        el.style.width = '100%';
+        el.style.maxWidth = '100%';
+        el.style.marginLeft = '0';
+        el.style.marginRight = '0';
+      });
+
+      document.documentElement.style.width = '100%';
+      document.documentElement.style.maxWidth = '100%';
+      document.body.style.width = '100%';
+      document.body.style.maxWidth = '100%';
+    });
+  }
+
+  async hydrateLazySources() {
+    await this.page.evaluate(() => {
+      document.querySelectorAll('source').forEach((source) => {
+        const dataSrcset = source.getAttribute('data-srcset');
+        if (dataSrcset && !source.getAttribute('srcset')) {
+          source.setAttribute('srcset', dataSrcset);
+        }
+      });
+
+      document.querySelectorAll('img').forEach((img) => {
+        const dataSrc = img.getAttribute('data-src');
+        const dataSrcset = img.getAttribute('data-srcset');
+        if (dataSrc && (!img.getAttribute('src') || img.getAttribute('src') === '')) {
+          img.setAttribute('src', dataSrc);
+        }
+        if (dataSrcset && !img.getAttribute('srcset')) {
+          img.setAttribute('srcset', dataSrcset);
+        }
+      });
+    });
+  }
+
+  async warmLazyImages() {
+    const viewport = this.page.viewportSize();
+    const step = viewport ? Math.floor(viewport.height * 0.75) : 600;
+    const scrollHeight = await this.page.evaluate(() => document.body.scrollHeight);
+
+    for (let y = 0; y < scrollHeight; y += step) {
+      await this.page.evaluate((scrollTo) => window.scrollTo(0, scrollTo), y);
+      await this.page.waitForTimeout(200);
+    }
+
+    await this.page.evaluate(() => window.scrollTo(0, 0));
+    await this.page.waitForTimeout(200);
+  }
+
+  async waitForImagesToLoad(timeoutMs) {
+    await this.page.evaluate(async (timeout) => {
+      const images = Array.from(document.images || []);
+      if (images.length === 0) return;
+
+      const waitForImage = (img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+          const done = () => resolve();
+          img.addEventListener('load', done, { once: true });
+          img.addEventListener('error', done, { once: true });
+        });
+      };
+
+      await Promise.race([
+        Promise.all(images.map(waitForImage)),
+        new Promise((resolve) => setTimeout(resolve, timeout))
+      ]);
+    }, timeoutMs);
+  }
+
+  async applyCarouselStacking(options = {}) {
+    const { stackMonthlySpecials = true } = options;
+    await this.page.evaluate(({ stackMonthlySpecials }) => {
+      let style = document.getElementById('pslp-carousel-stack');
+      if (!style) {
+        style = document.createElement('style');
+        style.id = 'pslp-carousel-stack';
+        document.head.appendChild(style);
+      }
+
+      const monthlySpecialsCss = stackMonthlySpecials ? `
+        .o-monthlySpecial__list {
+          transform: none !important;
+          flex-direction: column !important;
+          height: auto !important;
+          overflow: visible !important;
+          display: flex !important;
+        }
+        .o-monthlySpecial__slide {
+          width: 100% !important;
+          min-width: 100% !important;
+          max-width: 100% !important;
+          display: block !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+          position: static !important;
+          transform: none !important;
+          flex-shrink: 0 !important;
+          margin-bottom: 20px !important;
+        }
+        .o-monthlySpecial__slide[aria-hidden="true"] {
+          display: block !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+          height: auto !important;
+        }
+        .o-monthlySpecial {
+          overflow: visible !important;
+          height: auto !important;
+        }
+        .o-monthlySpecial__nav {
+          display: none !important;
+        }
+        .o-monthlySpecial__header {
+          position: static !important;
+          margin-bottom: 24px !important;
+        }
+        .o-monthlySpecial__wrapper,
+        .o-monthlySpecial__cards {
+          height: auto !important;
+        }
+      ` : '';
+
+      style.textContent = `
+        .o-heroCarousel__slider .slick-slide.slick-cloned,
+        .o-seasonalCarousel__slider .slick-slide.slick-cloned {
+          display: none !important;
+        }
+        .o-heroCarousel__slider .slick-track,
+        .o-seasonalCarousel__slider .slick-track {
+          transform: none !important;
+          width: 100% !important;
+          display: block !important;
+        }
+        .o-heroCarousel__slider .slick-slide:not(.slick-cloned),
+        .o-seasonalCarousel__slider .slick-slide:not(.slick-cloned) {
+          display: block !important;
+          float: none !important;
+          height: auto !important;
+        }
+        .o-heroCarousel__slider .slick-list,
+        .o-seasonalCarousel__slider .slick-list {
+          overflow: visible !important;
+          height: auto !important;
+        }
+        .o-heroCarousel__actions,
+        .o-heroCarousel__arrows,
+        .o-seasonalCarousel__slider .slick-arrow {
+          display: none !important;
+        }
+        ${monthlySpecialsCss}
+        .m-consentBanner {
+          display: none !important;
+        }
+      `;
+    }, { stackMonthlySpecials });
+  }
+
+  async removeCarouselStacking() {
+    await this.page.evaluate(() => {
+      const style = document.getElementById('pslp-carousel-stack');
+      if (style) style.remove();
+    });
+  }
+}
+
+// Singleton instance
+let processorInstance = null;
+
+export function getPSLPProcessor() {
+  if (!processorInstance) {
+    processorInstance = new PSLPProcessor();
+  }
+  return processorInstance;
+}

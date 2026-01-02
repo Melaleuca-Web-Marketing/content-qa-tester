@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SKU Tester - Melaleuca Unified Tester</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back-link">&larr; Back to Mode Selector</a>
+
+    <div class="card">
+      <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">
+        <span class="theme-icon" id="theme-icon">&#9788;</span>
+        <span id="theme-text">Light</span>
+      </button>
+      <h1>SKU Tester</h1>
+      <p class="subtitle">Test SKUs by navigating to PDPs, capturing data, and optionally adding to cart.</p>
+
+      <div id="form-wrapper">
+        <div class="settings-row settings-row-3">
+          <div class="section">
+            <div class="label">Environment</div>
+            <select id="env-select">
+              <option value="production">Production</option>
+              <option value="stage">Stage (Preview)</option>
+              <option value="uat">UAT</option>
+            </select>
+          </div>
+
+          <div class="section">
+            <div class="label">Region</div>
+            <select id="region-select">
+              <option value="us">United States</option>
+              <option value="ca">Canada</option>
+              <option value="mx">Mexico</option>
+              <option value="uk">United Kingdom</option>
+              <option value="ie">Ireland</option>
+              <option value="de">Germany</option>
+              <option value="lt">Lithuania</option>
+              <option value="nl">Netherlands</option>
+              <option value="pl">Poland</option>
+            </select>
+          </div>
+
+          <div class="section">
+            <div class="label">Culture</div>
+            <select id="culture-select">
+              <option value="en-US">English (US)</option>
+              <option value="es-US">Spanish (US)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section" id="login-section">
+          <div class="label">Login Credentials (required for Add to Cart)</div>
+          <div class="login-fields">
+            <input type="text" id="username-input" placeholder="Username" autocomplete="username">
+            <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="label">SKUs (comma-separated)</div>
+          <div class="input-with-button">
+            <textarea id="sku-input" placeholder="Enter SKUs: 1216, 1218, 5019" rows="3"></textarea>
+            <button id="clear-skus" class="icon-btn" title="Clear SKUs">&times;</button>
+          </div>
+          <div class="meta" id="sku-count">0 SKUs entered</div>
+        </div>
+
+        <div class="section">
+          <div class="label">Options</div>
+          <div class="options-grid">
+            <label class="checkbox-row">
+              <input type="checkbox" id="full-screenshot" checked>
+              <span>Full PDP Screenshot</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="top-screenshot">
+              <span>Top PDP Screenshot (SKU Config)</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="add-to-cart">
+              <span>Add to Cart</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button id="start-capture" class="primary">Start Capture</button>
+          <button id="stop-capture" class="danger" disabled>Stop</button>
+        </div>
+      </div>
+
+      <button id="save-report" class="secondary" disabled>Save Report</button>
+
+      <div id="status-banner" class="status-banner idle">
+        <span class="status-icon" id="status-icon">&#9679;</span>
+        <div class="status-text">
+          <div id="status-main">Ready to capture</div>
+          <div class="status-detail" id="status-detail"></div>
+        </div>
+      </div>
+
+      <div id="progress-container" class="progress-container" style="display: none;">
+        <div class="progress-info">
+          <span id="progress-env">Env: -</span>
+          <span id="progress-culture">Culture: -</span>
+          <span id="progress-sku">SKU: -</span>
+        </div>
+        <div class="progress-bar" id="progress-bar">
+          <div class="progress-bar-inner" id="progress-bar-inner"></div>
+        </div>
+        <div class="progress-stats">
+          <span id="progress-count">0 / 0</span>
+          <span id="progress-eta">ETR: --:--</span>
+        </div>
+      </div>
+
+      <div id="current-sku-info" class="current-sku-info" style="display: none;">
+        <div class="current-sku-header">Current SKU</div>
+        <div class="current-sku-details">
+          <div id="current-sku-name">-</div>
+          <div id="current-sku-price">-</div>
+          <div id="current-sku-status">-</div>
+        </div>
+      </div>
+
+      <div class="history-section" id="history-section">
+        <div class="history-header">
+          <span class="history-title">Report History</span>
+          <button class="history-clear" id="clear-history">Clear All</button>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="history-empty">No reports yet</div>
+        </div>
+      </div>
+
+      <div class="reports-section" id="reports-section">
+        <div class="reports-header">
+          <span class="reports-title">Saved Reports</span>
+          <button class="reports-refresh" id="refresh-reports">Refresh</button>
+        </div>
+        <div class="reports-list" id="reports-list">
+          <div class="reports-empty">No saved reports</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connection-status" id="connection-status">
+      <span class="connection-dot"></span>
+      <span class="connection-text">Connecting...</span>
+    </div>
+  </div>
+
+  <script src="credentials-store.js"></script>
+  <script src="sku-app.js"></script>
+</body>
+</html>

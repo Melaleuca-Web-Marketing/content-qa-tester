@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PSLP Tester - Melaleuca Unified Tester</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back-link">&larr; Back to Mode Selector</a>
+
+    <div class="card">
+      <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">
+        <span class="theme-icon" id="theme-icon">&#9788;</span>
+        <span id="theme-text">Light</span>
+      </button>
+      <h1>PSLP Tester</h1>
+      <p class="subtitle">Test Product Store Landing Page by capturing screenshots and extracting component data.</p>
+
+      <div id="form-wrapper">
+        <div class="settings-row settings-row-3">
+          <div class="section">
+            <div class="label">Environment</div>
+            <select id="env-select">
+              <option value="production">Production</option>
+              <option value="stage">Stage (Preview)</option>
+              <option value="uat">UAT</option>
+            </select>
+          </div>
+
+          <div class="section">
+            <div class="label">Region</div>
+            <select id="region-select">
+              <option value="us">United States</option>
+              <option value="ca">Canada</option>
+              <option value="mx">Mexico</option>
+              <option value="uk">United Kingdom</option>
+              <option value="ie">Ireland</option>
+              <option value="de">Germany</option>
+              <option value="lt">Lithuania</option>
+              <option value="nl">Netherlands</option>
+              <option value="pl">Poland</option>
+            </select>
+          </div>
+
+          <div class="section">
+            <div class="label">Culture</div>
+            <select id="culture-select">
+              <option value="en-US">English (US)</option>
+              <option value="es-US">Spanish (US)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section" id="login-section">
+          <div class="label">Login Credentials (required for accessing PSLP)</div>
+          <div class="login-fields">
+            <input type="text" id="username-input" placeholder="Username" autocomplete="username">
+            <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="label">Viewport Widths</div>
+          <div class="toggle-buttons">
+            <button id="select-all-widths" class="toggle-btn">Select All</button>
+            <button id="deselect-all-widths" class="toggle-btn">Deselect All</button>
+          </div>
+          <div class="width-grid" id="width-options">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="label">Components to Extract</div>
+          <div class="toggle-buttons">
+            <button id="select-all-components" class="toggle-btn">Select All</button>
+            <button id="deselect-all-components" class="toggle-btn">Deselect All</button>
+          </div>
+          <div class="options-grid options-grid-2" id="components-grid">
+            <label class="checkbox-row">
+              <input type="checkbox" name="component" value="heroCarousel" checked>
+              <span>Hero Carousel</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="component" value="variableWindows" checked>
+              <span>Variable Windows</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="component" value="fullWidthBanner" checked>
+              <span>Full Width Banner</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="component" value="monthlySpecials" checked>
+              <span>Monthly Specials</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="component" value="featuredCategories" checked>
+              <span>Featured Categories</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="component" value="seasonalCarousel" checked>
+              <span>Seasonal Carousel</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="component" value="brandCTAWindows" checked>
+              <span>Brand CTA Windows</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="component" value="productCarousel" checked>
+              <span>Product Carousel</span>
+            </label>
+          </div>
+          <div class="meta" id="component-count">8 components selected</div>
+        </div>
+
+        <div class="button-row">
+          <button id="start-capture" class="primary">Start Capture</button>
+          <button id="stop-capture" class="danger" disabled>Stop</button>
+        </div>
+      </div>
+
+      <button id="save-report" class="secondary" disabled>Save Report</button>
+
+      <div id="status-banner" class="status-banner idle">
+        <span class="status-icon" id="status-icon">&#9679;</span>
+        <div class="status-text">
+          <div id="status-main">Ready to capture</div>
+          <div class="status-detail" id="status-detail"></div>
+        </div>
+      </div>
+
+      <div id="progress-container" class="progress-container" style="display: none;">
+        <div class="progress-info">
+          <span id="progress-env">Env: -</span>
+          <span id="progress-culture">Culture: -</span>
+          <span id="progress-step">Step: -</span>
+        </div>
+        <div class="progress-bar" id="progress-bar">
+          <div class="progress-bar-inner" id="progress-bar-inner"></div>
+        </div>
+        <div class="progress-stats">
+          <span id="progress-count">0 / 0</span>
+          <span id="progress-eta">ETR: --:--</span>
+        </div>
+      </div>
+
+      <div id="current-step-info" class="current-sku-info" style="display: none;">
+        <div class="current-sku-header">Current Step</div>
+        <div class="current-sku-details">
+          <div id="current-step-name">-</div>
+          <div id="current-step-status">-</div>
+        </div>
+      </div>
+
+      <div class="history-section" id="history-section">
+        <div class="history-header">
+          <span class="history-title">Report History</span>
+          <button class="history-clear" id="clear-history">Clear All</button>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="history-empty">No reports yet</div>
+        </div>
+      </div>
+
+      <div class="reports-section" id="reports-section">
+        <div class="reports-header">
+          <span class="reports-title">Saved Reports</span>
+          <button class="reports-refresh" id="refresh-reports">Refresh</button>
+        </div>
+        <div class="reports-list" id="reports-list">
+          <div class="reports-empty">No saved reports</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connection-status" id="connection-status">
+      <span class="connection-dot"></span>
+      <span class="connection-text">Connecting...</span>
+    </div>
+  </div>
+
+  <script src="credentials-store.js"></script>
+  <script src="pslp-app.js"></script>
+</body>
+</html>

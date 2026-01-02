@@ -1,0 +1,424 @@
+{
+  "US & Canada": {
+    "Supplements": [
+      {
+        "label": "Show All",
+        "path": "/productstore/supplements"
+      }
+    ],
+    "Cleaning and Laundry": [
+      {
+        "label": "Show All",
+        "path": "/productstore/cleaning-and-laundry"
+      },
+      {
+        "label": "Cleaning",
+        "path": "/productstore/cleaning-and-laundry/cleaning"
+      },
+      {
+        "label": "Laundry",
+        "path": "/productstore/cleaning-and-laundry/laundry"
+      }
+    ],
+    "Personal Care": [
+      {
+        "label": "Show All",
+        "path": "/productstore/personal-care"
+      },
+      {
+        "label": "Bath & Body",
+        "path": "/productstore/personal-care/bath-body"
+      },
+      {
+        "label": "Dental",
+        "path": "/productstore/personal-care/dental"
+      },
+      {
+        "label": "Hair Care",
+        "path": "/productstore/personal-care/hair-care"
+      },
+      {
+        "label": "Hand Soap & Sanitizers",
+        "path": "/productstore/personal-care/hand-soap-sanitizers"
+      },
+      {
+        "label": "Outdoor",
+        "path": "/productstore/personal-care/outdoor"
+      },
+      {
+        "label": "Baby Care",
+        "path": "/productstore/personal-care/baby-care"
+      },
+      {
+        "label": "Acne Prevention",
+        "path": "/productstore/personal-care/acne-prevention"
+      }
+    ],
+    "Beauty": [
+      {
+        "label": "Show All",
+        "path": "/productstore/beauty"
+      },
+      {
+        "label": "Premium Skin Care",
+        "path": "/productstore/beauty/premium-skin-care"
+      },
+      {
+        "label": "Color Cosmetics",
+        "path": "/productstore/beauty/color-cosmetics"
+      },
+      {
+        "label": "Beauty Specials",
+        "path": "/productstore/beauty/beauty-specials"
+      },
+      {
+        "label": "Hair Care",
+        "path": "/productstore/beauty/hair-care"
+      },
+      {
+        "label": "Last Chance",
+        "path": "/productstore/beauty/last-chance"
+      },
+      {
+        "label": "Fragrance/Perfume",
+        "path": "/productstore/beauty/fragranceperfume"
+      }
+    ],
+    "Healthy Foods and Drinks": [
+      {
+        "label": "Show All",
+        "path": "/productstore/healthy-foods-and-drinks"
+      },
+      {
+        "label": "Healthy Weight & Protein",
+        "path": "/productstore/healthy-foods-and-drinks/healthy-weight-protein"
+      },
+      {
+        "label": "Healthy Snacks",
+        "path": "/productstore/healthy-foods-and-drinks/healthy-snacks"
+      },
+      {
+        "label": "Beverages",
+        "path": "/productstore/healthy-foods-and-drinks/beverages"
+      },
+      {
+        "label": "Fibre Drink",
+        "path": "/productstore/healthy-foods-and-drinks/fiber-drink"
+      },
+      {
+        "label": "Mints",
+        "path": "/productstore/healthy-foods-and-drinks/mints"
+      },
+      {
+        "label": "Spices",
+        "path": "/productstore/healthy-foods-and-drinks/spices"
+      },
+      {
+        "label": "Baking Mixes",
+        "path": "/productstore/healthy-foods-and-drinks/baking-mixes"
+      }
+    ],
+    "Medicines and Treatments": [
+      {
+        "label": "Show All",
+        "path": "/productstore/medicines-and-treatments"
+      }
+    ],
+    "Home Fragrance": [
+      {
+        "label": "Show All",
+        "path": "/productstore/home-fragrance"
+      }
+    ],
+    "New Products": [
+      {
+        "label": "Show All",
+        "path": "/productstore/new-products"
+      }
+    ],
+    "Extra Savings": [
+      {
+        "label": "Show All",
+        "path": "/productstore/extra-savings"
+      },
+      {
+        "label": "Outlet Store",
+        "path": "/productstore/extra-savings/outlet-store"
+      }
+    ],
+    "Featured This Month": [
+      {
+        "label": "Show All",
+        "path": "/productstore/featured-this-month"
+      }
+    ]
+  },
+  "Mexico": {
+    "Supplements": [
+      {
+        "label": "Show All",
+        "path": "/productstore/suplementos"
+      }
+    ],
+    "Cleaning and Laundry": [
+      {
+        "label": "Show All",
+        "path": "/productstore/limpieza-y-lavandera"
+      },
+      {
+        "label": "Cleaning",
+        "path": "/productstore/limpieza-y-lavandera/limpieza"
+      },
+      {
+        "label": "Laundry",
+        "path": "/productstore/limpieza-y-lavandera/lavanderia"
+      }
+    ],
+    "Personal Care": [
+      {
+        "label": "Show All",
+        "path": "/productstore/cuidado-personal"
+      },
+      {
+        "label": "Bath & Body",
+        "path": "/productstore/cuidado-personal/bao-y-ducha"
+      },
+      {
+        "label": "Hair Care",
+        "path": "/productstore/cuidado-personal/cuidado-del-cabello"
+      },
+      {
+        "label": "Hand Soap & Sanitizers",
+        "path": "/productstore/cuidado-personal/jabones-de-manos-y-antisepticos"
+      },
+      {
+        "label": "Dental",
+        "path": "/productstore/cuidado-personal/cuidado-dental"
+      },
+      {
+        "label": "Acne Prevention",
+        "path": "/productstore/cuidado-personal/prevencion-del-acne"
+      },
+      {
+        "label": "Baby Care",
+        "path": "/productstore/cuidado-personal/bebes-y-ninos"
+      },
+      {
+        "label": "Outdoor",
+        "path": "/productstore/cuidado-personal/al-aire-libre"
+      }
+    ],
+    "Beauty": [
+      {
+        "label": "Show All",
+        "path": "/productstore/belleza"
+      },
+      {
+        "label": "Color Cosmetics",
+        "path": "/productstore/belleza/maquillaje"
+      },
+      {
+        "label": "Premium Skin Care",
+        "path": "/productstore/belleza/cuidado-del-cutis"
+      },
+      {
+        "label": "Hair Care",
+        "path": "/productstore/belleza/cuidado-del-cabello"
+      },
+      {
+        "label": "Fragrance/Perfume",
+        "path": "/productstore/belleza/fragancias"
+      },
+      {
+        "label": "Beauty Specials",
+        "path": "/productstore/belleza/especiales-de-belleza"
+      },
+      {
+        "label": "Last Chance",
+        "path": "/productstore/belleza/de-ultima-oportunidad"
+      }
+    ],
+    "Healthy Foods and Drinks": [
+      {
+        "label": "Show All",
+        "path": "/productstore/alimentos-saludables-y-bebidas"
+      },
+      {
+        "label": "Healthy Snacks",
+        "path": "/productstore/alimentos-saludables-y-bebidas/refrigerios-saludables"
+      },
+      {
+        "label": "Healthy Weight & Protein",
+        "path": "/productstore/alimentos-saludables-y-bebidas/proteina-y-control-del-peso"
+      },
+      {
+        "label": "Beverages",
+        "path": "/productstore/alimentos-saludables-y-bebidas/bebidas"
+      }
+    ],
+    "Medicines and Treatments": [
+      {
+        "label": "Show All",
+        "path": "/productstore/botiqun"
+      }
+    ],
+    "Essential Oils": [
+      {
+        "label": "Show All",
+        "path": "/productstore/aceites-esenciales"
+      }
+    ],
+    "Extra Savings": [
+      {
+        "label": "Show All",
+        "path": "/productstore/ahorros-adicionales"
+      },
+      {
+        "label": "Holiday",
+        "path": "/productstore/ahorros-adicionales/festividades"
+      },
+      {
+        "label": "New Products",
+        "path": "/productstore/ahorros-adicionales/productos-nuevos"
+      },
+      {
+        "label": "Limited Time",
+        "path": "/productstore/ahorros-adicionales/por-tiempo-limitado"
+      },
+      {
+        "label": "Outlet Store",
+        "path": "/productstore/ahorros-adicionales/liquidaciones"
+      },
+      {
+        "label": "Savings Packs",
+        "path": "/productstore/ahorros-adicionales/conjuntos-ahorrativos"
+      }
+    ]
+  },
+  "Europe": {
+    "Supplements": [
+      {
+        "label": "Show All",
+        "path": "/productstore/supplements"
+      }
+    ],
+    "Cleaning and Laundry": [
+      {
+        "label": "Show All",
+        "path": "/productstore/cleaning-and-laundry"
+      },
+      {
+        "label": "Cleaning",
+        "path": "/productstore/cleaning-and-laundry/cleaning"
+      },
+      {
+        "label": "Laundry",
+        "path": "/productstore/cleaning-and-laundry/laundry"
+      }
+    ],
+    "Personal Care": [
+      {
+        "label": "Show All",
+        "path": "/productstore/personal-care"
+      },
+      {
+        "label": "Bath & Body",
+        "path": "/productstore/personal-care/bath-body"
+      },
+      {
+        "label": "Dental",
+        "path": "/productstore/personal-care/dental"
+      },
+      {
+        "label": "Hair Care",
+        "path": "/productstore/personal-care/hair-care"
+      },
+      {
+        "label": "Hand Soap & Sanitizers",
+        "path": "/productstore/personal-care/hand-soap-sanitizers"
+      },
+      {
+        "label": "Sun Care",
+        "path": "/productstore/personal-care/sun-care"
+      }
+    ],
+    "Beauty": [
+      {
+        "label": "Show All",
+        "path": "/productstore/beauty"
+      },
+      {
+        "label": "Premium Skin Care",
+        "path": "/productstore/beauty/premium-skin-care"
+      },
+      {
+        "label": "Color Cosmetics",
+        "path": "/productstore/beauty/color-cosmetics"
+      },
+      {
+        "label": "Beauty Specials",
+        "path": "/productstore/beauty/beauty-specials"
+      },
+      {
+        "label": "Hair Care",
+        "path": "/productstore/beauty/hair-care"
+      },
+      {
+        "label": "Last Chance",
+        "path": "/productstore/beauty/last-chance"
+      }
+    ],
+    "Healthy Foods and Drinks": [
+      {
+        "label": "Show All",
+        "path": "/productstore/healthy-foods-and-drinks"
+      },
+      {
+        "label": "Healthy Weight & Protein",
+        "path": "/productstore/healthy-foods-and-drinks/healthy-weight-protein"
+      },
+      {
+        "label": "Healthy Snacks",
+        "path": "/productstore/healthy-foods-and-drinks/healthy-snacks"
+      },
+      {
+        "label": "Beverages",
+        "path": "/productstore/healthy-foods-and-drinks/beverages"
+      },
+      {
+        "label": "Fibre Drink",
+        "path": "/productstore/healthy-foods-and-drinks/fiber-drink"
+      },
+      {
+        "label": "Spices",
+        "path": "/productstore/healthy-foods-and-drinks/spices"
+      },
+      {
+        "label": "Baking Mixes",
+        "path": "/productstore/healthy-foods-and-drinks/baking-mixes"
+      }
+    ],
+    "Medicines and Treatments": [
+      {
+        "label": "Show All",
+        "path": "/productstore/medicines-and-treatments"
+      }
+    ],
+    "Home Fragrance": [
+      {
+        "label": "Show All",
+        "path": "/productstore/home-fragrance"
+      }
+    ],
+    "Extra Savings": [
+      {
+        "label": "Show All",
+        "path": "/productstore/extra-savings"
+      },
+      {
+        "label": "Outlet Store",
+        "path": "/productstore/extra-savings/outlet-store"
+      }
+    ]
+  }
+}

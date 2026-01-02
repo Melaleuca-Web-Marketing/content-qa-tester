@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Banner Tester - Melaleuca Unified Tester</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back-link">&larr; Back to Mode Selector</a>
+
+    <div class="card">
+      <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">
+        <span class="theme-icon" id="theme-icon">&#9788;</span>
+        <span id="theme-text">Light</span>
+      </button>
+      <h1>Banner Tester</h1>
+      <p class="subtitle">Capture category page banners at multiple viewport widths with mobile device emulation.</p>
+
+      <div id="form-wrapper">
+        <div class="settings-row settings-row-2">
+          <div class="section">
+            <div class="label">Environment</div>
+            <select id="env-select">
+              <option value="production">Production</option>
+              <option value="stage">Stage (Preview)</option>
+              <option value="uat">UAT</option>
+            </select>
+          </div>
+
+          <div class="section">
+            <div class="label">Region</div>
+            <select id="region-select">
+              <option value="usca">US & Canada</option>
+              <option value="mx">Mexico</option>
+              <option value="ukeu">UK & Europe</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="label">Cultures</div>
+          <div class="toggle-buttons">
+            <button class="toggle-btn" id="select-all-cultures">Select All</button>
+            <button class="toggle-btn" id="deselect-all-cultures">Deselect All</button>
+          </div>
+          <div class="options-grid" id="culture-options">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="label">Viewport Widths</div>
+          <div class="toggle-buttons">
+            <button class="toggle-btn" id="select-all-widths">Select All</button>
+            <button class="toggle-btn" id="deselect-all-widths">Deselect All</button>
+          </div>
+          <div class="width-grid" id="width-options">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="label">Categories</div>
+          <div class="toggle-buttons">
+            <button class="toggle-btn" id="select-all-categories">Select All</button>
+            <button class="toggle-btn" id="deselect-all-categories">Deselect All</button>
+          </div>
+          <div class="category-tree" id="category-tree">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button id="start-capture" class="primary">Start Capture</button>
+          <button id="stop-capture" class="danger" disabled>Stop</button>
+        </div>
+      </div>
+
+      <button id="save-report" class="secondary" disabled>Save Report</button>
+
+      <div id="status-banner" class="status-banner idle">
+        <span class="status-icon" id="status-icon">&#9679;</span>
+        <div class="status-text">
+          <div id="status-main">Ready to capture</div>
+          <div class="status-detail" id="status-detail"></div>
+        </div>
+      </div>
+
+      <div id="progress-container" class="progress-container" style="display: none;">
+        <div class="progress-info">
+          <span id="progress-culture">Culture: -</span>
+          <span id="progress-category">Category: -</span>
+          <span id="progress-width">Width: -</span>
+        </div>
+        <div class="progress-bar" id="progress-bar">
+          <div class="progress-bar-inner" id="progress-bar-inner"></div>
+        </div>
+        <div class="progress-stats">
+          <span id="progress-count">0 / 0</span>
+          <span id="progress-eta">ETR: --:--</span>
+        </div>
+      </div>
+
+      <div class="history-section" id="history-section">
+        <div class="history-header">
+          <span class="history-title">Report History</span>
+          <button class="history-clear" id="clear-history">Clear All</button>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="history-empty">No reports yet</div>
+        </div>
+      </div>
+
+      <div class="reports-section" id="reports-section">
+        <div class="reports-header">
+          <span class="reports-title">Saved Reports</span>
+          <button class="reports-refresh" id="refresh-reports">Refresh</button>
+        </div>
+        <div class="reports-list" id="reports-list">
+          <div class="reports-empty">No saved reports</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connection-status" id="connection-status">
+      <span class="connection-dot"></span>
+      <span class="connection-text">Connecting...</span>
+    </div>
+  </div>
+
+  <script src="credentials-store.js"></script>
+  <script src="banner-app.js"></script>
+</body>
+</html>

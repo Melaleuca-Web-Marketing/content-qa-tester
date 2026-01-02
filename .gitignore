@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Generated reports
+reports/
+
+# Logs
+*.log
+server.log
+server.err.log
+
+# Test history (may contain sensitive data)
+history.json
+
+# Backup files
+*.backup
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables (if any)
+.env
+.env.local
