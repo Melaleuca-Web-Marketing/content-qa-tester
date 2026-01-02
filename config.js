@@ -46,6 +46,9 @@ function getDefaultCategories() {
 const loadedCategories = loadCategories();
 
 export const config = {
+  // Category version for tracking hot-reload
+  _categoryVersion: 0,
+
   // ============ SHARED CONFIGURATION ============
   environments: {
     production: {
@@ -573,20 +576,30 @@ export function reloadCategories() {
   console.log('Reloading categories from disk...');
   const newCategories = loadCategories();
 
+  // Increment version for tracking
+  config._categoryVersion++;
+
   // Update US & Canada
   if (config.banner.regions.usca) {
+    const oldCount = config.banner.regions.usca.categories.length;
     config.banner.regions.usca.categories = newCategories['US & Canada'] || [];
+    console.log(`US & Canada categories updated: ${oldCount} -> ${config.banner.regions.usca.categories.length}`);
   }
 
   // Update Mexico
   if (config.banner.regions.mx) {
+    const oldCount = config.banner.regions.mx.categories.length;
     config.banner.regions.mx.categories = newCategories['Mexico'] || [];
+    console.log(`Mexico categories updated: ${oldCount} -> ${config.banner.regions.mx.categories.length}`);
   }
 
   // Update UK & Europe
   if (config.banner.regions.ukeu) {
+    const oldCount = config.banner.regions.ukeu.categories.length;
     config.banner.regions.ukeu.categories = newCategories['Europe'] || [];
+    console.log(`UK & Europe categories updated: ${oldCount} -> ${config.banner.regions.ukeu.categories.length}`);
   }
 
+  console.log(`Categories reloaded successfully (version ${config._categoryVersion})`);
   return newCategories;
 }

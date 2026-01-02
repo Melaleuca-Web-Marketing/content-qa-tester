@@ -5,7 +5,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import fs from 'fs';
 import open, { apps } from 'open';
 
@@ -58,6 +58,11 @@ wss.on('connection', (ws) => {
   wsClients.add(ws);
   console.log('WebSocket client connected');
 
+  ws.on('error', (err) => {
+    console.error('WebSocket error:', err);
+    wsClients.delete(ws);
+  });
+
   ws.on('close', () => {
     wsClients.delete(ws);
     console.log('WebSocket client disconnected');
@@ -69,7 +74,12 @@ function broadcast(message) {
   const data = JSON.stringify(message);
   wsClients.forEach(client => {
     if (client.readyState === 1) {
-      client.send(data);
+      try {
+        client.send(data);
+      } catch (err) {
+        console.error('Error broadcasting to client:', err);
+        wsClients.delete(client);
+      }
     }
   });
 }
@@ -301,6 +311,11 @@ app.post('/api/sku/start', async (req, res) => {
 
   skuProcessor.start(options).catch(err => {
     console.error('SKU capture error:', err);
+    broadcast({
+      type: 'error',
+      tool: 'sku',
+      data: { message: err.message, stack: err.stack }
+    });
   });
 
   res.json({ ok: true, message: 'SKU capture started' });
@@ -375,6 +390,11 @@ app.post('/api/banner/start', async (req, res) => {
 
   bannerProcessor.start(options).catch(err => {
     console.error('Banner capture error:', err);
+    broadcast({
+      type: 'error',
+      tool: 'banner',
+      data: { message: err.message, stack: err.stack }
+    });
   });
 
   res.json({ ok: true, message: 'Banner capture started' });
@@ -453,6 +473,11 @@ app.post('/api/pslp/start', async (req, res) => {
 
   pslpProcessor.start(options).catch(err => {
     console.error('PSLP capture error:', err);
+    broadcast({
+      type: 'error',
+      tool: 'pslp',
+      data: { message: err.message, stack: err.stack }
+    });
   });
 
   res.json({ ok: true, message: 'PSLP capture started' });
@@ -528,6 +553,11 @@ app.post('/api/mixinad/start', async (req, res) => {
 
   mixinAdProcessor.start(options).catch(err => {
     console.error('Mix-In Ad capture error:', err);
+    broadcast({
+      type: 'error',
+      tool: 'mixinad',
+      data: { message: err.message, stack: err.stack }
+    });
   });
 
   res.json({ ok: true, message: 'Mix-In Ad capture started' });
@@ -608,7 +638,21 @@ app.get('/api/reports', (req, res) => {
 });
 
 app.get('/api/reports/:filename', (req, res) => {
-  const filepath = join(REPORTS_DIR, req.params.filename);
+  const filename = req.params.filename;
+
+  // Validate filename (no path separators or traversal)
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  const filepath = join(REPORTS_DIR, filename);
+
+  // Ensure resolved path is still within REPORTS_DIR (defense in depth)
+  const resolvedPath = resolve(filepath);
+  const resolvedReportsDir = resolve(REPORTS_DIR);
+  if (!resolvedPath.startsWith(resolvedReportsDir)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
 
   if (!fs.existsSync(filepath)) {
     return res.status(404).json({ error: 'Report not found' });
@@ -618,7 +662,21 @@ app.get('/api/reports/:filename', (req, res) => {
 });
 
 app.get('/api/reports/:filename/open', (req, res) => {
-  const filepath = join(REPORTS_DIR, req.params.filename);
+  const filename = req.params.filename;
+
+  // Validate filename (no path separators or traversal)
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  const filepath = join(REPORTS_DIR, filename);
+
+  // Ensure resolved path is still within REPORTS_DIR (defense in depth)
+  const resolvedPath = resolve(filepath);
+  const resolvedReportsDir = resolve(REPORTS_DIR);
+  if (!resolvedPath.startsWith(resolvedReportsDir)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
 
   if (!fs.existsSync(filepath)) {
     return res.status(404).json({ error: 'Report not found' });

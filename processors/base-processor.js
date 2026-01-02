@@ -208,11 +208,16 @@ export class BaseProcessor extends EventEmitter {
   async closeBrowser() {
     log('info', 'Closing browser...');
     if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-      this.context = null;
-      this.page = null;
-      log('info', 'Browser closed');
+      try {
+        await this.browser.close();
+      } catch (err) {
+        log('error', 'Error closing browser', { error: err.message });
+      } finally {
+        this.browser = null;
+        this.context = null;
+        this.page = null;
+        log('info', 'Browser cleanup complete');
+      }
     }
   }
 
@@ -249,8 +254,15 @@ export class BaseProcessor extends EventEmitter {
       message: `Please sign in to ${environment} in the browser window, then click "Resume Capture"`
     });
 
-    // Poll until user clicks resume or stop
+    // Poll until user clicks resume or stop (with 5-minute timeout)
+    const timeout = 300000; // 5 minutes
+    const start = Date.now();
+
     while (!this.shouldResume && !this.shouldStop) {
+      if (Date.now() - start > timeout) {
+        log('error', 'Manual authentication timeout after 5 minutes');
+        throw new Error('Manual authentication timeout after 5 minutes. Please try again.');
+      }
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 

@@ -294,29 +294,8 @@ export class BannerProcessor extends BaseProcessor {
       });
       await this.createPage();
 
-      // Handle Microsoft authentication for stage/UAT environments on first page load
-      // User must manually sign in, then click Resume
-      if ((options.environment === 'stage' || options.environment === 'uat') && jobs.length > 0) {
-        await this.page.goto(jobs[0].url, {
-          waitUntil: 'load',
-          timeout: config.banner.timeouts.singleCapture
-        });
-        await this.page.waitForTimeout(config.banner.timeouts.pageLoad);
-
-        const isMicrosoftLogin = this.page.url().includes('login.microsoftonline.com') ||
-          this.page.url().includes('login.windows.net');
-        if (isMicrosoftLogin) {
-          log('info', 'Detected Microsoft login page, waiting for user to sign in...');
-          await this.waitForManualAuth(options.environment.toUpperCase());
-
-          // Navigate back to the original URL after auth
-          await this.page.goto(jobs[0].url, {
-            waitUntil: 'load',
-            timeout: config.banner.timeouts.singleCapture
-          });
-          await this.page.waitForTimeout(config.banner.timeouts.pageLoad);
-        }
-      }
+      // Note: Authentication is handled within captureAtWidth() for each job
+      // This ensures auth works correctly even if session expires mid-process
 
       // Process each job
       for (const job of jobs) {
@@ -350,6 +329,11 @@ export class BannerProcessor extends BaseProcessor {
 
             this.results.push(result);
             completedCaptures++;
+
+            // Warn about memory usage for very large test runs
+            if (this.results.length % 50 === 0 && this.results.length > 0) {
+              log('warn', `${this.results.length} screenshots captured. Large test runs may consume significant memory.`);
+            }
 
             this.emit('progress', {
               type: 'capture-progress',

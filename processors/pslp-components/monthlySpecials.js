@@ -32,8 +32,13 @@ export async function extractMonthlySpecialsData(page, selectors) {
     // Ignore scroll issues
   }
 
-  const slideSelector = sel.slide || '.o-monthlySpecial__slide';
-  const dotSelector = sel.dot || '.o-monthlySpecial__dot';
+  // Validate required selectors are configured
+  if (!sel.slide || !sel.dot) {
+    throw new Error('Missing required monthlySpecials selectors (slide, dot) in config');
+  }
+
+  const slideSelector = sel.slide;
+  const dotSelector = sel.dot;
   const cardSelector = sel.card;
   const imageSelector = sel.image;
 

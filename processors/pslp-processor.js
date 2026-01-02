@@ -177,8 +177,12 @@ export class PSLPProcessor extends BaseProcessor {
       if (this.shouldStop) throw new Error('Operation stopped by user');
 
       const screenWidths = Array.isArray(options.screenWidths) && options.screenWidths.length > 0
-        ? options.screenWidths
+        ? options.screenWidths.filter(w => typeof w === 'number' && w > 0 && w <= 4096)
         : config.pslp.screenWidths;
+
+      if (screenWidths.length === 0) {
+        throw new Error('No valid screen widths provided (must be between 1-4096px)');
+      }
 
       // Take screenshots at different widths
       this.emit('progress', { type: 'screenshot', status: 'Preparing screenshots...', current: 0, total: screenWidths.length });

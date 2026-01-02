@@ -321,28 +321,8 @@ export class MixInAdProcessor extends BaseProcessor {
             });
             await this.createPage();
 
-            // Handle Microsoft authentication for stage/UAT environments on first page load
-            if ((options.environment === 'stage' || options.environment === 'uat') && jobs.length > 0) {
-                await this.page.goto(jobs[0].url, {
-                    waitUntil: 'load',
-                    timeout: config.mixinad.timeouts.singleCapture
-                });
-                await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
-
-                const isMicrosoftLogin = this.page.url().includes('login.microsoftonline.com') ||
-                    this.page.url().includes('login.windows.net');
-                if (isMicrosoftLogin) {
-                    log('info', 'Detected Microsoft login page, waiting for user to sign in...');
-                    await this.waitForManualAuth(options.environment.toUpperCase());
-
-                    // Navigate back to the original URL after auth
-                    await this.page.goto(jobs[0].url, {
-                        waitUntil: 'load',
-                        timeout: config.mixinad.timeouts.singleCapture
-                    });
-                    await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
-                }
-            }
+            // Note: Authentication is handled within captureAtWidth() for each job
+            // This ensures auth works correctly even if session expires mid-process
 
             // Process each job
             for (const job of jobs) {
@@ -372,6 +352,11 @@ export class MixInAdProcessor extends BaseProcessor {
                         // pageResults is an array (one result per ad found, or one error/noAdsFound result)
                         for (const result of pageResults) {
                             this.results.push(result);
+                        }
+
+                        // Warn about memory usage for very large test runs
+                        if (this.results.length % 50 === 0 && this.results.length > 0) {
+                            log('warn', `${this.results.length} screenshots captured. Large test runs may consume significant memory.`);
                         }
 
                         completedCaptures++;
