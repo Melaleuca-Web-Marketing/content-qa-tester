@@ -2,23 +2,77 @@
 
 let categoriesData = {};
 let currentRegion = null;
+let expandedItems = new Set(); // Track which subcategory rows are expanded
+let hasUnsavedChanges = false; // Track if there are unsaved changes
 
-// Theme management
+// Culture mappings per region
+const REGION_CULTURES = {
+  'US & Canada': [
+    { code: 'US', label: 'United States' },
+    { code: 'CA', label: 'Canada' }
+  ],
+  'Mexico': [
+    { code: 'es-MX', label: 'Spanish (MX)' }
+  ],
+  'Europe': [
+    { code: 'en-GB', label: 'English (UK)' },
+    { code: 'en-IE', label: 'English (IE)' },
+    { code: 'de-DE', label: 'German (DE)' },
+    { code: 'pl-PL', label: 'Polish (PL)' },
+    { code: 'nl-NL', label: 'Dutch (NL)' },
+    { code: 'lt-LT', label: 'Lithuanian (LT)' }
+  ]
+};
+
+// Get cultures for current region
+function getCulturesForRegion(region) {
+  return REGION_CULTURES[region] || [{ code: 'default', label: 'Default' }];
+}
+
+// Theme management - just read from localStorage (toggle is on main dashboard)
 function initTheme() {
-  const theme = localStorage.getItem('theme') || 'light';
-  if (theme === 'dark') {
-    document.body.classList.add('dark-mode');
-    document.getElementById('theme-icon').textContent = '☀️';
-    document.getElementById('theme-text').textContent = 'Light';
+  // Dashboard uses 'testerTheme' key and 'light-mode' class (default is dark)
+  const savedTheme = localStorage.getItem('testerTheme');
+  if (savedTheme === 'light') {
+    document.body.classList.add('light-mode');
   }
 }
 
-function toggleTheme() {
-  const isDark = document.body.classList.toggle('dark-mode');
-  localStorage.setItem('theme', isDark ? 'dark' : 'light');
-  document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
-  document.getElementById('theme-text').textContent = isDark ? 'Light' : 'Dark';
+// Mark that changes have been made
+function markUnsaved() {
+  if (!hasUnsavedChanges) {
+    hasUnsavedChanges = true;
+    updateUnsavedIndicator();
+  }
 }
+
+// Update the visual indicator for unsaved changes
+function updateUnsavedIndicator() {
+  const indicator = document.getElementById('unsaved-indicator');
+  if (indicator) {
+    indicator.style.display = hasUnsavedChanges ? 'flex' : 'none';
+    document.body.classList.toggle('has-unsaved-indicator', hasUnsavedChanges);
+  }
+
+  // Update page title
+  document.title = hasUnsavedChanges
+    ? '* Category Manager - Melaleuca Unified Tester'
+    : 'Category Manager - Melaleuca Unified Tester';
+}
+
+// Clear unsaved changes flag
+function clearUnsaved() {
+  hasUnsavedChanges = false;
+  updateUnsavedIndicator();
+}
+
+// Warn before leaving with unsaved changes
+window.addEventListener('beforeunload', (e) => {
+  if (hasUnsavedChanges) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 // Load categories on page load
 async function loadCategories() {
@@ -84,6 +138,7 @@ function switchRegion(region) {
 function renderCategoryContent() {
   const contentContainer = document.getElementById('category-content');
   const categories = categoriesData[currentRegion] || {};
+  const cultures = getCulturesForRegion(currentRegion);
 
   const categoriesHTML = Object.entries(categories).map(([catName, items]) => `
     <div class="category-card">
@@ -102,30 +157,79 @@ function renderCategoryContent() {
       </div>
       
       <div class="subcategory-list">
-        ${items.map((item, idx) => `
-          <div class="subcategory-item">
-            <input 
-              type="text" 
-              class="input-field" 
-              value="${escapeHtml(item.label)}"
-              onchange="updateSubcategory('${escapeHtml(catName)}', ${idx}, 'label', this.value)"
-              placeholder="Label"
-            />
-            <input 
-              type="text" 
-              class="input-field" 
-              value="${escapeHtml(item.path)}"
-              onchange="updateSubcategory('${escapeHtml(catName)}', ${idx}, 'path', this.value)"
-              placeholder="/productstore/path"
-            />
-            <button class="btn btn-small btn-danger" onclick="deleteSubcategory('${escapeHtml(catName)}', ${idx})">Delete</button>
+        ${items.map((item, idx) => {
+    const itemKey = `${catName}-${idx}`;
+    const isExpanded = expandedItems.has(itemKey);
+    const paths = item.paths || {};
+    // For backward compatibility, if item.path exists but no paths, use it as default
+    const defaultPath = item.path || '/productstore/path';
+
+    return `
+          <div class="subcategory-item-container">
+            <div class="subcategory-item-header">
+              <button class="expand-btn" onclick="toggleExpand('${escapeHtml(itemKey)}')">
+                ${isExpanded ? '▼' : '▶'}
+              </button>
+              <input 
+                type="text" 
+                class="input-field subcategory-label" 
+                value="${escapeHtml(item.label)}"
+                onchange="updateSubcategory('${escapeHtml(catName)}', ${idx}, 'label', this.value)"
+                placeholder="Label"
+              />
+              <span class="culture-count">${cultures.length} culture${cultures.length !== 1 ? 's' : ''}</span>
+              <button class="btn btn-small btn-danger" onclick="deleteSubcategory('${escapeHtml(catName)}', ${idx})">Delete</button>
+            </div>
+            ${isExpanded ? `
+            <div class="culture-paths">
+              ${cultures.map(culture => `
+                <div class="culture-path-row">
+                  <span class="culture-label">${culture.label}</span>
+                  <input 
+                    type="text" 
+                    class="input-field culture-path-input" 
+                    value="${escapeHtml(paths[culture.code] || defaultPath)}"
+                    onchange="updateCulturePath('${escapeHtml(catName)}', ${idx}, '${culture.code}', this.value)"
+                    placeholder="/productstore/path"
+                  />
+                </div>
+              `).join('')}
+            </div>
+            ` : ''}
           </div>
-        `).join('')}
+        `;
+  }).join('')}
       </div>
     </div>
   `).join('');
 
   contentContainer.innerHTML = categoriesHTML;
+}
+
+// Toggle expand/collapse for subcategory
+function toggleExpand(itemKey) {
+  if (expandedItems.has(itemKey)) {
+    expandedItems.delete(itemKey);
+  } else {
+    expandedItems.add(itemKey);
+  }
+  renderCategoryContent();
+}
+
+// Update culture-specific path
+function updateCulturePath(catName, idx, cultureCode, value) {
+  const item = categoriesData[currentRegion][catName][idx];
+  if (!item.paths) {
+    item.paths = {};
+    // Migrate old path to all cultures if it exists
+    const cultures = getCulturesForRegion(currentRegion);
+    const defaultPath = item.path || '/productstore/path';
+    cultures.forEach(c => {
+      item.paths[c.code] = defaultPath;
+    });
+  }
+  item.paths[cultureCode] = value;
+  markUnsaved();
 }
 
 // Add new category
@@ -136,10 +240,16 @@ function addCategory() {
       return;
     }
 
+    const cultures = getCulturesForRegion(currentRegion);
+    const defaultPath = `/productstore/${name.toLowerCase().replace(/\s+/g, '-')}`;
+    const paths = {};
+    cultures.forEach(c => { paths[c.code] = defaultPath; });
+
     categoriesData[currentRegion][name] = [
-      { label: 'Show All', path: `/productstore/${name.toLowerCase().replace(/\s+/g, '-')}` }
+      { label: 'Show All', paths }
     ];
 
+    markUnsaved();
     renderUI();
     showStatus('success', `Category "${name}" added successfully!`);
   });
@@ -155,6 +265,7 @@ function addRegion() {
 
     categoriesData[name] = {};
     currentRegion = name;
+    markUnsaved();
     renderUI();
     showStatus('success', `Region "${name}" created successfully!`);
   });
@@ -205,6 +316,7 @@ function renameCategory(oldName, newName) {
 
   categoriesData[currentRegion][newName] = categoriesData[currentRegion][oldName];
   delete categoriesData[currentRegion][oldName];
+  markUnsaved();
   renderUI();
 }
 
@@ -213,21 +325,45 @@ function deleteCategory(catName) {
   if (!confirm(`Delete category "${catName}" and all its subcategories?`)) return;
 
   delete categoriesData[currentRegion][catName];
+  markUnsaved();
   renderUI();
 }
 
 // Add subcategory
 function addSubcategory(catName) {
+  const cultures = getCulturesForRegion(currentRegion);
+  const categoryItems = categoriesData[currentRegion][catName];
+
+  // Get the "Show All" item (first item) to use as base path
+  const showAllItem = categoryItems.find(item => item.label === 'Show All') || categoryItems[0];
+
+  const paths = {};
+  cultures.forEach(c => {
+    // Get the base path from the Show All item for this culture
+    let basePath = '/productstore/category';
+    if (showAllItem) {
+      if (showAllItem.paths && showAllItem.paths[c.code]) {
+        basePath = showAllItem.paths[c.code];
+      } else if (showAllItem.path) {
+        basePath = showAllItem.path;
+      }
+    }
+    // Add placeholder subcategory suffix
+    paths[c.code] = `${basePath}/new-subcategory`;
+  });
+
   categoriesData[currentRegion][catName].push({
     label: 'New Subcategory',
-    path: '/productstore/path'
+    paths
   });
+  markUnsaved();
   renderUI();
 }
 
 // Update subcategory
 function updateSubcategory(catName, idx, field, value) {
   categoriesData[currentRegion][catName][idx][field] = value;
+  markUnsaved();
 }
 
 // Delete subcategory
@@ -235,6 +371,7 @@ function deleteSubcategory(catName, idx) {
   if (!confirm('Delete this subcategory?')) return;
 
   categoriesData[currentRegion][catName].splice(idx, 1);
+  markUnsaved();
   renderUI();
 }
 
@@ -255,6 +392,7 @@ async function saveCategories() {
       throw new Error(result.error || result.message || 'Failed to save');
     }
 
+    clearUnsaved();
     showStatus('success', '✅ Categories saved successfully! Changes will apply to testers.');
   } catch (err) {
     showStatus('error', 'Failed to save: ' + err.message);
@@ -265,6 +403,7 @@ async function saveCategories() {
 async function reloadCategories() {
   if (confirm('Reload categories from file? Any unsaved changes will be lost.')) {
     await loadCategories();
+    clearUnsaved();
     showStatus('success', 'Categories reloaded');
   }
 }

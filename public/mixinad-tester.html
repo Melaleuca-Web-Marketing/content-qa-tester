@@ -13,10 +13,6 @@
         <a href="index.html" class="back-link">&larr; Back to Mode Selector</a>
 
         <div class="card">
-            <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">
-                <span class="theme-icon" id="theme-icon">&#9788;</span>
-                <span id="theme-text">Light</span>
-            </button>
             <h1>Mix-In Ad Tester</h1>
             <p class="subtitle">Capture mix-in ads within product grids at multiple viewport widths with mobile device
                 emulation.</p>
@@ -81,10 +77,8 @@
                 </div>
             </div>
 
-            <button id="save-report" class="secondary" disabled>Save Report</button>
-
-            <div id="status-banner" class="status-banner idle">
-                <span class="status-icon" id="status-icon">&#9679;</span>
+            <div id="status-banner" class="status-banner idle"> <span class="status-icon"
+                    id="status-icon">&#9679;</span>
                 <div class="status-text">
                     <div id="status-main">Ready to capture</div>
                     <div class="status-detail" id="status-detail"></div>
@@ -103,26 +97,6 @@
                 <div class="progress-stats">
                     <span id="progress-count">0 / 0</span>
                     <span id="progress-eta">ETR: --:--</span>
-                </div>
-            </div>
-
-            <div class="history-section" id="history-section">
-                <div class="history-header">
-                    <span class="history-title">Report History</span>
-                    <button class="history-clear" id="clear-history">Clear All</button>
-                </div>
-                <div class="history-list" id="history-list">
-                    <div class="history-empty">No reports yet</div>
-                </div>
-            </div>
-
-            <div class="reports-section" id="reports-section">
-                <div class="reports-header">
-                    <span class="reports-title">Saved Reports</span>
-                    <button class="reports-refresh" id="refresh-reports">Refresh</button>
-                </div>
-                <div class="reports-list" id="reports-list">
-                    <div class="reports-empty">No saved reports</div>
                 </div>
             </div>
         </div>

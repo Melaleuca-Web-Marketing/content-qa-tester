@@ -54,10 +54,6 @@ const progressEta = document.getElementById('progress-eta');
 const progressCulture = document.getElementById('progress-culture');
 const progressCategory = document.getElementById('progress-category');
 const progressWidth = document.getElementById('progress-width');
-const historyList = document.getElementById('history-list');
-const clearHistoryBtn = document.getElementById('clear-history');
-const reportsList = document.getElementById('reports-list');
-const refreshReportsBtn = document.getElementById('refresh-reports');
 const connectionStatus = document.getElementById('connection-status');
 
 async function init() {
@@ -69,8 +65,6 @@ async function init() {
     renderCategoryTree();
     loadPreferences();
     connectWebSocket();
-    loadHistory();
-    loadReports();
   } catch (err) {
     console.error('Initialization error:', err);
     setStatusError('Initialization failed', err.message);
@@ -110,9 +104,6 @@ function setupEventListeners() {
     }
   });
   stopCaptureBtn.addEventListener('click', stopCapture);
-  saveReportBtn.addEventListener('click', saveReport);
-  clearHistoryBtn.addEventListener('click', clearHistory);
-  refreshReportsBtn.addEventListener('click', loadReports);
 }
 
 function toggleAllCheckboxes(containerId, checked) {
@@ -328,16 +319,17 @@ function handleWebSocketMessage(message) {
 }
 
 function handleProgress(data) {
-  progressCulture.textContent = `Culture: ${data.culture || '-'}`;
-  progressCategory.textContent = `Category: ${data.category || '-'}`;
-  progressWidth.textContent = `Width: ${data.width}px`;
+  const progress = data.progress;
+  progressCulture.textContent = `Culture: ${progress.culture || '-'}`;
+  progressCategory.textContent = `Category: ${progress.category || '-'}`;
+  progressWidth.textContent = `Width: ${progress.width}px`;
 
-  if (data.state === 'working') {
-    setStatusRunning('Capturing...', `${data.culture} - ${data.category} at ${data.width}px`);
-  } else if (data.state === 'done') {
-    updateProgressBar(data.completed, data.total);
-  } else if (data.state === 'error') {
-    updateProgressBar(data.completed, data.total);
+  if (progress.state === 'working') {
+    setStatusRunning('Capturing...', `${progress.culture} - ${progress.category} at ${progress.width}px`);
+  } else if (progress.state === 'done') {
+    updateProgressBar(progress.completed, progress.total);
+  } else if (progress.state === 'error') {
+    updateProgressBar(progress.completed, progress.total);
   }
 }
 
@@ -359,7 +351,6 @@ function handleStatusUpdate(data) {
       setUIIdle();
       setStatusIdle('Capture cancelled', `${data.successCount} captures completed before cancellation`);
       saveReportBtn.disabled = !data.results?.length;
-      loadHistory();
       break;
 
     case 'completed':
@@ -374,7 +365,6 @@ function handleStatusUpdate(data) {
       }
 
       saveReportBtn.disabled = !data.results?.length;
-      loadHistory();
       break;
 
     case 'waiting-for-auth':
@@ -504,36 +494,6 @@ async function resumeCapture() {
   }
 }
 
-async function saveReport() {
-  setStatusRunning('Generating report...', 'Please wait...');
-  saveReportBtn.disabled = true;
-
-  try {
-    const duration = captureStartTime ? Date.now() - captureStartTime : null;
-    const theme = localStorage.getItem('testerTheme') || 'dark';
-
-    const response = await fetch('/api/mixinad/report', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ duration, theme })
-    });
-
-    const result = await response.json();
-
-    if (result.ok) {
-      setStatusSuccess('Report saved!', `${result.successCount} mixinads exported to ${result.filename}`);
-      window.open(`/api/reports/${result.filename}`, '_blank');
-      loadReports();
-    } else {
-      setStatusError('Report failed', result.error || 'Could not generate report');
-    }
-  } catch (err) {
-    setStatusError('Report failed', err.message);
-  }
-
-  saveReportBtn.disabled = false;
-}
-
 function setUICapturing() {
   startCaptureBtn.disabled = true;
   stopCaptureBtn.disabled = false;
@@ -589,80 +549,6 @@ function setConnectionStatus(status) {
     default:
       text.textContent = 'Connecting...';
   }
-}
-
-async function loadHistory() {
-  try {
-    const response = await fetch('/api/history');
-    const history = await response.json();
-    renderHistory(history.filter(h => h.mode === 'mixinad'));
-  } catch (e) {
-    console.error('Error loading history:', e);
-  }
-}
-
-function renderHistory(history) {
-  if (!history || history.length === 0) {
-    historyList.innerHTML = '<div class="history-empty">No reports yet</div>';
-    return;
-  }
-
-  historyList.innerHTML = history.map((item, index) => `
-    <div class="history-item" data-index="${index}">
-      <span class="history-item-icon">${item.errorCount > 0 ? '!' : '>'}</span>
-      <div class="history-item-info">
-        <div class="history-item-title">${item.count} captures - ${item.environment}</div>
-        <div class="history-item-meta">${formatDate(item.timestamp)} - ${formatDuration(item.duration)}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function clearHistory() {
-  try {
-    await fetch('/api/history', { method: 'DELETE' });
-    renderHistory([]);
-  } catch (e) {
-    console.error('Error clearing history:', e);
-  }
-}
-
-async function loadReports() {
-  try {
-    const response = await fetch('/api/reports');
-    const reports = await response.json();
-    renderReports(reports.filter(r => r.type === 'mixinad'));
-  } catch (e) {
-    console.error('Error loading reports:', e);
-  }
-}
-
-function renderReports(reports) {
-  if (!reports || reports.length === 0) {
-    reportsList.innerHTML = '<div class="reports-empty">No saved reports</div>';
-    return;
-  }
-
-  reportsList.innerHTML = reports.slice(0, 10).map(report => `
-    <div class="report-item" onclick="window.open('/api/reports/${report.filename}', '_blank')">
-      <span class="report-item-icon">&#128196;</span>
-      <div class="report-item-info">
-        <div class="report-item-title">${report.filename}</div>
-        <div class="report-item-meta">${formatDate(new Date(report.created).getTime())} - ${formatFileSize(report.size)}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function formatDate(timestamp) {
-  const date = new Date(timestamp);
-  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatFileSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 document.addEventListener('DOMContentLoaded', init);

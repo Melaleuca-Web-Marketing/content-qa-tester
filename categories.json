@@ -144,6 +144,13 @@
       {
         "label": "Outlet Store",
         "path": "/productstore/extra-savings/outlet-store"
+      },
+      {
+        "label": "Monthly Specials",
+        "paths": {
+          "US": "/productstore/extra-savings/monthly-specials",
+          "CA": "/productstore/extra-savings/monthly-specials"
+        }
       }
     ],
     "Featured This Month": [
@@ -274,10 +281,6 @@
         "path": "/productstore/ahorros-adicionales"
       },
       {
-        "label": "Holiday",
-        "path": "/productstore/ahorros-adicionales/festividades"
-      },
-      {
         "label": "New Products",
         "path": "/productstore/ahorros-adicionales/productos-nuevos"
       },
@@ -299,125 +302,349 @@
     "Supplements": [
       {
         "label": "Show All",
-        "path": "/productstore/supplements"
+        "paths": {
+          "en-GB": "/productstore/supplements",
+          "en-IE": "/productstore/supplements",
+          "de-DE": "/productstore/nahrungsergnzung",
+          "pl-PL": "/productstore/suplementy",
+          "nl-NL": "/productstore/supplementen",
+          "lt-LT": "/productstore/papildai"
+        }
       }
     ],
     "Cleaning and Laundry": [
       {
         "label": "Show All",
-        "path": "/productstore/cleaning-and-laundry"
+        "paths": {
+          "en-GB": "/productstore/cleaning-laundry",
+          "en-IE": "/productstore/cleaning-laundry",
+          "de-DE": "/productstore/reinigungs--waschmittel",
+          "pl-PL": "/productstore/produkty-do-czyszczenia-i-prania",
+          "nl-NL": "/productstore/schoonmaken--wassen",
+          "lt-LT": "/productstore/valymas-ir-skalbimas"
+        }
       },
       {
         "label": "Cleaning",
-        "path": "/productstore/cleaning-and-laundry/cleaning"
+        "paths": {
+          "en-GB": "/productstore/cleaning-laundry/cleaning",
+          "en-IE": "/productstore/cleaning-laundry/cleaning",
+          "de-DE": "/productstore/reinigungs--waschmittel/haushaltsreiniger",
+          "pl-PL": "/productstore/produkty-do-czyszczenia-i-prania/produkty-do-czyszczenia-i-prania",
+          "nl-NL": "/productstore/schoonmaken--wassen/schoonmaken--wassen",
+          "lt-LT": "/productstore/valymas-ir-skalbimas/valymas"
+        }
       },
       {
         "label": "Laundry",
-        "path": "/productstore/cleaning-and-laundry/laundry"
+        "paths": {
+          "en-GB": "/productstore/cleaning-laundry/laundry",
+          "en-IE": "/productstore/cleaning-laundry/laundry",
+          "de-DE": "/productstore/reinigungs--waschmittel/waschepflege",
+          "pl-PL": "/productstore/produkty-do-czyszczenia-i-prania/pranie",
+          "nl-NL": "/productstore/schoonmaken--wassen/wassen",
+          "lt-LT": "/productstore/valymas-ir-skalbimas/skalbimas"
+        }
       }
     ],
     "Personal Care": [
       {
         "label": "Show All",
-        "path": "/productstore/personal-care"
+        "paths": {
+          "en-GB": "/productstore/personal-care",
+          "en-IE": "/productstore/personal-care",
+          "de-DE": "/productstore/korperpflege",
+          "pl-PL": "/productstore/higiena-osobista",
+          "nl-NL": "/productstore/persoonlijke-verzorging",
+          "lt-LT": "/productstore/asmenin-prieira"
+        }
       },
       {
         "label": "Bath & Body",
-        "path": "/productstore/personal-care/bath-body"
+        "paths": {
+          "en-GB": "/productstore/personal-care/bath-body",
+          "en-IE": "/productstore/personal-care/bath-body",
+          "de-DE": "/productstore/korperpflege/bad-korper",
+          "pl-PL": "/productstore/higiena-osobista/kapiel-i-cialo",
+          "nl-NL": "/productstore/persoonlijke-verzorging/bad-lichaam",
+          "lt-LT": "/productstore/asmenin-prieira/vonios-ir-kuno-prieziuros-produktai"
+        }
       },
       {
         "label": "Dental",
-        "path": "/productstore/personal-care/dental"
+        "paths": {
+          "en-GB": "/productstore/personal-care/dental",
+          "en-IE": "/productstore/personal-care/dental",
+          "de-DE": "/productstore/korperpflege/zahnpflege",
+          "pl-PL": "/productstore/higiena-osobista/higiena-jamy-ustnej",
+          "nl-NL": "/productstore/persoonlijke-verzorging/gebitsverzorging",
+          "lt-LT": "/productstore/asmenin-prieira/dantu-prieziuros-priemones"
+        }
       },
       {
         "label": "Hair Care",
-        "path": "/productstore/personal-care/hair-care"
+        "paths": {
+          "en-GB": "/productstore/personal-care/hair-care",
+          "en-IE": "/productstore/personal-care/hair-care",
+          "de-DE": "/productstore/korperpflege/haarpflege",
+          "pl-PL": "/productstore/higiena-osobista/pielegnacja-wlosow",
+          "nl-NL": "/productstore/persoonlijke-verzorging/haarverzorging",
+          "lt-LT": "/productstore/asmenin-prieira/plauku-prieziura"
+        }
       },
       {
-        "label": "Hand Soap & Sanitizers",
-        "path": "/productstore/personal-care/hand-soap-sanitizers"
+        "label": "Hand Soap & Gels",
+        "paths": {
+          "en-GB": "/productstore/personal-care/hand-soap-gels",
+          "en-IE": "/productstore/personal-care/hand-soap-gels",
+          "de-DE": "/productstore/korperpflege/handseife-handgel",
+          "pl-PL": "/productstore/higiena-osobista/mydla-i-zele-do-rak",
+          "nl-NL": "/productstore/persoonlijke-verzorging/handzeep-gel",
+          "lt-LT": "/productstore/asmenin-prieira/ranku-muilas-ir-geliai"
+        }
       },
       {
-        "label": "Sun Care",
-        "path": "/productstore/personal-care/sun-care"
+        "label": "Baby Care",
+        "paths": {
+          "en-GB": "/productstore/personal-care/baby-care",
+          "en-IE": "/productstore/personal-care/baby-care",
+          "de-DE": "/productstore/korperpflege/sauglingspflege",
+          "pl-PL": "/productstore/higiena-osobista/kosmetyki-pielegnacyjne-dla-dzieci",
+          "nl-NL": "/productstore/persoonlijke-verzorging/babyverzorging",
+          "lt-LT": "/productstore/asmenin-prieira/vaiku-prieziura"
+        }
+      },
+      {
+        "label": "Specific Needs",
+        "paths": {
+          "en-GB": "/productstore/personal-care/specific-needs",
+          "en-IE": "/productstore/personal-care/specific-needs",
+          "de-DE": "/productstore/korperpflege/fur-spezielle-bedurfnisse",
+          "pl-PL": "/productstore/higiena-osobista/kosmetyki-specjalistyczne",
+          "nl-NL": "/productstore/persoonlijke-verzorging/specifieke-behoeften",
+          "lt-LT": "/productstore/asmenin-prieira/specialus-poreikiai"
+        }
       }
     ],
     "Beauty": [
       {
         "label": "Show All",
-        "path": "/productstore/beauty"
+        "paths": {
+          "en-GB": "/productstore/beauty",
+          "en-IE": "/productstore/beauty",
+          "de-DE": "/productstore/schnheit",
+          "pl-PL": "/productstore/uroda",
+          "nl-NL": "/productstore/schoonheid",
+          "lt-LT": "/productstore/grois"
+        }
       },
       {
         "label": "Premium Skin Care",
-        "path": "/productstore/beauty/premium-skin-care"
+        "paths": {
+          "en-GB": "/productstore/beauty/premium-skin-care",
+          "en-IE": "/productstore/beauty/premium-skin-care",
+          "de-DE": "/productstore/schnheit/premium-hautpflege",
+          "pl-PL": "/productstore/uroda/pielegnacji-skory-premium",
+          "nl-NL": "/productstore/schoonheid/premium-huidverzorging",
+          "lt-LT": "/productstore/grois/auksciausios-kokybes-odos-prieziura"
+        }
       },
       {
-        "label": "Color Cosmetics",
-        "path": "/productstore/beauty/color-cosmetics"
-      },
-      {
-        "label": "Beauty Specials",
-        "path": "/productstore/beauty/beauty-specials"
+        "label": "Colour Cosmetics",
+        "paths": {
+          "en-GB": "/productstore/beauty/colour-cosmetics",
+          "en-IE": "/productstore/beauty/colour-cosmetics",
+          "de-DE": "/productstore/schnheit/dekorative-kosmetik",
+          "pl-PL": "/productstore/uroda/kosmetyki-do-makijazu",
+          "nl-NL": "/productstore/schoonheid/kleuren-cosmetica",
+          "lt-LT": "/productstore/grois/makiazas"
+        }
       },
       {
         "label": "Hair Care",
-        "path": "/productstore/beauty/hair-care"
+        "paths": {
+          "en-GB": "/productstore/beauty/hair-care",
+          "en-IE": "/productstore/beauty/hair-care",
+          "de-DE": "/productstore/schnheit/haarpflege",
+          "pl-PL": "/productstore/uroda/pielegnacja-wlosow",
+          "nl-NL": "/productstore/schoonheid/haarverzorging",
+          "lt-LT": "/productstore/grois/plauku-prieziura"
+        }
       },
       {
-        "label": "Last Chance",
-        "path": "/productstore/beauty/last-chance"
+        "label": "Fragrance/Perfume",
+        "paths": {
+          "en-GB": "/productstore/beauty/fragrance-perfume",
+          "en-IE": "/productstore/beauty/fragrance-perfume",
+          "de-DE": "/productstore/schnheit/dufteparfums",
+          "pl-PL": "/productstore/uroda/zapachyperfumy",
+          "nl-NL": "/productstore/schoonheid/geur-parfum",
+          "lt-LT": "/productstore/grois/kvepalai"
+        }
+      },
+      {
+        "label": "Beauty Specials",
+        "paths": {
+          "en-GB": "/productstore/beauty/beauty-specials",
+          "en-IE": "/productstore/beauty/beauty-specials",
+          "de-DE": "/productstore/schnheit/beauty-specials",
+          "pl-PL": "/productstore/uroda/specjalne-produkty-kosmetyczne",
+          "nl-NL": "/productstore/schoonheid/schoonheidsspecials",
+          "lt-LT": "/productstore/grois/grozio-produktu-ypatingi-pasiulymai"
+        }
       }
     ],
-    "Healthy Foods and Drinks": [
+    "Foods and Drinks": [
       {
         "label": "Show All",
-        "path": "/productstore/healthy-foods-and-drinks"
+        "paths": {
+          "en-GB": "/productstore/foods-and-drinks",
+          "en-IE": "/productstore/foods-drinks",
+          "de-DE": "/productstore/nahrungsmittel--getrnke",
+          "pl-PL": "/productstore/ywno-i-napoje",
+          "nl-NL": "/productstore/voeding--dranken",
+          "lt-LT": "/productstore/maistas-ir-grimai"
+        }
       },
       {
-        "label": "Healthy Weight & Protein",
-        "path": "/productstore/healthy-foods-and-drinks/healthy-weight-protein"
+        "label": "Weight & Protein",
+        "paths": {
+          "en-GB": "/productstore/foods-and-drinks/weight-protein",
+          "en-IE": "/productstore/foods-drinks/weight-protein",
+          "de-DE": "/productstore/nahrungsmittel--getrnke/gewicht-proteine",
+          "pl-PL": "/productstore/ywno-i-napoje/odpowiednia-waga-i-bialka",
+          "nl-NL": "/productstore/voeding--dranken/gewicht-proteine",
+          "lt-LT": "/productstore/maistas-ir-grimai/svorio-kontrole-ir-baltymai"
+        }
       },
       {
-        "label": "Healthy Snacks",
-        "path": "/productstore/healthy-foods-and-drinks/healthy-snacks"
+        "label": "Snacks",
+        "paths": {
+          "en-GB": "/productstore/foods-and-drinks/snacks",
+          "en-IE": "/productstore/foods-drinks/snacks",
+          "de-DE": "/productstore/nahrungsmittel--getrnke/snacks",
+          "pl-PL": "/productstore/ywno-i-napoje/przekaski",
+          "nl-NL": "/productstore/voeding--dranken/snacks",
+          "lt-LT": "/productstore/maistas-ir-grimai/uzkandziai"
+        }
       },
       {
         "label": "Beverages",
-        "path": "/productstore/healthy-foods-and-drinks/beverages"
+        "paths": {
+          "en-GB": "/productstore/foods-and-drinks/beverages",
+          "en-IE": "/productstore/foods-drinks/beverages",
+          "de-DE": "/productstore/nahrungsmittel--getrnke/getranke",
+          "pl-PL": "/productstore/ywno-i-napoje/napoje",
+          "nl-NL": "/productstore/voeding--dranken/drank",
+          "lt-LT": "/productstore/maistas-ir-grimai/gerimai"
+        }
       },
       {
         "label": "Fibre Drink",
-        "path": "/productstore/healthy-foods-and-drinks/fiber-drink"
-      },
-      {
-        "label": "Spices",
-        "path": "/productstore/healthy-foods-and-drinks/spices"
-      },
-      {
-        "label": "Baking Mixes",
-        "path": "/productstore/healthy-foods-and-drinks/baking-mixes"
-      }
-    ],
-    "Medicines and Treatments": [
-      {
-        "label": "Show All",
-        "path": "/productstore/medicines-and-treatments"
+        "paths": {
+          "en-GB": "/productstore/foods-and-drinks/fibre-drink",
+          "en-IE": "/productstore/foods-drinks/fibre-drink",
+          "de-DE": "/productstore/nahrungsmittel--getrnke/ballaststoff-mixgetrank",
+          "pl-PL": "/productstore/ywno-i-napoje/napoje-z-blonnikiem",
+          "nl-NL": "/productstore/voeding--dranken/vezeldrank",
+          "lt-LT": "/productstore/maistas-ir-grimai/skaiduliniai-gerimai"
+        }
       }
     ],
     "Home Fragrance": [
       {
         "label": "Show All",
-        "path": "/productstore/home-fragrance"
+        "paths": {
+          "en-GB": "/productstore/home-fragrance",
+          "en-IE": "/productstore/home-fragrance",
+          "de-DE": "/productstore/raumdfte",
+          "pl-PL": "/productstore/zapachy-do-domu",
+          "nl-NL": "/productstore/geuren-voor-in-huis",
+          "lt-LT": "/productstore/nam-kvapai"
+        }
+      }
+    ],
+    "Logo Gear": [
+      {
+        "label": "Show All",
+        "paths": {
+          "en-GB": "/productstore/logo-gear",
+          "en-IE": "/productstore/logo-gear",
+          "de-DE": "/productstore/logo-artikel",
+          "pl-PL": "/productstore/produkty-z-logo",
+          "nl-NL": "/productstore/producten-met-logo",
+          "lt-LT": "/productstore/produktai-su-logotipu"
+        }
+      }
+    ],
+    "Sales Aids & Materials": [
+      {
+        "label": "Show All",
+        "paths": {
+          "en-GB": "/productstore/sales-aids-materials",
+          "en-IE": "/productstore/sales-aids-materials",
+          "de-DE": "/productstore/geschftsmaterialien",
+          "pl-PL": "/productstore/pomoce-i-materiay-sprzedaowe",
+          "nl-NL": "/productstore/verkoophulpmiddelen--materialen",
+          "lt-LT": "/productstore/pardavimo-priemons-ir-mediagos"
+        }
       }
     ],
     "Extra Savings": [
       {
         "label": "Show All",
-        "path": "/productstore/extra-savings"
+        "paths": {
+          "en-GB": "/productstore/extra-savings",
+          "en-IE": "/productstore/extra-savings",
+          "de-DE": "/productstore/extra-ersparnisse",
+          "pl-PL": "/productstore/oferty-specjalne",
+          "nl-NL": "/productstore/extra-besparingen",
+          "lt-LT": "/productstore/praktiki-pasilymai"
+        }
       },
       {
-        "label": "Outlet Store",
-        "path": "/productstore/extra-savings/outlet-store"
+        "label": "Holiday Specials",
+        "paths": {
+          "en-GB": "/productstore/extra-savings/holiday-specials",
+          "en-IE": "/productstore/extra-savings/holiday-specials",
+          "de-DE": "/productstore/extra-ersparnisse/holiday-specials",
+          "pl-PL": "/productstore/oferty-specjalne/holiday-specials",
+          "nl-NL": "/productstore/extra-besparingen/holiday-specials",
+          "lt-LT": "/productstore/praktiki-pasilymai/holiday-specials"
+        }
+      },
+      {
+        "label": "Limited Time",
+        "paths": {
+          "en-GB": "/productstore/extra-savings/limited-time",
+          "en-IE": "/productstore/extra-savings/limited-time",
+          "de-DE": "/productstore/extra-ersparnisse/kurze-zeit",
+          "pl-PL": "/productstore/oferty-specjalne/limited-time",
+          "nl-NL": "/productstore/extra-besparingen/limited-time",
+          "lt-LT": "/productstore/praktiki-pasilymai/limited-time"
+        }
+      },
+      {
+        "label": "Savings Packs",
+        "paths": {
+          "en-GB": "/productstore/extra-savings/savings-packs",
+          "en-IE": "/productstore/extra-savings/savings-packs",
+          "de-DE": "/productstore/extra-ersparnisse/savings-packs",
+          "pl-PL": "/productstore/oferty-specjalne/savings-packs",
+          "nl-NL": "/productstore/extra-besparingen/savings-packs",
+          "lt-LT": "/productstore/praktiki-pasilymai/savings-packs"
+        }
+      },
+      {
+        "label": "VIP Specials",
+        "paths": {
+          "en-GB": "/productstore/extra-savings/specials-nlp",
+          "en-IE": "/productstore/extra-savings/specials-nlp",
+          "de-DE": "/productstore/extra-ersparnisse/specials-nlp",
+          "pl-PL": "/productstore/oferty-specjalne/specials-nlp",
+          "nl-NL": "/productstore/extra-besparingen/specials-nlp",
+          "lt-LT": "/productstore/praktiki-pasilymai/specials-nlp"
+        }
       }
     ]
   }

@@ -19,13 +19,16 @@ import { generatePslpReport } from './report-generators/pslp-report.js';
 import { generateMixInAdReport } from './report-generators/mixinad-report.js';
 import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, reloadCategories } from './config.js';
 import { asyncHandler } from './utils/async-handler.js';
+import { autoGenerateReport } from './utils/auto-generate-report.js';
+import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory } from './utils/history.js';
+import { initWebSocket, broadcast } from './utils/broadcast.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+initWebSocket(server);
 
 const rawPort = process.env.TESTER_PORT || process.env.PORT || '3000';
 const PORT = Number.isNaN(Number(rawPort)) ? 3000 : Number(rawPort);
@@ -52,39 +55,6 @@ app.use((req, res, next) => {
 });
 app.use(express.static(join(__dirname, 'public')));
 
-// WebSocket clients
-const wsClients = new Set();
-
-wss.on('connection', (ws) => {
-  wsClients.add(ws);
-  console.log('WebSocket client connected');
-
-  ws.on('error', (err) => {
-    console.error('WebSocket error:', err);
-    wsClients.delete(ws);
-  });
-
-  ws.on('close', () => {
-    wsClients.delete(ws);
-    console.log('WebSocket client disconnected');
-  });
-});
-
-// Broadcast to all WebSocket clients
-function broadcast(message) {
-  const data = JSON.stringify(message);
-  wsClients.forEach(client => {
-    if (client.readyState === 1) {
-      try {
-        client.send(data);
-      } catch (err) {
-        console.error('Error broadcasting to client:', err);
-        wsClients.delete(client);
-      }
-    }
-  });
-}
-
 // Set up processor event listeners
 const skuProcessor = getSkuProcessor();
 const bannerProcessor = getBannerProcessor();
@@ -93,25 +63,11 @@ const mixinAdProcessor = getMixInAdProcessor();
 
 // SKU Processor events
 skuProcessor.on('progress', (data) => {
-  broadcast({ type: 'sku-progress', data });
+  broadcast({ type: 'sku-progress', data: { progress: data } });
 });
 
 skuProcessor.on('status', (data) => {
   broadcast({ type: 'sku-status', data });
-
-  if (data.type === 'completed' && data.results?.length > 0) {
-    saveToHistory({
-      mode: 'sku',
-      timestamp: Date.now(),
-      environment: data.results[0]?.environment,
-      region: data.results[0]?.region,
-      culture: data.results[0]?.culture,
-      count: data.results.length,
-      successCount: data.successCount,
-      errorCount: data.errorCount,
-      duration: data.duration
-    });
-  }
 });
 
 skuProcessor.on('error', (data) => {
@@ -120,23 +76,11 @@ skuProcessor.on('error', (data) => {
 
 // Banner Processor events
 bannerProcessor.on('progress', (data) => {
-  broadcast({ type: 'banner-progress', data });
+  broadcast({ type: 'banner-progress', data: { progress: data } });
 });
 
 bannerProcessor.on('status', (data) => {
   broadcast({ type: 'banner-status', data });
-
-  if (data.type === 'completed' && data.results?.length > 0) {
-    saveToHistory({
-      mode: 'banner',
-      timestamp: Date.now(),
-      environment: data.results[0]?.environment,
-      count: data.results.length,
-      successCount: data.successCount,
-      errorCount: data.errorCount,
-      duration: data.duration
-    });
-  }
 });
 
 bannerProcessor.on('error', (data) => {
@@ -145,24 +89,11 @@ bannerProcessor.on('error', (data) => {
 
 // PSLP Processor events
 pslpProcessor.on('progress', (data) => {
-  broadcast({ type: 'pslp-progress', data });
+  broadcast({ type: 'pslp-progress', data: { progress: data } });
 });
 
 pslpProcessor.on('status', (data) => {
   broadcast({ type: 'pslp-status', data });
-
-  if (data.type === 'completed' && data.results) {
-    saveToHistory({
-      mode: 'pslp',
-      timestamp: Date.now(),
-      environment: data.results.environment,
-      region: data.results.region,
-      culture: data.results.culture,
-      componentsCount: data.results.componentReports?.length || 0,
-      screenshotsCount: data.results.screenshots?.length || 0,
-      duration: data.duration
-    });
-  }
 });
 
 pslpProcessor.on('error', (data) => {
@@ -171,23 +102,11 @@ pslpProcessor.on('error', (data) => {
 
 // Mix-In Ad Processor events
 mixinAdProcessor.on('progress', (data) => {
-  broadcast({ type: 'mixinad-progress', data });
+  broadcast({ type: 'mixinad-progress', data: { progress: data } });
 });
 
 mixinAdProcessor.on('status', (data) => {
   broadcast({ type: 'mixinad-status', data });
-
-  if (data.type === 'completed' && data.results?.length > 0) {
-    saveToHistory({
-      mode: 'mixinad',
-      timestamp: Date.now(),
-      environment: data.results[0]?.environment,
-      count: data.results.length,
-      successCount: data.successCount,
-      errorCount: data.errorCount,
-      duration: data.duration
-    });
-  }
 });
 
 mixinAdProcessor.on('error', (data) => {
@@ -255,7 +174,8 @@ app.post('/api/categories', express.json(), (req, res) => {
           return res.status(400).json({ error: `Invalid items for category: ${catName}` });
         }
         for (const item of items) {
-          if (!item.label || !item.path) {
+          // Accept either old 'path' format or new 'paths' format
+          if (!item.label || (!item.path && !item.paths)) {
             return res.status(400).json({ error: `Invalid item in category: ${catName}` });
           }
         }
@@ -336,66 +256,34 @@ app.get('/api/sku/results', (req, res) => {
   res.json(skuProcessor.getResults());
 });
 
-app.post('/api/sku/report', (req, res) => {
-  const results = skuProcessor.getResults();
-
-  if (!results || results.length === 0) {
-    return res.status(400).json({ error: 'No results to generate report' });
-  }
-
-  const duration = req.body.duration || null;
-  const theme = req.body.theme || 'dark';
-  const html = generateSkuReport(results, duration, theme);
-
-  const now = new Date();
-  const timestamp = formatTimestamp(now);
-  const env = results[0]?.environment || 'unknown';
-  const filename = `sku-test-${env}-${timestamp}.html`;
-  const filepath = join(REPORTS_DIR, filename);
-
-  fs.writeFileSync(filepath, html);
-
-  res.json({
-    ok: true,
-    filename,
-    path: filepath,
-    successCount: results.filter(r => r.success).length
-  });
-});
-
-// ============ Banner API Routes ============
-
 app.get('/api/banner/status', (req, res) => {
   res.json(bannerProcessor.getStatus());
 });
 
 app.post('/api/banner/start', asyncHandler(async (req, res) => {
-  const { environment, region, cultures, categories, widths } = req.body;
+  const { environment, region, cultures, widths, categories } = req.body;
 
-  const options = {
-    environment: environment || 'stage',
-    region: region || 'usca',
-    cultures: cultures || [],
-    categories: categories || [],
-    widths: widths || config.banner.defaults.widths
-  };
+  if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
+    return res.status(400).json({ error: 'No cultures selected' });
+  }
 
-  const errors = validateBannerConfig(options);
-  if (errors.length > 0) {
-    return res.status(400).json({ error: errors.join(', ') });
+  if (!widths || !Array.isArray(widths) || widths.length === 0) {
+    return res.status(400).json({ error: 'No widths selected' });
+  }
+
+  if (!categories || !Array.isArray(categories) || categories.length === 0) {
+    return res.status(400).json({ error: 'No categories selected' });
   }
 
   if (bannerProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Banner capture already in progress' });
   }
 
+  const options = { environment, region, cultures, widths, categories };
+
   bannerProcessor.start(options).catch(err => {
     console.error('Banner capture error:', err);
-    broadcast({
-      type: 'error',
-      tool: 'banner',
-      data: { message: err.message, stack: err.stack }
-    });
+    broadcast({ type: 'banner-error', data: { message: err.message } });
   });
 
   res.json({ ok: true, message: 'Banner capture started' });
@@ -415,33 +303,6 @@ app.get('/api/banner/results', (req, res) => {
   res.json(bannerProcessor.getResults());
 });
 
-app.post('/api/banner/report', (req, res) => {
-  const results = bannerProcessor.getResults();
-
-  if (!results || results.length === 0) {
-    return res.status(400).json({ error: 'No results to generate report' });
-  }
-
-  const duration = req.body.duration || null;
-  const theme = req.body.theme || 'dark';
-  const { html, name } = generateBannerReport(results, duration, theme);
-
-  const now = new Date();
-  const timestamp = formatTimestamp(now);
-  const env = results[0]?.environment || 'unknown';
-  const filename = `banner-test-${env}-${timestamp}.html`;
-  const filepath = join(REPORTS_DIR, filename);
-
-  fs.writeFileSync(filepath, html);
-
-  res.json({
-    ok: true,
-    filename,
-    path: filepath,
-    successCount: results.filter(r => !r.error).length
-  });
-});
-
 // ============ PSLP API Routes ============
 
 app.get('/api/pslp/status', (req, res) => {
@@ -449,36 +310,29 @@ app.get('/api/pslp/status', (req, res) => {
 });
 
 app.post('/api/pslp/start', asyncHandler(async (req, res) => {
-  const { environment, region, culture, components, username, password, screenWidths } = req.body;
+  const { environment, region, culture, components, widths, username, password } = req.body;
 
-  const options = {
-    environment: environment || 'production',
-    region: region || 'us',
-    culture: culture || 'en-US',
-    components: components || [],
-    screenWidths: Array.isArray(screenWidths) && screenWidths.length > 0
-      ? screenWidths.map(w => Number(w)).filter(w => Number.isFinite(w))
-      : null,
-    username: username || null,
-    password: password || null
-  };
-
-  const errors = validatePslpConfig(options);
-  if (errors.length > 0) {
-    return res.status(400).json({ error: errors.join(', ') });
+  if (!culture) {
+    return res.status(400).json({ error: 'No culture selected' });
   }
 
   if (pslpProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'PSLP capture already in progress' });
   }
 
+  const options = {
+    environment: environment || 'production',
+    region: region || 'us',
+    culture,
+    components: components || config.pslp.defaults.components,
+    widths: widths || config.pslp.defaults.widths,
+    username: username || null,
+    password: password || null
+  };
+
   pslpProcessor.start(options).catch(err => {
     console.error('PSLP capture error:', err);
-    broadcast({
-      type: 'error',
-      tool: 'pslp',
-      data: { message: err.message, stack: err.stack }
-    });
+    broadcast({ type: 'pslp-error', data: { message: err.message } });
   });
 
   res.json({ ok: true, message: 'PSLP capture started' });
@@ -498,34 +352,6 @@ app.get('/api/pslp/results', (req, res) => {
   res.json(pslpProcessor.getResults());
 });
 
-app.post('/api/pslp/report', (req, res) => {
-  const results = pslpProcessor.getResults();
-
-  if (!results) {
-    return res.status(400).json({ error: 'No results to generate report' });
-  }
-
-  const duration = req.body.duration || null;
-  const theme = req.body.theme || 'dark';
-  const { html } = generatePslpReport(results, duration, theme);
-
-  const now = new Date();
-  const timestamp = formatTimestamp(now);
-  const env = results.environment || 'unknown';
-  const filename = `pslp-test-${env}-${timestamp}.html`;
-  const filepath = join(REPORTS_DIR, filename);
-
-  fs.writeFileSync(filepath, html);
-
-  res.json({
-    ok: true,
-    filename,
-    path: filepath,
-    screenshotsCount: results.screenshots?.length || 0,
-    componentsCount: results.componentReports?.length || 0
-  });
-});
-
 // ============ Mix-In Ad API Routes ============
 
 app.get('/api/mixinad/status', (req, res) => {
@@ -533,32 +359,29 @@ app.get('/api/mixinad/status', (req, res) => {
 });
 
 app.post('/api/mixinad/start', asyncHandler(async (req, res) => {
-  const { environment, region, cultures, categories, widths } = req.body;
+  const { environment, region, cultures, widths, categories } = req.body;
 
-  const options = {
-    environment: environment || 'stage',
-    region: region || 'usca',
-    cultures: cultures || [],
-    categories: categories || [],
-    widths: widths || config.mixinad.defaults.widths
-  };
+  if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
+    return res.status(400).json({ error: 'No cultures selected' });
+  }
 
-  const errors = validateMixInAdConfig(options);
-  if (errors.length > 0) {
-    return res.status(400).json({ error: errors.join(', ') });
+  if (!widths || !Array.isArray(widths) || widths.length === 0) {
+    return res.status(400).json({ error: 'No widths selected' });
+  }
+
+  if (!categories || !Array.isArray(categories) || categories.length === 0) {
+    return res.status(400).json({ error: 'No categories selected' });
   }
 
   if (mixinAdProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Mix-In Ad capture already in progress' });
   }
 
+  const options = { environment, region, cultures, widths, categories };
+
   mixinAdProcessor.start(options).catch(err => {
     console.error('Mix-In Ad capture error:', err);
-    broadcast({
-      type: 'error',
-      tool: 'mixinad',
-      data: { message: err.message, stack: err.stack }
-    });
+    broadcast({ type: 'mixinad-error', data: { message: err.message } });
   });
 
   res.json({ ok: true, message: 'Mix-In Ad capture started' });
@@ -578,150 +401,100 @@ app.get('/api/mixinad/results', (req, res) => {
   res.json(mixinAdProcessor.getResults());
 });
 
-app.post('/api/mixinad/report', (req, res) => {
-  const results = mixinAdProcessor.getResults();
+// Auto-generate reports on completion
+autoGenerateReport(skuProcessor, generateSkuReport, 'sku');
+autoGenerateReport(bannerProcessor, generateBannerReport, 'banner');
+autoGenerateReport(pslpProcessor, generatePslpReport, 'pslp');
+autoGenerateReport(mixinAdProcessor, generateMixInAdReport, 'mixinad');
 
-  if (!results || results.length === 0) {
-    return res.status(400).json({ error: 'No results to generate report' });
-  }
-
-  const duration = req.body.duration || null;
-  const theme = req.body.theme || 'dark';
-  const { html } = generateMixInAdReport(results, duration, theme);
-
-  const now = new Date();
-  const timestamp = formatTimestamp(now);
-  const env = results[0]?.environment || 'unknown';
-  const filename = `mixinad-test-${env}-${timestamp}.html`;
-  const filepath = join(REPORTS_DIR, filename);
-
-  fs.writeFileSync(filepath, html);
-
-  res.json({
-    ok: true,
-    filename,
-    path: filepath,
-    successCount: results.filter(r => !r.error && !r.noAdsFound).length
-  });
-});
+app.use('/reports', express.static(REPORTS_DIR));
 
 // ============ Shared Routes ============
 
 app.get('/api/history', (req, res) => {
   const history = loadHistory();
-  res.json(history);
+  res.json({ history, limit: getHistoryLimit() });
 });
 
-app.delete('/api/history', (req, res) => {
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify([]));
-  res.json({ ok: true });
+app.post('/api/history/limit', (req, res) => {
+  const { limit } = req.body;
+  if (setHistoryLimit(limit)) {
+    res.json({ ok: true, limit: getHistoryLimit() });
+  } else {
+    res.status(400).json({ error: 'Invalid limit' });
+  }
 });
 
-app.get('/api/reports', (req, res) => {
-  const files = fs.readdirSync(REPORTS_DIR)
-    .filter(f => f.endsWith('.html'))
-    .map(f => {
-      const stat = fs.statSync(join(REPORTS_DIR, f));
-      const isSku = f.startsWith('sku-');
-      const isBanner = f.startsWith('banner-');
-      const isPslp = f.startsWith('pslp-');
-      const isMixInAd = f.startsWith('mixinad-');
-      return {
-        filename: f,
-        type: isSku ? 'sku' : isBanner ? 'banner' : isPslp ? 'pslp' : isMixInAd ? 'mixinad' : 'unknown',
-        created: stat.mtime,
-        size: stat.size
-      };
-    })
-    .sort((a, b) => new Date(b.created) - new Date(a.created));
+// Delete a single history entry and its report file
+app.delete('/api/history/:filename', (req, res) => {
+  const { filename } = req.params;
 
-  res.json(files);
-});
-
-app.get('/api/reports/:filename', (req, res) => {
-  const filename = req.params.filename;
-
-  // Validate filename (no path separators or traversal)
-  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+  // Validate filename to prevent path traversal
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
 
-  const filepath = join(REPORTS_DIR, filename);
+  const reportPath = join(REPORTS_DIR, filename);
 
-  // Ensure resolved path is still within REPORTS_DIR (defense in depth)
-  const resolvedPath = resolve(filepath);
-  const resolvedReportsDir = resolve(REPORTS_DIR);
-  if (!resolvedPath.startsWith(resolvedReportsDir)) {
-    return res.status(403).json({ error: 'Access denied' });
-  }
-
-  if (!fs.existsSync(filepath)) {
-    return res.status(404).json({ error: 'Report not found' });
-  }
-
-  res.download(filepath);
-});
-
-app.get('/api/reports/:filename/open', (req, res) => {
-  const filename = req.params.filename;
-
-  // Validate filename (no path separators or traversal)
-  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    return res.status(400).json({ error: 'Invalid filename' });
-  }
-
-  const filepath = join(REPORTS_DIR, filename);
-
-  // Ensure resolved path is still within REPORTS_DIR (defense in depth)
-  const resolvedPath = resolve(filepath);
-  const resolvedReportsDir = resolve(REPORTS_DIR);
-  if (!resolvedPath.startsWith(resolvedReportsDir)) {
-    return res.status(403).json({ error: 'Access denied' });
-  }
-
-  if (!fs.existsSync(filepath)) {
-    return res.status(404).json({ error: 'Report not found' });
-  }
-
-  open(filepath);
-  res.json({ ok: true });
-});
-
-// ============ History Management ============
-
-function loadHistory() {
+  // Delete report file if it exists
   try {
-    if (fs.existsSync(HISTORY_FILE)) {
-      return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+    if (fs.existsSync(reportPath)) {
+      fs.unlinkSync(reportPath);
     }
-  } catch (e) {
-    console.error('Error loading history:', e);
-  }
-  return [];
-}
-
-function saveToHistory(entry) {
-  let history = loadHistory();
-  history.unshift(entry);
-
-  if (history.length > 20) {
-    history = history.slice(0, 20);
+  } catch (err) {
+    console.error('Error deleting report file:', err);
   }
 
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
-}
+  // Remove from history
+  if (deleteFromHistory(filename)) {
+    res.json({ ok: true, message: 'History item deleted' });
+  } else {
+    res.status(404).json({ error: 'History item not found' });
+  }
+});
 
-function formatTimestamp(date) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-    '-',
-    String(date.getHours()).padStart(2, '0'),
-    String(date.getMinutes()).padStart(2, '0'),
-    String(date.getSeconds()).padStart(2, '0')
-  ].join('');
-}
+// Clear all history
+app.delete('/api/history', (req, res) => {
+  const deleteReports = req.query.deleteReports === 'true';
+
+  if (deleteReports) {
+    // Optionally delete all report files
+    try {
+      const files = fs.readdirSync(REPORTS_DIR);
+      for (const file of files) {
+        if (file.endsWith('.html')) {
+          fs.unlinkSync(join(REPORTS_DIR, file));
+        }
+      }
+    } catch (err) {
+      console.error('Error deleting report files:', err);
+    }
+  }
+
+  clearHistory();
+  res.json({ ok: true, message: 'History cleared' });
+});
+
+// Download a report file
+app.get('/api/reports/:filename', (req, res) => {
+  const { filename } = req.params;
+
+  // Validate filename to prevent path traversal
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  const reportPath = join(REPORTS_DIR, filename);
+
+  if (!fs.existsSync(reportPath)) {
+    return res.status(404).json({ error: 'Report not found' });
+  }
+
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Type', 'text/html');
+  res.sendFile(reportPath);
+});
+
 
 // ============ Start Server ============
 

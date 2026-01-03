@@ -64,8 +64,8 @@ export function generateSkuReport(results, duration, theme = 'dark') {
         <div class="product-grid">
           <div class="product-image">
             ${r.data.image
-              ? `<img src="${escapeHtml(r.data.image)}" alt="Product Image">`
-              : '<div class="no-image">No image available</div>'}
+        ? `<img src="${escapeHtml(r.data.image)}" alt="Product Image">`
+        : '<div class="no-image">No image available</div>'}
           </div>
           <div class="product-info">
             <table>
@@ -107,8 +107,8 @@ export function generateSkuReport(results, duration, theme = 'dark') {
             <div class="cart-result ${r.addToCartResult.success ? 'success' : 'error'}">
               <strong>Add to Cart:</strong>
               <span>${r.addToCartResult.success
-                ? escapeHtml(r.addToCartResult.message || 'Success')
-                : escapeHtml(r.addToCartResult.error || 'Failed')}</span>
+          ? escapeHtml(r.addToCartResult.message || 'Success')
+          : escapeHtml(r.addToCartResult.error || 'Failed')}</span>
             </div>
             ` : ''}
           </div>
@@ -141,7 +141,7 @@ export function generateSkuReport(results, duration, theme = 'dark') {
 </body>
 </html>`;
 
-  return html;
+  return { html, name: 'sku-report' };
 }
 
 function formatImages(images) {

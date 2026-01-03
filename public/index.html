@@ -128,8 +128,10 @@
 
     /* Running Jobs Dashboard */
     .dashboard-section {
+      padding-top: 32px;
       margin-bottom: 32px;
-      display: none; /* Hidden by default, shown when jobs are running */
+      display: none;
+      /* Hidden by default, shown when jobs are running */
     }
 
     .dashboard-section.visible {
@@ -231,9 +233,36 @@
     }
 
     .job-status {
-      font-size: 13px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .job-detail {
+      font-size: 12px;
       color: var(--text-secondary);
       margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .job-empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 24px;
+      color: var(--text-secondary);
+      font-size: 14px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px dashed var(--border-color);
+    }
+
+    .job-empty-state .empty-icon {
+      font-size: 18px;
     }
 
     .job-progress {
@@ -281,12 +310,149 @@
     }
 
     @keyframes pulse {
-      0%, 100% {
+
+      0%,
+      100% {
         opacity: 1;
       }
+
       50% {
         opacity: 0.5;
       }
+    }
+
+    /* Job History Section */
+    .history-section {
+      margin-top: 32px;
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .history-item {
+      background: var(--bg-item);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s;
+    }
+
+    .history-item:hover {
+      border-color: #10b981;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+    }
+
+    .history-item.sku {
+      border-left: 4px solid #10b981;
+    }
+
+    .history-item.banner {
+      border-left: 4px solid #3b82f6;
+    }
+
+    .history-item.pslp {
+      border-left: 4px solid #8b5cf6;
+    }
+
+    .history-item.mixinad {
+      border-left: 4px solid #ec4899;
+    }
+
+    .history-info {
+      flex: 1;
+    }
+
+    .history-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .history-meta {
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .history-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .history-settings {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .history-settings input {
+      width: 60px;
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-item);
+      color: var(--text-primary);
+    }
+
+    .history-btn {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .history-btn:hover {
+      background: #10b981;
+      color: white;
+      border-color: #10b981;
+    }
+
+    .history-btn.download:hover {
+      background: #3b82f6;
+      border-color: #3b82f6;
+    }
+
+    .history-btn.delete {
+      background: transparent;
+      color: #ef4444;
+      border-color: #ef4444;
+    }
+
+    .history-btn.delete:hover {
+      background: #ef4444;
+      color: white;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
     }
   </style>
 </head>
@@ -304,22 +470,6 @@
         <div style="display:flex;gap:12px;justify-content:center;margin-top:12px;">
           <a class="secondary" href="credentials.html">Manage Credentials</a>
           <a class="secondary" href="category-manager.html">⚙️ Manage Categories</a>
-        </div>
-      </div>
-
-      <!-- Running Jobs Dashboard -->
-      <div class="dashboard-section" id="dashboard">
-        <div class="dashboard-header">
-          <div class="dashboard-title">
-            <span class="pulse"></span>
-            Running Jobs (<span id="job-count">0</span>)
-          </div>
-          <div id="resource-warning" class="resource-warning" style="display: none;">
-            ⚠️ Multiple jobs running - High resource usage
-          </div>
-        </div>
-        <div class="job-cards" id="job-cards">
-          <!-- Job cards will be dynamically inserted here -->
         </div>
       </div>
 
@@ -381,6 +531,41 @@
           </div>
         </a>
       </div>
+
+      <!-- Running Jobs Dashboard -->
+      <div class="dashboard-section" id="dashboard">
+        <div class="dashboard-header">
+          <div class="dashboard-title">
+            <span class="pulse"></span>
+            Running Jobs (<span id="job-count">0</span>)
+          </div>
+          <div id="resource-warning" class="resource-warning" style="display: none;">
+            ⚠️ Multiple jobs running - High resource usage
+          </div>
+        </div>
+        <div class="job-cards" id="job-cards">
+          <!-- Job cards will be dynamically inserted here -->
+        </div>
+      </div>
+
+      <!-- Job History Section -->
+      <div class="history-section" id="history-section">
+        <div class="dashboard-header">
+          <div class="dashboard-title">
+            📋 Job History (<span id="history-count">0</span>)
+          </div>
+          <div class="history-settings">
+            <label for="history-limit">History Limit:</label>
+            <input type="number" id="history-limit" min="1" max="100" value="10" onchange="saveHistoryLimit()">
+            <button class="secondary" onclick="clearHistory()" style="padding: 6px 16px; font-size: 13px;">
+              Clear All
+            </button>
+          </div>
+        </div>
+        <div class="history-list" id="history-list">
+          <!-- History items will be dynamically inserted here -->
+        </div>
+      </div>
     </div>
   </div>
 
@@ -409,6 +594,38 @@
         document.getElementById('theme-icon').innerHTML = '&#9790;';
         document.getElementById('theme-text').textContent = 'Dark';
       }
+    })();
+
+    // Single WebSocket connection for the whole app
+    (function initWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+
+          // Route message to dashboard
+          if (window.handleDashboardMessage) {
+            window.handleDashboardMessage(message);
+          }
+
+          // Route message to history
+          if (window.handleHistoryMessage) {
+            window.handleHistoryMessage(message);
+          }
+        } catch (err) {
+          console.error('Error parsing WebSocket message:', err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
+      };
     })();
 
     // Running Jobs Dashboard
@@ -446,17 +663,33 @@
         for (const tool of tools) {
           try {
             const response = await fetch(`/api/${tool}/status`);
+            if (!response.ok) {
+              jobStates[tool] = null;
+              jobStartTimes[tool] = null;
+              continue;
+            }
             const status = await response.json();
 
             if (status.isRunning && !jobStates[tool]) {
+              // New job started
               jobStartTimes[tool] = Date.now();
+              jobStates[tool] = status;
+            } else if (status.isRunning && jobStates[tool]) {
+              // Merge status to preserve progress data (don't overwrite with stale data)
+              jobStates[tool] = {
+                ...jobStates[tool],
+                ...status,
+                // Preserve existing progress if new status doesn't have it
+                progress: status.progress || jobStates[tool].progress
+              };
             } else if (!status.isRunning && jobStates[tool]) {
+              // Job finished
               jobStartTimes[tool] = null;
+              jobStates[tool] = null;
             }
-
-            jobStates[tool] = status.isRunning ? status : null;
           } catch (err) {
             console.error(`Error fetching ${tool} status:`, err);
+            // Don't null out state on fetch error - preserve existing state
           }
         }
 
@@ -465,38 +698,34 @@
 
       // Render the dashboard
       function renderDashboard() {
-        const runningJobs = Object.entries(jobStates).filter(([_, status]) => status !== null);
+        const runningJobs = Object.entries(jobStates).filter(([_, status]) => status !== null && status.isRunning);
         const count = runningJobs.length;
 
-        // Update job count
         jobCount.textContent = count;
-
-        // Show/hide dashboard
-        if (count > 0) {
-          dashboard.classList.add('visible');
-        } else {
-          dashboard.classList.remove('visible');
-        }
-
-        // Show resource warning if 3+ jobs running
+        // Always keep dashboard visible
+        dashboard.classList.add('visible');
+        resourceWarning.style.display = count >= 3 ? 'flex' : 'none';
         if (count >= 3) {
-          resourceWarning.style.display = 'flex';
-          if (document.body.classList.contains('light-mode')) {
-            resourceWarning.classList.remove('dark');
-          } else {
-            resourceWarning.classList.add('dark');
-          }
-        } else {
-          resourceWarning.style.display = 'none';
+          resourceWarning.classList.toggle('dark', !document.body.classList.contains('light-mode'));
         }
 
-        // Render job cards
         jobCards.innerHTML = '';
-        runningJobs.forEach(([tool, status]) => {
-          const config = toolConfig[tool];
-          const card = createJobCard(tool, config, status);
-          jobCards.appendChild(card);
-        });
+
+        if (count === 0) {
+          // Show empty state message
+          jobCards.innerHTML = `
+            <div class="job-empty-state">
+              <span class="empty-icon">✨</span>
+              <span>No jobs currently running</span>
+            </div>
+          `;
+        } else {
+          runningJobs.forEach(([tool, status]) => {
+            const config = toolConfig[tool];
+            const card = createJobCard(tool, config, status);
+            jobCards.appendChild(card);
+          });
+        }
       }
 
       // Create a job card element
@@ -504,26 +733,39 @@
         const card = document.createElement('div');
         card.className = `job-card ${config.class}`;
 
-        // Calculate elapsed time
         const elapsed = jobStartTimes[tool] ? Math.floor((Date.now() - jobStartTimes[tool]) / 1000) : 0;
         const elapsedStr = formatElapsedTime(elapsed);
 
-        // Calculate progress percentage
         let progressPercent = 0;
         let progressText = 'Initializing...';
+        let detailText = '';
 
+        // Extract overall progress from status.progress
         if (status.progress) {
-          if (status.progress.completed !== undefined && status.progress.total !== undefined) {
-            progressPercent = status.progress.total > 0
-              ? Math.round((status.progress.completed / status.progress.total) * 100)
-              : 0;
-            progressText = `${status.progress.completed} of ${status.progress.total}`;
-          } else if (status.progress.current !== undefined && status.progress.total !== undefined) {
-            progressPercent = status.progress.total > 0
-              ? Math.round((status.progress.current / status.progress.total) * 100)
-              : 0;
-            progressText = `${status.progress.current} of ${status.progress.total}`;
+          const { completed, total, current, culture, category, width, sku, step, component } = status.progress;
+          const progCurrent = completed ?? current;
+          if (progCurrent !== undefined && total !== undefined && total > 0) {
+            progressPercent = Math.round((progCurrent / total) * 100);
+            progressText = `${progCurrent} of ${total}`;
           }
+
+          // Build detail text based on job type
+          const parts = [];
+          if (culture) parts.push(culture);
+          if (category) parts.push(category);
+          if (width) parts.push(`${width}px`);
+          if (sku) parts.push(`SKU ${sku}`);
+          if (step) parts.push(step);
+          if (component) parts.push(component);
+
+          if (parts.length > 0) {
+            detailText = parts.join(' - ');
+          }
+        }
+
+        // Use status.message as detail if no detail from progress
+        if (!detailText && status.message) {
+          detailText = status.message;
         }
 
         card.innerHTML = `
@@ -534,7 +776,8 @@
             </div>
             <button class="job-stop-btn" onclick="stopJob('${tool}')">Stop</button>
           </div>
-          <div class="job-status">${status.message || progressText}</div>
+          <div class="job-status">${progressText}</div>
+          ${detailText ? `<div class="job-detail">${detailText}</div>` : ''}
           <div class="job-progress">
             <div class="job-progress-bar" style="width: ${progressPercent}%"></div>
           </div>
@@ -547,22 +790,14 @@
         return card;
       }
 
-      // Format elapsed time
       function formatElapsedTime(seconds) {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
-        if (mins > 0) {
-          return `${mins}m ${secs}s`;
-        }
-        return `${secs}s`;
+        return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
       }
 
-      // Stop a job
-      window.stopJob = async function(tool) {
-        if (!confirm(`Are you sure you want to stop the ${toolConfig[tool].name}?`)) {
-          return;
-        }
-
+      window.stopJob = async function (tool) {
+        if (!confirm(`Are you sure you want to stop the ${toolConfig[tool].name}?`)) return;
         try {
           const response = await fetch(`/api/${tool}/stop`, { method: 'POST' });
           if (response.ok) {
@@ -575,42 +810,185 @@
         }
       };
 
-      // Connect to WebSocket for real-time updates
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}`);
+      // Handle incoming WebSocket messages
+      window.handleDashboardMessage = (message) => {
+        const { type, data } = message;
 
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-
-          // Update specific tool state on progress events
-          if (message.type === 'progress' || message.type === 'status') {
-            // Trigger status update for the specific tool
-            setTimeout(updateAllStatuses, 100);
+        if (type.endsWith('-progress') || type.endsWith('-status')) {
+          const tool = type.split('-')[0];
+          if (jobStates[tool]) {
+            // Merge data with existing state, preserving progress
+            jobStates[tool] = {
+              ...jobStates[tool],
+              ...data,
+              // Prefer new progress if it has data, otherwise keep existing
+              progress: (data.progress && Object.keys(data.progress).length > 0)
+                ? data.progress
+                : jobStates[tool].progress
+            };
+          } else if (data.isRunning) {
+            // Job just started - initialize state
+            jobStartTimes[tool] = Date.now();
+            jobStates[tool] = data;
           }
-
-          // Handle completion/error events
-          if (message.type === 'complete' || message.type === 'error') {
-            setTimeout(updateAllStatuses, 500);
+          renderDashboard();
+        } else if (type.endsWith('-error')) {
+          const tool = type.split('-')[0];
+          if (jobStates[tool]) {
+            jobStates[tool].message = data.message || 'An error occurred';
+            renderDashboard();
           }
-        } catch (err) {
-          console.error('Error parsing WebSocket message:', err);
+        } else if (type.endsWith('-completed')) {
+          // Job completed - poll to clear state
+          setTimeout(updateAllStatuses, 500);
         }
       };
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      ws.onclose = () => {
-        console.log('WebSocket connection closed');
-      };
-
-      // Initial status check
       updateAllStatuses();
-
-      // Poll every 2 seconds as backup
       setInterval(updateAllStatuses, 2000);
+    })();
+
+    // Job History Management
+    (function initJobHistory() {
+      const historyList = document.getElementById('history-list');
+      const historyCount = document.getElementById('history-count');
+
+      const toolConfig = {
+        sku: { name: 'SKU Test', icon: '&#128230;', class: 'sku' },
+        banner: { name: 'Banner Test', icon: '&#128444;', class: 'banner' },
+        pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp' },
+        mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad' }
+      };
+
+      let history = [];
+      let historyLimit = 10;
+
+      // Fetch history from server
+      async function fetchHistory() {
+        try {
+          const response = await fetch('/api/history');
+          const data = await response.json();
+          history = data.history;
+          historyLimit = data.limit;
+          document.getElementById('history-limit').value = historyLimit;
+        } catch (err) {
+          console.error('Error fetching history:', err);
+          history = [];
+        }
+      }
+
+      // Fetch and render history
+      async function loadHistory() {
+        await fetchHistory();
+        renderHistory();
+      }
+
+      function formatTimeAgo(date) {
+        const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)} hour${Math.floor(seconds / 3600) > 1 ? 's' : ''} ago`;
+        if (seconds < 604800) return `${Math.floor(seconds / 86400)} day${Math.floor(seconds / 86400) > 1 ? 's' : ''} ago`;
+
+        return date.toLocaleDateString();
+      }
+
+      function renderHistory() {
+        historyCount.textContent = history.length;
+        if (history.length === 0) {
+          historyList.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📋</div>
+              <p>No completed jobs yet. Run a test to see results here.</p>
+            </div>
+          `;
+          return;
+        }
+
+        historyList.innerHTML = '';
+        history.forEach(report => {
+          historyList.appendChild(createHistoryItem(report));
+        });
+      }
+
+      function createHistoryItem(report) {
+        const item = document.createElement('div');
+        const config = toolConfig[report.mode] || { name: 'Unknown', icon: '📄', class: '' };
+        item.className = `history-item ${config.class}`;
+
+        const timeAgo = formatTimeAgo(new Date(report.timestamp));
+
+        item.innerHTML = `
+          <div class="history-info">
+            <div class="history-title">
+              <span>${config.icon}</span>
+              ${config.name}
+            </div>
+            <div class="history-meta">
+              <span>🌐 ${report.environment}</span>
+              <span>⏱️ ${timeAgo}</span>
+            </div>
+          </div>
+          <div class="history-actions">
+            <a class="history-btn" href="/reports/${report.filename}" target="_blank">
+              📂 Open
+            </a>
+            <a class="history-btn download" href="/api/reports/${report.filename}" download>
+              ⬇️ Download
+            </a>
+            <button class="history-btn delete" onclick="deleteHistoryItem('${report.filename}')">
+              🗑️ Delete
+            </button>
+          </div>
+        `;
+        return item;
+      }
+
+      window.deleteHistoryItem = async function (filename) {
+        if (!confirm(`Are you sure you want to delete the report ${filename}?`)) return;
+        try {
+          await fetch(`/api/history/${filename}`, { method: 'DELETE' });
+          loadHistory();
+        } catch (err) {
+          console.error('Error deleting history item:', err);
+          alert('Failed to delete history item');
+        }
+      };
+
+      window.saveHistoryLimit = async function () {
+        const limit = document.getElementById('history-limit').value;
+        try {
+          await fetch('/api/history/limit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: parseInt(limit, 10) })
+          });
+        } catch (err) {
+          console.error('Error saving history limit:', err);
+          alert('Failed to save history limit');
+        }
+      };
+
+      window.clearHistory = async function () {
+        if (!confirm('Are you sure you want to clear all job history?')) return;
+        try {
+          await fetch('/api/history', { method: 'DELETE' });
+          loadHistory();
+        } catch (err) {
+          console.error('Error clearing history:', err);
+          alert('Failed to clear history');
+        }
+      };
+
+      // Handle incoming WebSocket messages
+      window.handleHistoryMessage = (message) => {
+        if (message.type.endsWith('-status') && message.data?.type === 'completed') {
+          setTimeout(loadHistory, 1500); // Wait for report to be written
+        }
+      };
+
+      loadHistory();
     })();
   </script>
 </body>

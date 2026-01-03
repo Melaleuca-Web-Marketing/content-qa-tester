@@ -64,10 +64,6 @@ const progressStep = document.getElementById('progress-step');
 const currentStepInfo = document.getElementById('current-step-info');
 const currentStepName = document.getElementById('current-step-name');
 const currentStepStatus = document.getElementById('current-step-status');
-const historyList = document.getElementById('history-list');
-const clearHistoryBtn = document.getElementById('clear-history');
-const reportsList = document.getElementById('reports-list');
-const refreshReportsBtn = document.getElementById('refresh-reports');
 const connectionStatus = document.getElementById('connection-status');
 
 async function init() {
@@ -78,8 +74,6 @@ async function init() {
     renderWidthOptions();
     loadPreferences();
     connectWebSocket();
-    loadHistory();
-    loadReports();
     updateComponentCount();
   } catch (err) {
     console.error('Initialization error:', err);
@@ -104,6 +98,21 @@ function setupEventListeners() {
     savePreferences();
   });
   cultureSelect.addEventListener('change', () => {
+    // Auto-correct region if culture doesn't match current region
+    const selectedCulture = cultureSelect.value;
+    const currentRegion = regionSelect.value;
+    const currentRegionConfig = configData?.regions?.[currentRegion];
+
+    // If selected culture is not valid for current region, update region
+    if (currentRegionConfig && !currentRegionConfig.cultures.includes(selectedCulture)) {
+      const correctRegion = getRegionFromCulture(selectedCulture);
+      if (correctRegion && correctRegion !== currentRegion) {
+        regionSelect.value = correctRegion;
+        updateCultureOptions();
+        cultureSelect.value = selectedCulture; // Re-set culture after update
+      }
+    }
+
     applySavedCredentials();
     savePreferences();
   });
@@ -142,9 +151,19 @@ function setupEventListeners() {
     }
   });
   stopCaptureBtn.addEventListener('click', stopCapture);
-  saveReportBtn.addEventListener('click', saveReport);
-  clearHistoryBtn.addEventListener('click', clearHistory);
-  refreshReportsBtn.addEventListener('click', loadReports);
+}
+
+// Helper function to infer region from culture code
+function getRegionFromCulture(culture) {
+  if (!configData) return null;
+
+  // Search through all regions to find which one contains this culture
+  for (const [regionKey, regionConfig] of Object.entries(configData.regions)) {
+    if (regionConfig.cultures && regionConfig.cultures.includes(culture)) {
+      return regionKey;
+    }
+  }
+  return null;
 }
 
 function updateCultureOptions() {
@@ -250,7 +269,14 @@ function loadPreferences() {
     const prefs = JSON.parse(localStorage.getItem('pslpTesterPrefs'));
     if (prefs) {
       if (prefs.environment) envSelect.value = prefs.environment;
-      if (prefs.region) {
+      // If we have a culture but no region, try to infer the region from the culture
+      if (prefs.culture && !prefs.region) {
+        const inferredRegion = getRegionFromCulture(prefs.culture);
+        if (inferredRegion) {
+          regionSelect.value = inferredRegion;
+          updateCultureOptions();
+        }
+      } else if (prefs.region) {
         regionSelect.value = prefs.region;
         updateCultureOptions();
       }
@@ -326,48 +352,49 @@ function handleWebSocketMessage(message) {
 }
 
 function handleProgress(data) {
-  switch (data.type) {
+  const progress = data.progress;
+  switch (progress.type) {
     case 'browser':
-      setStatusRunning('Starting...', data.status);
+      setStatusRunning('Starting...', progress.status);
       break;
 
     case 'login':
-      setStatusRunning('Logging in...', data.status);
+      setStatusRunning('Logging in...', progress.status);
       currentStepInfo.style.display = 'block';
       currentStepName.textContent = 'Login';
-      currentStepStatus.textContent = data.status;
+      currentStepStatus.textContent = progress.status;
       break;
 
     case 'navigation':
-      setStatusRunning('Navigating...', data.status);
+      setStatusRunning('Navigating...', progress.status);
       currentStepName.textContent = 'Navigation';
-      currentStepStatus.textContent = data.status;
+      currentStepStatus.textContent = progress.status;
       break;
 
     case 'screenshot':
-      progressStep.textContent = `Step: ${data.status}`;
+      progressStep.textContent = `Step: ${progress.status}`;
       currentStepName.textContent = 'Screenshot Capture';
-      currentStepStatus.textContent = data.status;
-      setStatusRunning('Capturing screenshots...', data.status);
-      if (data.current !== undefined && data.total !== undefined) {
-        updateProgressBar(data.current, data.total);
+      currentStepStatus.textContent = progress.status;
+      setStatusRunning('Capturing screenshots...', progress.status);
+      if (progress.current !== undefined && progress.total !== undefined) {
+        updateProgressBar(progress.current, progress.total);
       }
       break;
 
     case 'component':
-      progressStep.textContent = `Component: ${data.component}`;
-      currentStepName.textContent = `Extracting: ${data.componentName || data.component}`;
-      currentStepStatus.textContent = data.status;
-      setStatusRunning('Extracting component data...', `${data.componentName || data.component}: ${data.status}`);
-      if (data.current !== undefined && data.total !== undefined) {
-        updateProgressBar(data.current, data.total);
+      progressStep.textContent = `Component: ${progress.component}`;
+      currentStepName.textContent = `Extracting: ${progress.componentName || progress.component}`;
+      currentStepStatus.textContent = progress.status;
+      setStatusRunning('Extracting component data...', `${progress.componentName || progress.component}: ${progress.status}`);
+      if (progress.current !== undefined && progress.total !== undefined) {
+        updateProgressBar(progress.current, progress.total);
       }
       break;
 
     case 'step':
-      currentStepName.textContent = data.step;
-      currentStepStatus.textContent = data.status;
-      setStatusRunning(data.step, data.status);
+      currentStepName.textContent = progress.step;
+      currentStepStatus.textContent = progress.status;
+      setStatusRunning(progress.step, progress.status);
       break;
   }
 }
@@ -390,7 +417,6 @@ function handleStatusUpdate(data) {
       setUIIdle();
       setStatusIdle('Capture cancelled', 'Operation was cancelled by user');
       saveReportBtn.disabled = true;
-      loadHistory();
       break;
 
     case 'completed':
@@ -404,7 +430,6 @@ function handleStatusUpdate(data) {
       setStatusSuccess('Capture complete!', `${screenshots} screenshots, ${components} components extracted in ${formatDuration(data.duration)}`);
 
       saveReportBtn.disabled = !data.results;
-      loadHistory();
       break;
 
     case 'error':
@@ -542,36 +567,6 @@ async function resumeCapture() {
   }
 }
 
-async function saveReport() {
-  setStatusRunning('Generating report...', 'Please wait...');
-  saveReportBtn.disabled = true;
-
-  try {
-    const duration = captureStartTime ? Date.now() - captureStartTime : null;
-    const theme = localStorage.getItem('testerTheme') || 'dark';
-
-    const response = await fetch('/api/pslp/report', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ duration, theme })
-    });
-
-    const result = await response.json();
-
-    if (result.ok) {
-      setStatusSuccess('Report saved!', `${result.screenshotsCount} screenshots, ${result.componentsCount} components exported to ${result.filename}`);
-      window.open(`/api/reports/${result.filename}`, '_blank');
-      loadReports();
-    } else {
-      setStatusError('Report failed', result.error || 'Could not generate report');
-    }
-  } catch (err) {
-    setStatusError('Report failed', err.message);
-  }
-
-  saveReportBtn.disabled = false;
-}
-
 function setUICapturing() {
   startCaptureBtn.disabled = true;
   stopCaptureBtn.disabled = false;
@@ -629,80 +624,6 @@ function setConnectionStatus(status) {
     default:
       text.textContent = 'Connecting...';
   }
-}
-
-async function loadHistory() {
-  try {
-    const response = await fetch('/api/history');
-    const history = await response.json();
-    renderHistory(history.filter(h => h.mode === 'pslp'));
-  } catch (e) {
-    console.error('Error loading history:', e);
-  }
-}
-
-function renderHistory(history) {
-  if (!history || history.length === 0) {
-    historyList.innerHTML = '<div class="history-empty">No reports yet</div>';
-    return;
-  }
-
-  historyList.innerHTML = history.map((item, index) => `
-    <div class="history-item" data-index="${index}">
-      <span class="history-item-icon">></span>
-      <div class="history-item-info">
-        <div class="history-item-title">${item.screenshotsCount || 0} screenshots, ${item.componentsCount || 0} components - ${item.environment}</div>
-        <div class="history-item-meta">${formatDate(item.timestamp)} - ${item.culture} - ${formatDuration(item.duration)}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function clearHistory() {
-  try {
-    await fetch('/api/history', { method: 'DELETE' });
-    renderHistory([]);
-  } catch (e) {
-    console.error('Error clearing history:', e);
-  }
-}
-
-async function loadReports() {
-  try {
-    const response = await fetch('/api/reports');
-    const reports = await response.json();
-    renderReports(reports.filter(r => r.type === 'pslp'));
-  } catch (e) {
-    console.error('Error loading reports:', e);
-  }
-}
-
-function renderReports(reports) {
-  if (!reports || reports.length === 0) {
-    reportsList.innerHTML = '<div class="reports-empty">No saved reports</div>';
-    return;
-  }
-
-  reportsList.innerHTML = reports.slice(0, 10).map(report => `
-    <div class="report-item" onclick="window.open('/api/reports/${report.filename}', '_blank')">
-      <span class="report-item-icon">&#128196;</span>
-      <div class="report-item-info">
-        <div class="report-item-title">${report.filename}</div>
-        <div class="report-item-meta">${formatDate(new Date(report.created).getTime())} - ${formatFileSize(report.size)}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function formatDate(timestamp) {
-  const date = new Date(timestamp);
-  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatFileSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 document.addEventListener('DOMContentLoaded', init);
