@@ -380,7 +380,12 @@ export const config = {
         tabletImage: 'source[media*="768px"]',
         mobileImage: 'source[media*="575px"]'
       },
-      monthlySpecials: { card: '.m-mscProductCard', dot: 'button[data-testid="button-monthlySpecialDot"], .o-monthlySpecial__dot', image: 'img' },
+      monthlySpecials: {
+        slide: '.o-monthlySpecial__slide',
+        card: '.m-mscProductCard',
+        dot: 'button[data-testid="button-monthlySpecialDot"], .o-monthlySpecial__dot',
+        image: 'img'
+      },
       featuredCategories: { item: '.o-categorySection__listItem', card: '.m-categoryCard', image: 'img' },
       seasonalCarousel: { slide: '.o-seasonalCarousel__slide', productCard: '.m-seasonalProdCard', mobileImage: '.o-seasonalSlide__image.-mobile', desktopImage: '.o-seasonalSlide__image.-desktop' },
       brandCTAWindows: {
