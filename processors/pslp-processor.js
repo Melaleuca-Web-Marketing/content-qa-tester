@@ -2,6 +2,7 @@
 
 import { BaseProcessor, log } from './base-processor.js';
 import { config, getBaseUrl, buildPslpUrl, validatePslpConfig } from '../config.js';
+import { SCREEN } from '../utils/constants.js';
 
 // Component extractors
 import { extractHeroCarouselData } from './pslp-components/heroCarousel.js';
@@ -177,11 +178,11 @@ export class PSLPProcessor extends BaseProcessor {
       if (this.shouldStop) throw new Error('Operation stopped by user');
 
       const screenWidths = Array.isArray(options.screenWidths) && options.screenWidths.length > 0
-        ? options.screenWidths.filter(w => typeof w === 'number' && w > 0 && w <= 4096)
+        ? options.screenWidths.filter(w => typeof w === 'number' && w >= SCREEN.MIN_WIDTH && w <= SCREEN.MAX_WIDTH)
         : config.pslp.screenWidths;
 
       if (screenWidths.length === 0) {
-        throw new Error('No valid screen widths provided (must be between 1-4096px)');
+        throw new Error(`No valid screen widths provided (must be between ${SCREEN.MIN_WIDTH}-${SCREEN.MAX_WIDTH}px)`);
       }
 
       // Take screenshots at different widths
@@ -340,11 +341,22 @@ export class PSLPProcessor extends BaseProcessor {
 
     for (const componentName of components) {
       const selector = selectorsByComponent[componentName];
-      if (!selector) continue;
+      if (!selector) {
+        log('warn', `No selector configured for component: ${componentName}`);
+        continue;
+      }
       try {
         await this.page.waitForSelector(selector, { timeout: config.pslp.timeouts.componentLoad });
       } catch (e) {
-        // Ignore missing components
+        log('warn', `Component not found or failed to load: ${componentName}`, {
+          selector,
+          error: e.message
+        });
+        this.emit('progress', {
+          type: 'component-missing',
+          component: componentName,
+          selector
+        });
       }
     }
   }

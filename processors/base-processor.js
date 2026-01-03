@@ -2,6 +2,7 @@
 
 import { chromium } from 'playwright';
 import { EventEmitter } from 'events';
+import { TIMEOUTS } from '../utils/constants.js';
 
 // Logging helper
 export function log(level, message, data = null) {
@@ -254,8 +255,8 @@ export class BaseProcessor extends EventEmitter {
       message: `Please sign in to ${environment} in the browser window, then click "Resume Capture"`
     });
 
-    // Poll until user clicks resume or stop (with 5-minute timeout)
-    const timeout = 300000; // 5 minutes
+    // Poll until user clicks resume or stop (with timeout)
+    const timeout = TIMEOUTS.MANUAL_AUTH;
     const start = Date.now();
 
     while (!this.shouldResume && !this.shouldStop) {

@@ -2,6 +2,8 @@
 
 import { BaseProcessor, log } from './base-processor.js';
 import { config, buildBannerUrl } from '../config.js';
+import { detectImageLocale } from '../utils/image-utils.js';
+import { MEMORY } from '../utils/constants.js';
 
 export class MixInAdProcessor extends BaseProcessor {
     constructor() {
@@ -76,35 +78,6 @@ export class MixInAdProcessor extends BaseProcessor {
         }, config.mixinad.selector);
 
         return results;
-    }
-
-    // Detect image locale from src URL
-    // Detect image locale from src URL
-    detectImageLocale(imageSrc) {
-        if (!imageSrc) return null;
-        const localeMap = {
-            'enus': 'US', 'en-us': 'US', 'esus': 'US', 'es-us': 'US',
-            'enca': 'CA', 'en-ca': 'CA', 'frca': 'CA', 'fr-ca': 'CA',
-            'esmx': 'MX', 'es-mx': 'MX',
-            'engb': 'UK', 'en-gb': 'UK', 'enie': 'IE', 'en-ie': 'IE',
-            'dede': 'DE', 'de-de': 'DE', 'plpl': 'PL', 'pl-pl': 'PL',
-            'nlnl': 'NL', 'nl-nl': 'NL', 'ltlt': 'LT', 'lt-lt': 'LT',
-            'uk': 'UK', 'ie': 'IE', 'de': 'DE', 'pl': 'PL', 'nl': 'NL', 'lt': 'LT' // Keep short codes just in case
-        };
-        const lowerSrc = imageSrc.toLowerCase();
-
-        for (const [code, region] of Object.entries(localeMap)) {
-            // Check for code with common delimiters
-            const patterns = [
-                `-${code}-`, `_${code}_`, `/${code}/`,
-                `-${code}.`, `_${code}.`, `--${code}.`, `--${code}-`
-            ];
-
-            if (patterns.some(p => lowerSrc.includes(p))) {
-                return region;
-            }
-        }
-        return null;
     }
 
     // Capture all mix-in ads at a specific width
@@ -243,7 +216,7 @@ export class MixInAdProcessor extends BaseProcessor {
                     category: meta.category || '',
                     culture: meta.culture || '',
                     order: meta.order ?? null,
-                    imageLocale: this.detectImageLocale(adInfo.imageSrc),
+                    imageLocale: detectImageLocale(adInfo.imageSrc),
                     imageSrc: adInfo.imageSrc,
                     imageAlt: adInfo.imageAlt || '',
                     mainCategory: meta.mainCategory || '',
@@ -355,7 +328,7 @@ export class MixInAdProcessor extends BaseProcessor {
                         }
 
                         // Warn about memory usage for very large test runs
-                        if (this.results.length % 50 === 0 && this.results.length > 0) {
+                        if (this.results.length % MEMORY.SCREENSHOT_WARNING_INTERVAL === 0 && this.results.length > 0) {
                             log('warn', `${this.results.length} screenshots captured. Large test runs may consume significant memory.`);
                         }
 

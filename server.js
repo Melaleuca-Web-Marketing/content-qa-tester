@@ -18,6 +18,7 @@ import { generateBannerReport } from './report-generators/banner-report.js';
 import { generatePslpReport } from './report-generators/pslp-report.js';
 import { generateMixInAdReport } from './report-generators/mixinad-report.js';
 import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, reloadCategories } from './config.js';
+import { asyncHandler } from './utils/async-handler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -280,7 +281,7 @@ app.get('/api/sku/status', (req, res) => {
   res.json(skuProcessor.getStatus());
 });
 
-app.post('/api/sku/start', async (req, res) => {
+app.post('/api/sku/start', asyncHandler(async (req, res) => {
   const { skus, environment, region, culture, fullScreenshot, topScreenshot, addToCart, username, password } = req.body;
 
   if (!skus || !Array.isArray(skus) || skus.length === 0) {
@@ -319,7 +320,7 @@ app.post('/api/sku/start', async (req, res) => {
   });
 
   res.json({ ok: true, message: 'SKU capture started' });
-});
+}));
 
 app.post('/api/sku/stop', (req, res) => {
   skuProcessor.stop();
@@ -368,7 +369,7 @@ app.get('/api/banner/status', (req, res) => {
   res.json(bannerProcessor.getStatus());
 });
 
-app.post('/api/banner/start', async (req, res) => {
+app.post('/api/banner/start', asyncHandler(async (req, res) => {
   const { environment, region, cultures, categories, widths } = req.body;
 
   const options = {
@@ -398,7 +399,7 @@ app.post('/api/banner/start', async (req, res) => {
   });
 
   res.json({ ok: true, message: 'Banner capture started' });
-});
+}));
 
 app.post('/api/banner/stop', (req, res) => {
   bannerProcessor.stop();
@@ -447,7 +448,7 @@ app.get('/api/pslp/status', (req, res) => {
   res.json(pslpProcessor.getStatus());
 });
 
-app.post('/api/pslp/start', async (req, res) => {
+app.post('/api/pslp/start', asyncHandler(async (req, res) => {
   const { environment, region, culture, components, username, password, screenWidths } = req.body;
 
   const options = {
@@ -481,7 +482,7 @@ app.post('/api/pslp/start', async (req, res) => {
   });
 
   res.json({ ok: true, message: 'PSLP capture started' });
-});
+}));
 
 app.post('/api/pslp/stop', (req, res) => {
   pslpProcessor.stop();
@@ -531,7 +532,7 @@ app.get('/api/mixinad/status', (req, res) => {
   res.json(mixinAdProcessor.getStatus());
 });
 
-app.post('/api/mixinad/start', async (req, res) => {
+app.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   const { environment, region, cultures, categories, widths } = req.body;
 
   const options = {
@@ -561,7 +562,7 @@ app.post('/api/mixinad/start', async (req, res) => {
   });
 
   res.json({ ok: true, message: 'Mix-In Ad capture started' });
-});
+}));
 
 app.post('/api/mixinad/stop', (req, res) => {
   mixinAdProcessor.stop();
@@ -739,6 +740,17 @@ function resolveBrowserApp(browserName) {
       return null;
   }
 }
+
+// Global error handler (must be defined after all routes)
+app.use((err, req, res, next) => {
+  console.error('Express error:', err);
+
+  // Send error response
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
 
 server.listen(PORT, () => {
   const address = server.address();
