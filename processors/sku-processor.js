@@ -199,6 +199,43 @@ export class SkuProcessor extends BaseProcessor {
           return 'Other';
         };
 
+        const hasImageWithSource = (root) => {
+          if (!root) return false;
+          const images = root.querySelectorAll('img');
+          return Array.from(images).some((img) => {
+            const src = img.getAttribute('src')
+              || img.getAttribute('data-src')
+              || img.getAttribute('srcset')
+              || img.getAttribute('data-srcset');
+            return src && src.trim();
+          });
+        };
+
+        const hasInlineBackgroundImage = (root) => {
+          if (!root) return false;
+          const elements = root.querySelectorAll('[style]');
+          return Array.from(elements).some((el) => {
+            const style = el.getAttribute('style') || '';
+            return /background-image\s*:\s*url\(/i.test(style);
+          });
+        };
+
+        const hasSectionContent = (section, excludeSelector = null) => {
+          if (!section) return false;
+          const nodes = Array.from(section.children || []).filter((child) => {
+            if (!excludeSelector) return true;
+            return !child.matches(excludeSelector);
+          });
+          if (nodes.length === 0) return false;
+          const text = nodes
+            .map((node) => node.textContent || '')
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (text.length > 0) return true;
+          return nodes.some((node) => hasImageWithSource(node) || hasInlineBackgroundImage(node));
+        };
+
         const collectImageUrls = () => {
           const urlsByFilename = new Map();
 
@@ -222,6 +259,16 @@ export class SkuProcessor extends BaseProcessor {
         const description = getText(selectors.productDescription);
         const itemDetails = getText(selectors.itemNumber);
         const savingsText = getText(selectors.productSavings);
+
+        const aboutSection = document.querySelector(selectors.aboutSection || '#section-pdp-about');
+        const aboutHasContent = hasSectionContent(aboutSection, 'header');
+        const ingredientsSection = document.querySelector(selectors.ingredientsSection || '#section-pdp-ingredients');
+        const ingredientsHasLabel = ingredientsSection ? hasImageWithSource(ingredientsSection) : false;
+        const ingredientsHasSmartIngredients = ingredientsSection
+          ? Array.from(ingredientsSection.querySelectorAll('.m-packList__item, .m-packList__list li'))
+            .some((item) => (item.textContent || '').trim().length > 0)
+          : false;
+        const ingredientsHasContent = ingredientsHasLabel || ingredientsHasSmartIngredients;
 
         let itemNumber = null;
         if (itemDetails) {
@@ -253,6 +300,10 @@ export class SkuProcessor extends BaseProcessor {
           description,
           itemNumber,
           savings,
+          aboutHasContent,
+          ingredientsHasContent,
+          ingredientsHasLabel,
+          ingredientsHasSmartIngredients,
           images,
           image,
           pageTitle: document.title,

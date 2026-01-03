@@ -161,6 +161,8 @@ export const config = {
       itemNumber: ".o-productDetails__details",
       productSavings: ".o-productDetails .text-red, .o-productDetails .text-red strong",
       pdpTopSection: "#section-pdp-top, .o-productDetails",
+      aboutSection: "#section-pdp-about",
+      ingredientsSection: "#section-pdp-ingredients",
       addToCartButton: ".m-cartAddConfig__btn button.a-button",
       cartShelf: ".o-cartShelf, .o-shelf.-isVisible",
       addedToCartMessage: ".o-cartShelf__header, .m-shelfConfirm__heading span[role='text']",
