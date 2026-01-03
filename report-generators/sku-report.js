@@ -117,6 +117,7 @@ export function generateSkuReport(results, duration, theme = 'dark') {
           : escapeHtml(r.addToCartResult.error || 'Failed')}</span>
             </div>
             ` : ''}
+            ${renderContentChecks(r.data)}
           </div>
         </div>
         ` : ''}
@@ -163,6 +164,49 @@ function formatImages(images) {
   return sorted
     .map((img) => `${escapeHtml(img.type)}: ${escapeHtml(img.filename)}`)
     .join('<br>');
+}
+
+function renderContentChecks(data) {
+  if (!data) return '';
+
+  const checks = [];
+  if (typeof data.aboutHasContent === 'boolean') {
+    checks.push({
+      label: 'About Content',
+      ok: data.aboutHasContent,
+      message: data.aboutHasContent ? 'Long Description or PDP found.' : 'Missing content'
+    });
+  }
+
+  if (typeof data.ingredientsHasContent === 'boolean') {
+    let detail = 'Missing ingredient label or smart ingredients';
+    if (data.ingredientsHasContent) {
+      if (data.ingredientsHasLabel && data.ingredientsHasSmartIngredients) {
+        detail = 'Ingredient label + smart ingredients';
+      } else if (data.ingredientsHasLabel) {
+        detail = 'Ingredient label';
+      } else if (data.ingredientsHasSmartIngredients) {
+        detail = 'Smart ingredients';
+      } else {
+        detail = 'Ingredients present';
+      }
+    }
+
+    checks.push({
+      label: 'Ingredients',
+      ok: data.ingredientsHasContent,
+      message: detail
+    });
+  }
+
+  if (checks.length === 0) return '';
+
+  return checks.map((check) => `
+            <div class="cart-result ${check.ok ? 'success' : 'error'}">
+              <strong>${escapeHtml(check.label)}:</strong>
+              <span>${escapeHtml(check.message)}</span>
+            </div>
+  `).join('');
 }
 
 function escapeHtml(str) {
