@@ -125,6 +125,169 @@
       font-size: 12px;
       color: #475569;
     }
+
+    /* Running Jobs Dashboard */
+    .dashboard-section {
+      margin-bottom: 32px;
+      display: none; /* Hidden by default, shown when jobs are running */
+    }
+
+    .dashboard-section.visible {
+      display: block;
+    }
+
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .dashboard-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .resource-warning {
+      background: #fef3c7;
+      color: #92400e;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .resource-warning.dark {
+      background: #78350f;
+      color: #fef3c7;
+    }
+
+    .job-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .job-card {
+      background: var(--bg-item);
+      border: 2px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      position: relative;
+    }
+
+    .job-card.sku {
+      border-left: 4px solid #10b981;
+    }
+
+    .job-card.banner {
+      border-left: 4px solid #3b82f6;
+    }
+
+    .job-card.pslp {
+      border-left: 4px solid #8b5cf6;
+    }
+
+    .job-card.mixinad {
+      border-left: 4px solid #ec4899;
+    }
+
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .job-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .job-icon {
+      font-size: 20px;
+    }
+
+    .job-stop-btn {
+      background: #ef4444;
+      color: white;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .job-stop-btn:hover {
+      background: #dc2626;
+    }
+
+    .job-status {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .job-progress {
+      background: var(--bg-hover);
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .job-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #059669);
+      transition: width 0.3s ease;
+      border-radius: 4px;
+    }
+
+    .job-card.banner .job-progress-bar {
+      background: linear-gradient(90deg, #3b82f6, #2563eb);
+    }
+
+    .job-card.pslp .job-progress-bar {
+      background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+    }
+
+    .job-card.mixinad .job-progress-bar {
+      background: linear-gradient(90deg, #ec4899, #db2777);
+    }
+
+    .job-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .pulse {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 2s infinite;
+      margin-right: 6px;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
   </style>
 </head>
 
@@ -141,6 +304,22 @@
         <div style="display:flex;gap:12px;justify-content:center;margin-top:12px;">
           <a class="secondary" href="credentials.html">Manage Credentials</a>
           <a class="secondary" href="category-manager.html">⚙️ Manage Categories</a>
+        </div>
+      </div>
+
+      <!-- Running Jobs Dashboard -->
+      <div class="dashboard-section" id="dashboard">
+        <div class="dashboard-header">
+          <div class="dashboard-title">
+            <span class="pulse"></span>
+            Running Jobs (<span id="job-count">0</span>)
+          </div>
+          <div id="resource-warning" class="resource-warning" style="display: none;">
+            ⚠️ Multiple jobs running - High resource usage
+          </div>
+        </div>
+        <div class="job-cards" id="job-cards">
+          <!-- Job cards will be dynamically inserted here -->
         </div>
       </div>
 
@@ -230,6 +409,208 @@
         document.getElementById('theme-icon').innerHTML = '&#9790;';
         document.getElementById('theme-text').textContent = 'Dark';
       }
+    })();
+
+    // Running Jobs Dashboard
+    (function initDashboard() {
+      const dashboard = document.getElementById('dashboard');
+      const jobCards = document.getElementById('job-cards');
+      const jobCount = document.getElementById('job-count');
+      const resourceWarning = document.getElementById('resource-warning');
+
+      const toolConfig = {
+        sku: { name: 'SKU Test', icon: '&#128230;', class: 'sku' },
+        banner: { name: 'Banner Test', icon: '&#128444;', class: 'banner' },
+        pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp' },
+        mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad' }
+      };
+
+      let jobStates = {
+        sku: null,
+        banner: null,
+        pslp: null,
+        mixinad: null
+      };
+
+      let jobStartTimes = {
+        sku: null,
+        banner: null,
+        pslp: null,
+        mixinad: null
+      };
+
+      // Fetch status for all processors
+      async function updateAllStatuses() {
+        const tools = ['sku', 'banner', 'pslp', 'mixinad'];
+
+        for (const tool of tools) {
+          try {
+            const response = await fetch(`/api/${tool}/status`);
+            const status = await response.json();
+
+            if (status.isRunning && !jobStates[tool]) {
+              jobStartTimes[tool] = Date.now();
+            } else if (!status.isRunning && jobStates[tool]) {
+              jobStartTimes[tool] = null;
+            }
+
+            jobStates[tool] = status.isRunning ? status : null;
+          } catch (err) {
+            console.error(`Error fetching ${tool} status:`, err);
+          }
+        }
+
+        renderDashboard();
+      }
+
+      // Render the dashboard
+      function renderDashboard() {
+        const runningJobs = Object.entries(jobStates).filter(([_, status]) => status !== null);
+        const count = runningJobs.length;
+
+        // Update job count
+        jobCount.textContent = count;
+
+        // Show/hide dashboard
+        if (count > 0) {
+          dashboard.classList.add('visible');
+        } else {
+          dashboard.classList.remove('visible');
+        }
+
+        // Show resource warning if 3+ jobs running
+        if (count >= 3) {
+          resourceWarning.style.display = 'flex';
+          if (document.body.classList.contains('light-mode')) {
+            resourceWarning.classList.remove('dark');
+          } else {
+            resourceWarning.classList.add('dark');
+          }
+        } else {
+          resourceWarning.style.display = 'none';
+        }
+
+        // Render job cards
+        jobCards.innerHTML = '';
+        runningJobs.forEach(([tool, status]) => {
+          const config = toolConfig[tool];
+          const card = createJobCard(tool, config, status);
+          jobCards.appendChild(card);
+        });
+      }
+
+      // Create a job card element
+      function createJobCard(tool, config, status) {
+        const card = document.createElement('div');
+        card.className = `job-card ${config.class}`;
+
+        // Calculate elapsed time
+        const elapsed = jobStartTimes[tool] ? Math.floor((Date.now() - jobStartTimes[tool]) / 1000) : 0;
+        const elapsedStr = formatElapsedTime(elapsed);
+
+        // Calculate progress percentage
+        let progressPercent = 0;
+        let progressText = 'Initializing...';
+
+        if (status.progress) {
+          if (status.progress.completed !== undefined && status.progress.total !== undefined) {
+            progressPercent = status.progress.total > 0
+              ? Math.round((status.progress.completed / status.progress.total) * 100)
+              : 0;
+            progressText = `${status.progress.completed} of ${status.progress.total}`;
+          } else if (status.progress.current !== undefined && status.progress.total !== undefined) {
+            progressPercent = status.progress.total > 0
+              ? Math.round((status.progress.current / status.progress.total) * 100)
+              : 0;
+            progressText = `${status.progress.current} of ${status.progress.total}`;
+          }
+        }
+
+        card.innerHTML = `
+          <div class="job-header">
+            <div class="job-name">
+              <span class="job-icon">${config.icon}</span>
+              ${config.name}
+            </div>
+            <button class="job-stop-btn" onclick="stopJob('${tool}')">Stop</button>
+          </div>
+          <div class="job-status">${status.message || progressText}</div>
+          <div class="job-progress">
+            <div class="job-progress-bar" style="width: ${progressPercent}%"></div>
+          </div>
+          <div class="job-meta">
+            <span>${progressPercent}% complete</span>
+            <span>${elapsedStr}</span>
+          </div>
+        `;
+
+        return card;
+      }
+
+      // Format elapsed time
+      function formatElapsedTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        if (mins > 0) {
+          return `${mins}m ${secs}s`;
+        }
+        return `${secs}s`;
+      }
+
+      // Stop a job
+      window.stopJob = async function(tool) {
+        if (!confirm(`Are you sure you want to stop the ${toolConfig[tool].name}?`)) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/${tool}/stop`, { method: 'POST' });
+          if (response.ok) {
+            console.log(`${tool} job stopped`);
+            setTimeout(updateAllStatuses, 500);
+          }
+        } catch (err) {
+          console.error(`Error stopping ${tool}:`, err);
+          alert(`Failed to stop ${tool} job`);
+        }
+      };
+
+      // Connect to WebSocket for real-time updates
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+
+          // Update specific tool state on progress events
+          if (message.type === 'progress' || message.type === 'status') {
+            // Trigger status update for the specific tool
+            setTimeout(updateAllStatuses, 100);
+          }
+
+          // Handle completion/error events
+          if (message.type === 'complete' || message.type === 'error') {
+            setTimeout(updateAllStatuses, 500);
+          }
+        } catch (err) {
+          console.error('Error parsing WebSocket message:', err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
+      };
+
+      // Initial status check
+      updateAllStatuses();
+
+      // Poll every 2 seconds as backup
+      setInterval(updateAllStatuses, 2000);
     })();
   </script>
 </body>
