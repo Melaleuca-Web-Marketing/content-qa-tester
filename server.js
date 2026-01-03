@@ -202,18 +202,27 @@ app.get('/api/sku/status', (req, res) => {
 });
 
 app.post('/api/sku/start', asyncHandler(async (req, res) => {
-  const { skus, environment, region, culture, fullScreenshot, topScreenshot, addToCart, username, password } = req.body;
+  const { skus, environment, region, culture, cultures, fullScreenshot, topScreenshot, addToCart, username, password } = req.body;
 
   if (!skus || !Array.isArray(skus) || skus.length === 0) {
     return res.status(400).json({ error: 'No SKUs provided' });
   }
 
   const useTopScreenshot = topScreenshot === true;
+  const normalizedCultures = Array.isArray(cultures)
+    ? cultures.map(c => String(c).trim()).filter(Boolean)
+    : (culture ? [String(culture).trim()] : []);
+  const defaultCulture = config.sku.defaults?.culture || 'en-US';
+  const selectedCultures = normalizedCultures.length > 0
+    ? normalizedCultures
+    : [defaultCulture];
+
   const options = {
     skus: skus.map(s => String(s).trim()).filter(Boolean),
     environment: environment || 'production',
     region: region || 'us',
-    culture: culture || 'en-US',
+    culture: selectedCultures[0],
+    cultures: selectedCultures,
     fullScreenshot: fullScreenshot !== false && !useTopScreenshot,
     topScreenshot: useTopScreenshot,
     addToCart: addToCart === true,

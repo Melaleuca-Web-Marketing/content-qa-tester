@@ -38,7 +38,9 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 // DOM Elements
 const envSelect = document.getElementById('env-select');
 const regionSelect = document.getElementById('region-select');
-const cultureSelect = document.getElementById('culture-select');
+const cultureOptions = document.getElementById('culture-options');
+const selectAllCulturesBtn = document.getElementById('select-all-cultures');
+const deselectAllCulturesBtn = document.getElementById('deselect-all-cultures');
 const usernameInput = document.getElementById('username-input');
 const passwordInput = document.getElementById('password-input');
 const skuInput = document.getElementById('sku-input');
@@ -70,7 +72,7 @@ async function init() {
   try {
     await loadConfig();
     setupEventListeners();
-    updateCultureOptions();
+    renderCultureOptions();
     loadPreferences();
     connectWebSocket();
   } catch (err) {
@@ -86,7 +88,7 @@ async function loadConfig() {
 
 function setupEventListeners() {
   regionSelect.addEventListener('change', () => {
-    updateCultureOptions();
+    renderCultureOptions();
     applySavedCredentials();
     savePreferences();
   });
@@ -95,10 +97,10 @@ function setupEventListeners() {
     applySavedCredentials();
     savePreferences();
   });
-  cultureSelect.addEventListener('change', () => {
-    applySavedCredentials();
-    savePreferences();
-  });
+  if (selectAllCulturesBtn && deselectAllCulturesBtn) {
+    selectAllCulturesBtn.addEventListener('click', () => toggleAllCultures(true));
+    deselectAllCulturesBtn.addEventListener('click', () => toggleAllCultures(false));
+  }
   fullScreenshotCheck.addEventListener('change', () => {
     if (fullScreenshotCheck.checked) {
       topScreenshotCheck.checked = false;
@@ -134,31 +136,51 @@ function setupEventListeners() {
   stopCaptureBtn.addEventListener('click', stopCapture);
 }
 
-function updateCultureOptions() {
+function renderCultureOptions(selectedCultures = null) {
   const region = regionSelect.value;
   const regionConfig = configData?.regions?.[region];
 
-  if (!regionConfig) return;
-
-  const currentCulture = cultureSelect.value;
-  cultureSelect.innerHTML = '';
-
-  regionConfig.cultures.forEach(culture => {
-    const option = document.createElement('option');
-    option.value = culture;
-    option.textContent = configData.cultureNames[culture] || culture;
-    cultureSelect.appendChild(option);
-  });
-
-  if (regionConfig.cultures.includes(currentCulture)) {
-    cultureSelect.value = currentCulture;
+  if (!regionConfig) {
+    cultureOptions.innerHTML = '<div class="meta">No cultures available</div>';
+    return;
   }
+
+  const defaultSelection = Array.isArray(selectedCultures) && selectedCultures.length > 0
+    ? selectedCultures
+    : regionConfig.cultures;
+
+  cultureOptions.innerHTML = regionConfig.cultures.map(culture => `
+    <label class="checkbox-row">
+      <input type="checkbox" name="culture" value="${culture}" ${defaultSelection.includes(culture) ? 'checked' : ''}>
+      <span>${configData.cultureNames?.[culture] || culture}</span>
+    </label>
+  `).join('');
+
+  cultureOptions.querySelectorAll('input').forEach(cb => {
+    cb.addEventListener('change', () => {
+      applySavedCredentials();
+      savePreferences();
+    });
+  });
+}
+
+function toggleAllCultures(checked) {
+  cultureOptions.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = checked;
+  });
+  applySavedCredentials();
+  savePreferences();
+}
+
+function getSelectedCultures() {
+  return Array.from(cultureOptions.querySelectorAll('input:checked')).map(cb => cb.value);
 }
 
 function applySavedCredentials() {
   if (!window.CredentialStore) return;
   const env = envSelect.value;
-  const culture = cultureSelect.value;
+  const cultures = getSelectedCultures();
+  const culture = cultures[0];
   if (!env || !culture) return;
   const entry = window.CredentialStore.getEntry(env, culture);
   if (!entry) return;
@@ -188,7 +210,7 @@ function savePreferences() {
   const prefs = {
     environment: envSelect.value,
     region: regionSelect.value,
-    culture: cultureSelect.value,
+    cultures: getSelectedCultures(),
     skus: skuInput.value,
     fullScreenshot: fullScreenshotCheck.checked,
     topScreenshot: topScreenshotCheck.checked,
@@ -206,9 +228,21 @@ function loadPreferences() {
       if (prefs.environment) envSelect.value = prefs.environment;
       if (prefs.region) {
         regionSelect.value = prefs.region;
-        updateCultureOptions();
+        const selectedCultures = Array.isArray(prefs.cultures)
+          ? prefs.cultures
+          : (prefs.culture ? [prefs.culture] : null);
+        renderCultureOptions(selectedCultures);
       }
-      if (prefs.culture) cultureSelect.value = prefs.culture;
+      if (!prefs.region) {
+        const selectedCultures = Array.isArray(prefs.cultures)
+          ? prefs.cultures
+          : (prefs.culture ? [prefs.culture] : null);
+        if (selectedCultures) {
+          cultureOptions.querySelectorAll('input').forEach(cb => {
+            cb.checked = selectedCultures.includes(cb.value);
+          });
+        }
+      }
       if (prefs.skus) skuInput.value = prefs.skus;
       if (typeof prefs.fullScreenshot === 'boolean') fullScreenshotCheck.checked = prefs.fullScreenshot;
       if (typeof prefs.topScreenshot === 'boolean') {
@@ -273,6 +307,9 @@ function handleWebSocketMessage(message) {
 
 function handleProgress(data) {
   const progress = data.progress;
+  if (progress.culture) {
+    progressCulture.textContent = `Culture: ${progress.culture}`;
+  }
   switch (progress.type) {
     case 'browser':
       setStatusRunning('Starting...', progress.status);
@@ -285,7 +322,9 @@ function handleProgress(data) {
     case 'sku-start':
       progressSku.textContent = `SKU: ${progress.sku}`;
       currentSkuInfo.style.display = 'block';
-      currentSkuName.textContent = `SKU ${progress.sku}`;
+      currentSkuName.textContent = progress.culture
+        ? `SKU ${progress.sku} (${progress.culture})`
+        : `SKU ${progress.sku}`;
       currentSkuPrice.textContent = '-';
       currentSkuStatus.textContent = progress.status;
       setStatusRunning('Capturing...', `SKU ${progress.sku}: ${progress.status}`);
@@ -318,7 +357,7 @@ function handleStatusUpdate(data) {
       isCapturing = true;
       captureStartTime = Date.now();
       setUICapturing();
-      setStatusRunning('Starting capture...', `${data.skuCount} SKUs to process`);
+      setStatusRunning('Starting capture...', `${data.skuCount} captures to process`);
       break;
 
     case 'waiting-for-auth':
@@ -344,7 +383,7 @@ function handleStatusUpdate(data) {
       isCapturing = false;
       setUIIdle();
       const cancelledCount = data.results?.filter(r => r.success).length || 0;
-      setStatusIdle('Capture cancelled', `${cancelledCount} SKUs captured before cancellation`);
+      setStatusIdle('Capture cancelled', `${cancelledCount} captures completed before cancellation`);
       saveReportBtn.disabled = !data.results?.length;
       break;
 
@@ -354,9 +393,9 @@ function handleStatusUpdate(data) {
       setUIIdle();
 
       if (data.errorCount === 0) {
-        setStatusSuccess('Capture complete!', `${data.successCount} SKUs captured in ${formatDuration(data.duration)}`);
+        setStatusSuccess('Capture complete!', `${data.successCount} captures completed in ${formatDuration(data.duration)}`);
       } else {
-        setStatusSuccess('Capture complete with errors', `${data.successCount} succeeded, ${data.errorCount} failed`);
+        setStatusSuccess('Capture complete with errors', `${data.successCount} captures succeeded, ${data.errorCount} failed`);
       }
 
       saveReportBtn.disabled = !data.results?.length;
@@ -399,11 +438,23 @@ function formatTime(ms) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+function formatCultureList(cultures) {
+  if (!cultures || cultures.length === 0) return '-';
+  if (cultures.length <= 2) return cultures.join(', ');
+  return `${cultures.length} cultures`;
+}
+
 async function startCapture() {
   const skus = parseSkus(skuInput.value);
+  const cultures = getSelectedCultures();
 
   if (skus.length === 0) {
     setStatusError('No SKUs entered', 'Enter at least one SKU number');
+    return;
+  }
+
+  if (cultures.length === 0) {
+    setStatusError('No cultures selected', 'Select at least one culture');
     return;
   }
 
@@ -423,7 +474,7 @@ async function startCapture() {
     skus,
     environment,
     region: regionSelect.value,
-    culture: cultureSelect.value,
+    cultures,
     fullScreenshot,
     topScreenshot,
     addToCart: addToCartCheck.checked,
@@ -432,8 +483,8 @@ async function startCapture() {
   };
 
   progressEnv.textContent = `Env: ${options.environment}`;
-  progressCulture.textContent = `Culture: ${options.culture}`;
-  progressSku.textContent = `SKUs: ${skus.length}`;
+  progressCulture.textContent = `Culture: ${formatCultureList(cultures)}`;
+  progressSku.textContent = `SKUs: ${skus.length} (${cultures.length} cultures)`;
 
   try {
     const response = await fetch('/api/sku/start', {

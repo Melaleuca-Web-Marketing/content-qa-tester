@@ -487,16 +487,17 @@ export class SkuProcessor extends BaseProcessor {
   }
 
   // Process a single SKU
-  async processSku(sku, index, total) {
+  async processSku(sku, currentIndex, total, culture) {
     const options = this.currentOptions;
-    const url = buildPdpUrl(options.environment, options.region, options.culture, sku);
+    const url = buildPdpUrl(options.environment, options.region, culture, sku);
 
-    log('info', `Processing SKU ${index + 1}/${total}`, { sku, url });
+    log('info', `Processing SKU ${currentIndex}/${total}`, { sku, culture, url });
 
     this.emit('progress', {
       type: 'sku-start',
       sku,
-      current: index + 1,
+      culture,
+      current: currentIndex,
       total,
       status: 'Loading page',
       url
@@ -507,7 +508,7 @@ export class SkuProcessor extends BaseProcessor {
       url,
       environment: options.environment,
       region: options.region,
-      culture: options.culture,
+      culture,
       timestamp: new Date().toISOString(),
       success: false,
       error: null,
@@ -551,7 +552,8 @@ export class SkuProcessor extends BaseProcessor {
       this.emit('progress', {
         type: 'sku-status',
         sku,
-        current: index + 1,
+        culture,
+        current: currentIndex,
         total,
         status: 'Extracting data'
       });
@@ -565,7 +567,8 @@ export class SkuProcessor extends BaseProcessor {
         this.emit('progress', {
           type: 'sku-error',
           sku,
-          current: index + 1,
+          culture,
+          current: currentIndex,
           total,
           error: result.error
         });
@@ -584,7 +587,8 @@ export class SkuProcessor extends BaseProcessor {
         this.emit('progress', {
           type: 'sku-status',
           sku,
-          current: index + 1,
+          culture,
+          current: currentIndex,
           total,
           status: 'Capturing screenshot'
         });
@@ -629,7 +633,8 @@ export class SkuProcessor extends BaseProcessor {
         this.emit('progress', {
           type: 'sku-status',
           sku,
-          current: index + 1,
+          culture,
+          current: currentIndex,
           total,
           status: 'Adding to cart'
         });
@@ -644,7 +649,8 @@ export class SkuProcessor extends BaseProcessor {
       this.emit('progress', {
         type: 'sku-complete',
         sku,
-        current: index + 1,
+        culture,
+        current: currentIndex,
         total,
         status: 'Complete',
         data: {
@@ -660,7 +666,8 @@ export class SkuProcessor extends BaseProcessor {
       this.emit('progress', {
         type: 'sku-error',
         sku,
-        current: index + 1,
+        culture,
+        current: currentIndex,
         total,
         error: err.message
       });
@@ -684,11 +691,23 @@ export class SkuProcessor extends BaseProcessor {
     this.isRunning = true;
     this.shouldStop = false;
     this.results = [];
-    this.currentOptions = options;
+    const selectedCultures = Array.isArray(options.cultures) && options.cultures.length > 0
+      ? options.cultures
+      : (options.culture ? [options.culture] : []);
+    this.currentOptions = {
+      ...options,
+      culture: selectedCultures[0] || options.culture || null,
+      cultures: selectedCultures
+    };
 
     const startTime = Date.now();
+    const totalRuns = selectedCultures.length * options.skus.length;
 
-    this.emit('status', { type: 'started', skuCount: options.skus.length });
+    this.emit('status', {
+      type: 'started',
+      skuCount: totalRuns,
+      cultureCount: selectedCultures.length
+    });
 
     try {
       // Launch browser
@@ -712,23 +731,27 @@ export class SkuProcessor extends BaseProcessor {
       }
 
       // Process each SKU
-      log('info', `Processing ${options.skus.length} SKUs...`);
-      for (let i = 0; i < options.skus.length; i++) {
-        if (this.shouldStop) {
-          log('info', 'Capture stopped by user');
-          this.emit('status', { type: 'cancelled', results: this.results });
-          break;
-        }
+      log('info', `Processing ${options.skus.length} SKUs across ${selectedCultures.length} cultures...`);
+      let runIndex = 0;
+      outer: for (const culture of selectedCultures) {
+        for (let i = 0; i < options.skus.length; i++) {
+          if (this.shouldStop) {
+            log('info', 'Capture stopped by user');
+            this.emit('status', { type: 'cancelled', results: this.results });
+            break outer;
+          }
 
-        const sku = options.skus[i];
-        log('info', `\n--- Processing SKU ${i + 1}/${options.skus.length}: ${sku} ---`);
-        const result = await this.processSku(sku, i, options.skus.length);
-        this.results.push(result);
+          const sku = options.skus[i];
+          log('info', `\n--- Processing SKU ${sku} (${culture}) ---`);
+          const result = await this.processSku(sku, runIndex + 1, totalRuns, culture);
+          this.results.push(result);
+          runIndex += 1;
 
-        // Wait between SKUs
-        if (i < options.skus.length - 1 && !this.shouldStop) {
-          log('info', `Waiting ${config.sku.timeouts.betweenSkus}ms before next SKU...`);
-          await this.page.waitForTimeout(config.sku.timeouts.betweenSkus);
+          // Wait between SKUs
+          if (runIndex < totalRuns && !this.shouldStop) {
+            log('info', `Waiting ${config.sku.timeouts.betweenSkus}ms before next SKU...`);
+            await this.page.waitForTimeout(config.sku.timeouts.betweenSkus);
+          }
         }
       }
 
