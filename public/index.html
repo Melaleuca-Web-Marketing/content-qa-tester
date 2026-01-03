@@ -197,6 +197,22 @@
       border-left: 4px solid #ec4899;
     }
 
+    .job-card.waiting-auth {
+      animation: pulse-border 2s infinite;
+      border-left-width: 6px;
+    }
+
+    @keyframes pulse-border {
+      0%, 100% {
+        border-left-color: currentColor;
+        box-shadow: 0 0 0 rgba(251, 191, 36, 0);
+      }
+      50% {
+        border-left-color: #fbbf24;
+        box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+      }
+    }
+
     .job-header {
       display: flex;
       justify-content: space-between;
@@ -230,6 +246,27 @@
 
     .job-stop-btn:hover {
       background: #dc2626;
+    }
+
+    .job-resume-btn {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-right: 8px;
+    }
+
+    .job-resume-btn:hover {
+      background: #059669;
+    }
+
+    .job-actions {
+      display: flex;
+      gap: 8px;
     }
 
     .job-status {
@@ -731,7 +768,13 @@
       // Create a job card element
       function createJobCard(tool, config, status) {
         const card = document.createElement('div');
-        card.className = `job-card ${config.class}`;
+
+        // Check if job is waiting for authentication
+        const isWaitingForAuth = status.statusType === 'waiting-for-auth' ||
+                                  (status.message && status.message.includes('Please sign in'));
+
+        // Add appropriate classes
+        card.className = `job-card ${config.class}${isWaitingForAuth ? ' waiting-auth' : ''}`;
 
         const elapsed = jobStartTimes[tool] ? Math.floor((Date.now() - jobStartTimes[tool]) / 1000) : 0;
         const elapsedStr = formatElapsedTime(elapsed);
@@ -740,32 +783,67 @@
         let progressText = 'Initializing...';
         let detailText = '';
 
-        // Extract overall progress from status.progress
-        if (status.progress) {
-          const { completed, total, current, culture, category, width, sku, step, component } = status.progress;
-          const progCurrent = completed ?? current;
-          if (progCurrent !== undefined && total !== undefined && total > 0) {
-            progressPercent = Math.round((progCurrent / total) * 100);
-            progressText = `${progCurrent} of ${total}`;
+        // If waiting for auth, show specific status
+        if (isWaitingForAuth) {
+          progressText = '⚠️ Waiting for Authentication';
+          detailText = status.message || 'Please authenticate in the browser window';
+        } else {
+          // Extract overall progress from status.progress
+          if (status.progress) {
+            const { completed, total, current, culture, category, width, sku, step, component } = status.progress;
+            const progCurrent = completed ?? current;
+            if (progCurrent !== undefined && total !== undefined && total > 0) {
+              progressPercent = Math.round((progCurrent / total) * 100);
+              progressText = `${progCurrent} of ${total}`;
+            }
+
+            // Build detail text based on job type
+            const parts = [];
+            if (culture) parts.push(culture);
+            if (category) parts.push(category);
+            if (width) parts.push(`${width}px`);
+            if (sku) parts.push(`SKU ${sku}`);
+            if (step) parts.push(step);
+            if (component) parts.push(component);
+
+            if (parts.length > 0) {
+              detailText = parts.join(' - ');
+            }
           }
 
-          // Build detail text based on job type
-          const parts = [];
-          if (culture) parts.push(culture);
-          if (category) parts.push(category);
-          if (width) parts.push(`${width}px`);
-          if (sku) parts.push(`SKU ${sku}`);
-          if (step) parts.push(step);
-          if (component) parts.push(component);
-
-          if (parts.length > 0) {
-            detailText = parts.join(' - ');
+          // Use status.message as detail if no detail from progress
+          if (!detailText && status.message) {
+            detailText = status.message;
           }
         }
 
-        // Use status.message as detail if no detail from progress
-        if (!detailText && status.message) {
-          detailText = status.message;
+        // Create action buttons based on state
+        const actionButtons = isWaitingForAuth
+          ? `<div class="job-actions">
+               <button class="job-resume-btn" onclick="resumeJob('${tool}')">Resume Capture</button>
+               <button class="job-stop-btn" onclick="stopJob('${tool}')">Stop</button>
+             </div>`
+          : `<button class="job-stop-btn" onclick="stopJob('${tool}')">Stop</button>`;
+
+        // Extract environment and culture from status
+        const environment = status.options?.environment || 'production';
+        const envBadge = environment === 'production' ? 'Prod' : environment === 'stage' ? 'Stage' : 'UAT';
+
+        // Handle both single culture (SKU, PSLP) and multiple cultures (Banner, Mix-in Ad)
+        let cultureBadge = 'N/A';
+        if (status.options?.culture) {
+          // Single culture test (SKU, PSLP)
+          cultureBadge = status.options.culture;
+        } else if (status.options?.cultures && Array.isArray(status.options.cultures)) {
+          // Multiple cultures test (Banner, Mix-in Ad)
+          if (status.options.cultures.length === 1) {
+            cultureBadge = status.options.cultures[0];
+          } else {
+            cultureBadge = `${status.options.cultures.length} cultures`;
+          }
+        } else if (status.progress?.culture) {
+          // Fallback to current culture from progress
+          cultureBadge = status.progress.culture;
         }
 
         card.innerHTML = `
@@ -774,7 +852,7 @@
               <span class="job-icon">${config.icon}</span>
               ${config.name}
             </div>
-            <button class="job-stop-btn" onclick="stopJob('${tool}')">Stop</button>
+            ${actionButtons}
           </div>
           <div class="job-status">${progressText}</div>
           ${detailText ? `<div class="job-detail">${detailText}</div>` : ''}
@@ -782,6 +860,8 @@
             <div class="job-progress-bar" style="width: ${progressPercent}%"></div>
           </div>
           <div class="job-meta">
+            <span>🌐 ${envBadge}</span>
+            <span>🌍 ${cultureBadge}</span>
             <span>${progressPercent}% complete</span>
             <span>${elapsedStr}</span>
           </div>
@@ -810,6 +890,25 @@
         }
       };
 
+      window.resumeJob = async function (tool) {
+        try {
+          const response = await fetch(`/api/${tool}/resume`, { method: 'POST' });
+          if (response.ok) {
+            console.log(`${tool} job resumed`);
+            // Update the job state to show it's resuming
+            if (jobStates[tool]) {
+              jobStates[tool].message = 'Resuming...';
+              jobStates[tool].statusType = null;
+              renderDashboard();
+            }
+            setTimeout(updateAllStatuses, 500);
+          }
+        } catch (err) {
+          console.error(`Error resuming ${tool}:`, err);
+          alert(`Failed to resume ${tool} job`);
+        }
+      };
+
       // Handle incoming WebSocket messages
       window.handleDashboardMessage = (message) => {
         const { type, data } = message;
@@ -821,6 +920,8 @@
             jobStates[tool] = {
               ...jobStates[tool],
               ...data,
+              // Preserve statusType from data if present
+              statusType: data.type || jobStates[tool].statusType,
               // Prefer new progress if it has data, otherwise keep existing
               progress: (data.progress && Object.keys(data.progress).length > 0)
                 ? data.progress
@@ -829,7 +930,10 @@
           } else if (data.isRunning) {
             // Job just started - initialize state
             jobStartTimes[tool] = Date.now();
-            jobStates[tool] = data;
+            jobStates[tool] = {
+              ...data,
+              statusType: data.type
+            };
           }
           renderDashboard();
         } else if (type.endsWith('-error')) {
@@ -894,6 +998,19 @@
         return date.toLocaleDateString();
       }
 
+      function getCultureDisplay(report) {
+        if (!report.culture) return '';
+
+        // If culture is 'multi', show the cultures array if available
+        if (report.culture === 'multi' && report.cultures && report.cultures.length > 0) {
+          const cultureList = report.cultures.join(', ');
+          return `<span title="${cultureList}">🌍 ${report.cultures.length} cultures</span>`;
+        }
+
+        // Single culture
+        return `<span>🌍 ${report.culture}</span>`;
+      }
+
       function renderHistory() {
         historyCount.textContent = history.length;
         if (history.length === 0) {
@@ -927,6 +1044,7 @@
             </div>
             <div class="history-meta">
               <span>🌐 ${report.environment}</span>
+              ${getCultureDisplay(report)}
               <span>⏱️ ${timeAgo}</span>
             </div>
           </div>

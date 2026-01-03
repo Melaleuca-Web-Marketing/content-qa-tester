@@ -23,7 +23,25 @@ export function autoGenerateReport(processor, reportGenerator, mode) {
       const now = new Date();
       const timestamp = formatTimestamp(now);
       const env = results.environment || (Array.isArray(results) && results[0]?.environment) || 'unknown';
-      const filename = `${mode}-test-${env}-${timestamp}.html`;
+
+      // Handle both single and multiple culture tests
+      let culture = 'unknown';
+      if (results.culture) {
+        // Single object with culture property (e.g., PSLP)
+        culture = results.culture;
+      } else if (Array.isArray(results) && results.length > 0) {
+        // Array of results (e.g., SKU, Banner, Mix-in Ad)
+        const uniqueCultures = [...new Set(results.map(r => r.culture).filter(Boolean))];
+        if (uniqueCultures.length === 1) {
+          culture = uniqueCultures[0];
+        } else if (uniqueCultures.length > 1) {
+          culture = 'multi';
+        } else {
+          culture = results[0]?.culture || 'unknown';
+        }
+      }
+
+      const filename = `${mode}-test-${env}-${culture}-${timestamp}.html`;
       const filepath = join(REPORTS_DIR, filename);
 
       fs.writeFileSync(filepath, html);
@@ -33,18 +51,23 @@ export function autoGenerateReport(processor, reportGenerator, mode) {
         filename,
         timestamp: now.getTime(),
         environment: env,
-        duration
+        duration,
+        culture
       };
 
       if (Array.isArray(results)) {
         entry.region = results[0]?.region;
-        entry.culture = results[0]?.culture;
         entry.count = results.length;
         entry.successCount = results.filter(r => r.success).length;
         entry.errorCount = results.filter(r => !r.success).length;
+
+        // Store all unique cultures if multiple
+        const uniqueCultures = [...new Set(results.map(r => r.culture).filter(Boolean))];
+        if (uniqueCultures.length > 1) {
+          entry.cultures = uniqueCultures;
+        }
       } else {
         entry.region = results.region;
-        entry.culture = results.culture;
         entry.componentsCount = results.componentReports?.length || 0;
         entry.screenshotsCount = results.screenshots?.length || 0;
       }

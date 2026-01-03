@@ -27,6 +27,8 @@ export class BaseProcessor extends EventEmitter {
     this.shouldResume = false;
     this.results = [];
     this.currentOptions = null;
+    this.currentStatusType = null;
+    this.currentStatusMessage = null;
     log('info', `${name} processor initialized`);
   }
 
@@ -217,6 +219,9 @@ export class BaseProcessor extends EventEmitter {
         this.browser = null;
         this.context = null;
         this.page = null;
+        // Clear status type and message on cleanup
+        this.currentStatusType = null;
+        this.currentStatusMessage = null;
         log('info', 'Browser cleanup complete');
       }
     }
@@ -250,9 +255,13 @@ export class BaseProcessor extends EventEmitter {
     log('info', `Waiting for user to manually sign in to ${environment}...`);
     this.shouldResume = false;
 
+    // Store current status
+    this.currentStatusType = 'waiting-for-auth';
+    this.currentStatusMessage = `Please sign in to ${environment} in the browser window, then click "Resume Capture"`;
+
     this.emit('status', {
       type: 'waiting-for-auth',
-      message: `Please sign in to ${environment} in the browser window, then click "Resume Capture"`
+      message: this.currentStatusMessage
     });
 
     // Poll until user clicks resume or stop (with timeout)
@@ -275,6 +284,10 @@ export class BaseProcessor extends EventEmitter {
     log('info', 'User resumed after manual auth');
     this.shouldResume = false;
 
+    // Clear waiting-for-auth status
+    this.currentStatusType = null;
+    this.currentStatusMessage = null;
+
     // Wait a moment for any post-auth redirects to complete
     await this.page.waitForTimeout(2000);
   }
@@ -284,7 +297,9 @@ export class BaseProcessor extends EventEmitter {
     return {
       isRunning: this.isRunning,
       resultsCount: this.results.length,
-      options: this.currentOptions
+      options: this.currentOptions,
+      statusType: this.currentStatusType,
+      message: this.currentStatusMessage
     };
   }
 
