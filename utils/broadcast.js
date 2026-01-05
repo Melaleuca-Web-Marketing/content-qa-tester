@@ -16,7 +16,7 @@ export function initWebSocket(server) {
     }
 
     wsClients.add(ws);
-    console.log('WebSocket client connected');
+    console.log(`[WebSocket] Client connected | userId: ${ws.userId || '(none - using anonymous)'} | Total clients: ${wsClients.size}`);
 
     ws.on('error', (err) => {
       console.error('WebSocket error:', err);
@@ -25,7 +25,7 @@ export function initWebSocket(server) {
 
     ws.on('close', () => {
       wsClients.delete(ws);
-      console.log('WebSocket client disconnected');
+      console.log(`[WebSocket] Client disconnected | userId: ${ws.userId || '(none)'} | Remaining clients: ${wsClients.size}`);
     });
   });
 }

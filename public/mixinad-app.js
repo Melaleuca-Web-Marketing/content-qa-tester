@@ -38,6 +38,14 @@ const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
 const userId = window.UserSession?.getId?.() || null;
 
+// Log user session info
+if (userId) {
+  const storageStatus = window.UserSession?.getStorageStatus?.() || 'unknown';
+  console.log(`[Session] User ID: ${userId} | Storage: ${storageStatus}`);
+} else {
+  console.error('[Critical] Failed to get userId - multi-user isolation may not work properly');
+}
+
 // DOM Elements
 const envSelect = document.getElementById('env-select');
 const regionSelect = document.getElementById('region-select');

@@ -74,7 +74,13 @@ function normalizeUserId(value) {
 function getUserId(req) {
   const headerId = req.get('x-user-id') || req.get('X-User-Id');
   const queryId = req.query.userId;
-  return normalizeUserId(headerId || queryId);
+  const userId = normalizeUserId(headerId || queryId);
+
+  if (!userId && req.path.startsWith('/api/')) {
+    console.warn(`[Server] API request without userId | path: ${req.method} ${req.path} | Will default to 'anonymous'`);
+  }
+
+  return userId;
 }
 
 function attachProcessorEvents(processor, tool, userId) {
@@ -488,23 +494,6 @@ router.post('/api/mixinad/resume', (req, res) => {
   res.json({ ok: true, message: 'Resume requested' });
 });
 
-app.get('/api/mixinad/results', (req, res) => {
-  const userId = getUserId(req);
-  res.json(getProcessorResults(userId, 'mixinad'));
-});
-
-// Auto-generate reports on completion (per-user processors are wired on creation)
-
-// ============ Shared Routes ============
-
-app.get('/api/history', (req, res) => {
-  const userId = getUserId(req) || 'anonymous';
-  const history = loadHistory(userId);
-  res.json({ history, limit: getHistoryLimit(userId) });
-});
-
-app.post('/api/history/limit', (req, res) => {
-  const userId = getUserId(req) || 'anonymous';
 router.get('/api/mixinad/results', (req, res) => {
   const userId = getUserId(req);
   res.json(getProcessorResults(userId, 'mixinad'));
