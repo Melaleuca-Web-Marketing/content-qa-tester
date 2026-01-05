@@ -34,6 +34,8 @@ let ws = null;
 let reconnectAttempts = 0;
 let isWaitingForResume = false;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
+const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
 const userId = window.UserSession?.getId?.() || null;
 
 // DOM Elements
@@ -73,7 +75,7 @@ async function init() {
 }
 
 async function loadConfig() {
-  const response = await fetch('/api/config');
+  const response = await fetch(api('/api/config'));
   configData = await response.json();
 }
 
@@ -275,7 +277,7 @@ function loadPreferences() {
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}?userId=${encodeURIComponent(userId || '')}`;
+  const wsUrl = `${protocol}//${window.location.host}${BASE_PATH}?userId=${encodeURIComponent(userId || '')}`;
 
   ws = new WebSocket(wsUrl);
 
@@ -471,7 +473,7 @@ async function startCapture() {
   }
 
   try {
-    const response = await fetch('/api/mixinad/start', {
+    const response = await fetch(api('/api/mixinad/start'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -494,7 +496,7 @@ async function startCapture() {
 
 async function stopCapture() {
   try {
-    await fetch('/api/mixinad/stop', {
+    await fetch(api('/api/mixinad/stop'), {
       method: 'POST',
       headers: userId ? { 'X-User-Id': userId } : {}
     });
@@ -508,7 +510,7 @@ async function resumeCapture() {
     setStatusRunning('Resuming...', 'Continuing capture after manual sign-in');
     startCaptureBtn.disabled = true;
 
-    const response = await fetch('/api/mixinad/resume', {
+    const response = await fetch(api('/api/mixinad/resume'), {
       method: 'POST',
       headers: userId ? { 'X-User-Id': userId } : {}
     });

@@ -1,9 +1,12 @@
 // history.js
 
 import fs from 'fs';
-import { join } from 'path';
+import { join, dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
-const DATA_DIR = process.env.TESTER_DATA_DIR || process.cwd();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DATA_DIR = process.env.TESTER_DATA_DIR || resolve(__dirname, '..');
 const HISTORY_FILE = join(DATA_DIR, 'history.json');
 const DEFAULT_HISTORY_LIMIT = 10;
 

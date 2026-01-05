@@ -5,6 +5,8 @@ let cultureList = [];
 let bannerCultureMap = {};
 let bannerCultureReverseMap = {};
 let activeStoredCulture = null;
+const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
+const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
 
 const envSelect = document.getElementById('cred-env');
 const cultureSelect = document.getElementById('cred-culture');
@@ -57,7 +59,7 @@ async function init() {
 }
 
 async function loadConfig() {
-  const response = await fetch('/api/config');
+  const response = await fetch(api('/api/config'));
   configData = await response.json();
   bannerCultureMap = configData?.banner?.cultureLangMap || {};
   bannerCultureReverseMap = buildReverseCultureMap(bannerCultureMap);

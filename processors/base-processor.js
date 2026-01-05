@@ -19,6 +19,11 @@ export class BaseProcessor extends EventEmitter {
   constructor(name) {
     super();
     this.name = name;
+    // Default headless behavior can be overridden with TESTER_HEADLESS=0/false
+    const envHeadless = process.env.TESTER_HEADLESS;
+    this.defaultHeadless = envHeadless === undefined
+      ? true
+      : !['0', 'false', 'no'].includes(String(envHeadless).toLowerCase());
     this.browser = null;
     this.context = null;
     this.page = null;
@@ -41,8 +46,10 @@ export class BaseProcessor extends EventEmitter {
       status: 'Launching browser'
     });
 
+    // Default to headless (or env override), allow per-call override.
+    const headless = options.headless !== undefined ? options.headless : this.defaultHeadless;
     this.browser = await chromium.launch({
-      headless: options.headless !== undefined ? options.headless : false,
+      headless,
       args: options.args || ['--start-maximized']
     });
 

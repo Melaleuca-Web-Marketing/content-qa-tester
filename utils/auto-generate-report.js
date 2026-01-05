@@ -1,11 +1,15 @@
 // auto-generate-report.js
 
-import { join } from 'path';
+import { join, dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { formatTimestamp } from './format-timestamp.js';
 import { saveToHistory } from './history.js';
 
-const REPORTS_DIR = join(process.cwd(), 'reports');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DATA_DIR = process.env.TESTER_DATA_DIR || resolve(__dirname, '..');
+const REPORTS_DIR = join(DATA_DIR, 'reports');
 
 export function autoGenerateReport(processor, reportGenerator, mode, userId = null) {
   processor.on('status', (data) => {
