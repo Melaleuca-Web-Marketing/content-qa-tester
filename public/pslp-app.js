@@ -61,6 +61,7 @@ const progressEta = document.getElementById('progress-eta');
 const progressEnv = document.getElementById('progress-env');
 const progressCulture = document.getElementById('progress-culture');
 const progressStep = document.getElementById('progress-step');
+const progressWidths = document.getElementById('progress-widths');
 const currentStepInfo = document.getElementById('current-step-info');
 const currentStepName = document.getElementById('current-step-name');
 const currentStepStatus = document.getElementById('current-step-status');
@@ -540,6 +541,9 @@ async function startCapture() {
   progressEnv.textContent = `Env: ${options.environment}`;
   progressCulture.textContent = `Culture: ${options.culture}`;
   progressStep.textContent = `Screens: ${widths.length}`;
+  if (progressWidths) {
+    progressWidths.textContent = `Widths: ${widths.join(', ')}`;
+  }
 
   try {
     const response = await fetch('/api/pslp/start', {

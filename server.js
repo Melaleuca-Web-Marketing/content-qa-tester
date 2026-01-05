@@ -324,7 +324,7 @@ app.get('/api/pslp/status', (req, res) => {
 });
 
 app.post('/api/pslp/start', asyncHandler(async (req, res) => {
-  const { environment, region, culture, components, widths, username, password, excelValidation } = req.body;
+  const { environment, region, culture, components, widths, screenWidths, username, password, excelValidation } = req.body;
 
   if (!culture) {
     return res.status(400).json({ error: 'No culture selected' });
@@ -339,7 +339,7 @@ app.post('/api/pslp/start', asyncHandler(async (req, res) => {
     region: region || 'us',
     culture,
     components: components || config.pslp.defaults.components,
-    widths: widths || config.pslp.defaults.widths,
+    screenWidths: screenWidths || widths || config.pslp.screenWidths,
     username: username || null,
     password: password || null
   };

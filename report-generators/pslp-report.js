@@ -20,6 +20,8 @@ export function generatePslpReport(results, duration, theme = 'dark', excelValid
     seasonalCarousel: seasonalCarouselValidation,
     brandCTAWindows: brandCTAWindowsValidation
   };
+  const validationSummary = buildPslpValidationSummary(validationContext);
+  const excelFilename = excelValidation?.filename || 'Unknown';
 
   const componentSummaries = componentReports.map((report) => {
     const itemCount = getItemCount(report.data);
@@ -50,6 +52,7 @@ export function generatePslpReport(results, duration, theme = 'dark', excelValid
 <span><strong>Culture:</strong> ${escapeHtml(options.culture || 'N/A')}</span>
 <span><strong>Generated:</strong> ${new Date(timestamp).toLocaleString()}</span>
 <span><strong>Duration:</strong> ${duration ? (duration / 1000).toFixed(1) + 's' : 'N/A'}</span>
+${validationSummary ? `<span><strong>Excel Validation:</strong> ${escapeHtml(excelFilename)}</span>` : ''}
 </div>
 </div>
 
@@ -70,6 +73,24 @@ export function generatePslpReport(results, duration, theme = 'dark', excelValid
 <h3>Screenshots</h3>
 <div class="value count">${screenshots.length}</div>
 </div>
+${validationSummary ? `
+<div class="summary-card" style="border: 2px solid #10b981;">
+<h3 style="color: #10b981;">Validation Passed</h3>
+<div class="value passed">${validationSummary.passed}</div>
+</div>
+<div class="summary-card" style="border: 2px solid #ef4444;">
+<h3 style="color: #ef4444;">Validation Failed</h3>
+<div class="value failed">${validationSummary.failed}</div>
+</div>
+<div class="summary-card" style="border: 2px solid #f59e0b;">
+<h3 style="color: #f59e0b;">Not Found in Excel</h3>
+<div class="value" style="color: #f59e0b;">${validationSummary.notFound}</div>
+</div>
+<div class="summary-card" style="border: 2px solid #8b5cf6;">
+<h3 style="color: #8b5cf6;">Pass Rate</h3>
+<div class="value" style="color: #8b5cf6; font-size: 18px;">${validationSummary.passRate}%</div>
+</div>
+` : ''}
 </div>
 
 <div class="section">
@@ -460,8 +481,7 @@ function renderValidationDetails(entry) {
     detailLines.push(...entry.mismatches);
   } else if (entry?.expectedSkus && entry?.actualSkus && entry.status !== 'pass') {
     const expectedText = entry.expectedSkus.length ? entry.expectedSkus.join(', ') : 'None';
-    const actualText = entry.actualSkus.length ? entry.actualSkus.join(', ') : 'None';
-    detailLines.push(`SKUs: expected ${expectedText}, actual ${actualText}`);
+    detailLines.push(`SKUs expected: ${expectedText}`);
   }
 
   if (detailLines.length === 0) {
@@ -469,6 +489,38 @@ function renderValidationDetails(entry) {
   }
 
   return detailLines.map((line) => `<div class="validation-detail">${escapeHtml(line)}</div>`).join('');
+}
+
+function buildPslpValidationSummary(validationContext) {
+  if (!validationContext) return null;
+  const validations = Object.values(validationContext).filter(Boolean);
+  if (validations.length === 0) return null;
+
+  let total = 0;
+  let passed = 0;
+  let failed = 0;
+  let notFound = 0;
+
+  validations.forEach((validation) => {
+    total += Number(validation.total || 0);
+    passed += Number(validation.passed || 0);
+    failed += Number(validation.failed || 0);
+
+    const extras = validation.extraPositions || validation.extraSlides || [];
+    if (Array.isArray(extras)) {
+      notFound += extras.length;
+    }
+  });
+
+  const passRate = total > 0 ? ((passed / total) * 100).toFixed(1) : '0.0';
+
+  return {
+    total,
+    passed,
+    failed,
+    notFound,
+    passRate
+  };
 }
 
 function formatComponentName(name) {
@@ -587,13 +639,13 @@ function buildCarouselValidation(componentReports, excelValidation, options, com
 
     const mismatches = [];
     if (!linkMatch) {
-      mismatches.push(`Link: expected ${expectedLink || 'N/A'}, actual ${actualLink || 'N/A'}`);
+      mismatches.push(`Link expected: ${expectedLink || 'N/A'}`);
     }
     if (!targetMatch) {
-      mismatches.push(`Target: expected ${expectedTarget || 'N/A'}, actual ${actualTarget || 'N/A'}`);
+      mismatches.push(`Target expected: ${expectedTarget || 'N/A'}`);
     }
     if (!localeMatch) {
-      mismatches.push(`Image Locale: expected ${expectedLocale || 'N/A'}, actual ${actualLocale || 'N/A'}`);
+      mismatches.push(`Image Locale expected: ${expectedLocale || 'N/A'}`);
     }
 
     const status = mismatches.length === 0 ? 'pass' : 'fail';
@@ -732,12 +784,11 @@ function buildSeasonalCarouselValidation(componentReports, excelValidation, opti
 
     const mismatches = [];
     if (expectedSkus.length && !compareSkuSets(expectedSkus, actualSkus)) {
-      const expectedText = normalizedExpectedSkus.length ? normalizedExpectedSkus.join(', ') : 'None';
-      const actualText = normalizedActualSkus.length ? normalizedActualSkus.join(', ') : 'None';
-      mismatches.push(`SKUs: expected ${expectedText}, actual ${actualText}`);
+      const expectedText = expectedSkus.length ? expectedSkus.join(', ') : 'None';
+      mismatches.push(`SKUs expected: ${expectedText}`);
     }
     if (expectedLocale && expectedLocale !== actualLocale) {
-      mismatches.push(`Image Locale: expected ${expectedLocale || 'N/A'}, actual ${actualLocale || 'N/A'}`);
+      mismatches.push(`Image Locale expected: ${expectedLocale || 'N/A'}`);
     }
 
     const status = mismatches.length === 0 ? 'pass' : 'fail';
@@ -752,7 +803,7 @@ function buildSeasonalCarouselValidation(componentReports, excelValidation, opti
       status,
       expected: row,
       actual,
-      expectedSkus: normalizedExpectedSkus,
+      expectedSkus,
       actualSkus: normalizedActualSkus,
       mismatches
     });
@@ -813,7 +864,10 @@ function buildMonthlySpecialsValidation(componentReports, excelValidation) {
   expectedBySlide.forEach((expectedSkus, slide) => {
     const actualSet = actualBySlide.get(slide);
     const actualSkus = actualSet ? Array.from(actualSet) : [];
-    const normalizedExpected = Array.from(new Set((expectedSkus || []).map((sku) => String(sku).trim()))).sort();
+    const expectedSkusOrdered = (expectedSkus || [])
+      .map((sku) => String(sku).trim())
+      .filter(Boolean);
+    const normalizedExpected = Array.from(new Set(expectedSkusOrdered)).sort();
     const normalizedActual = Array.from(new Set((actualSkus || []).map((sku) => String(sku).trim()))).sort();
     const mismatches = [];
     let status = 'pass';
@@ -825,9 +879,8 @@ function buildMonthlySpecialsValidation(componentReports, excelValidation) {
       failed += 1;
     } else if (!compareSkuSets(normalizedExpected, normalizedActual)) {
       status = 'fail';
-      const expectedText = normalizedExpected.length ? normalizedExpected.join(', ') : 'None';
-      const actualText = normalizedActual.length ? normalizedActual.join(', ') : 'None';
-      mismatches.push(`SKUs: expected ${expectedText}, actual ${actualText}`);
+      const expectedText = expectedSkusOrdered.length ? expectedSkusOrdered.join(', ') : 'None';
+      mismatches.push(`SKUs expected: ${expectedText}`);
       failed += 1;
     } else {
       passed += 1;
@@ -835,7 +888,7 @@ function buildMonthlySpecialsValidation(componentReports, excelValidation) {
 
     slides.push({
       slide,
-      expectedSkus: normalizedExpected,
+      expectedSkus: expectedSkusOrdered,
       actualSkus: normalizedActual,
       status,
       mismatches
