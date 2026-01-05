@@ -7,7 +7,14 @@ export const wsClients = new Set();
 export function initWebSocket(server) {
   const wss = new WebSocketServer({ server });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    try {
+      const url = new URL(req.url || '/', 'http://localhost');
+      ws.userId = url.searchParams.get('userId') || null;
+    } catch {
+      ws.userId = null;
+    }
+
     wsClients.add(ws);
     console.log('WebSocket client connected');
 
@@ -23,9 +30,12 @@ export function initWebSocket(server) {
   });
 }
 
-export function broadcast(message) {
+export function broadcast(message, userId = null) {
   const data = JSON.stringify(message);
   wsClients.forEach(client => {
+    if (userId && client.userId !== userId) {
+      return;
+    }
     if (client.readyState === 1) {
       try {
         client.send(data);

@@ -34,6 +34,7 @@ let ws = null;
 let reconnectAttempts = 0;
 let isWaitingForResume = false;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const userId = window.UserSession?.getId?.() || null;
 
 // DOM Elements
 const envSelect = document.getElementById('env-select');
@@ -274,7 +275,7 @@ function loadPreferences() {
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}`;
+  const wsUrl = `${protocol}//${window.location.host}?userId=${encodeURIComponent(userId || '')}`;
 
   ws = new WebSocket(wsUrl);
 
@@ -472,7 +473,10 @@ async function startCapture() {
   try {
     const response = await fetch('/api/banner/start', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(userId ? { 'X-User-Id': userId } : {})
+      },
       body: JSON.stringify(options)
     });
 
@@ -490,7 +494,10 @@ async function startCapture() {
 
 async function stopCapture() {
   try {
-    await fetch('/api/banner/stop', { method: 'POST' });
+    await fetch('/api/banner/stop', {
+      method: 'POST',
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
   } catch (err) {
     console.error('Error stopping capture:', err);
   }
@@ -501,7 +508,10 @@ async function resumeCapture() {
     setStatusRunning('Resuming...', 'Continuing capture after manual sign-in');
     startCaptureBtn.disabled = true;
 
-    const response = await fetch('/api/banner/resume', { method: 'POST' });
+    const response = await fetch('/api/banner/resume', {
+      method: 'POST',
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
     const result = await response.json();
 
     if (!result.ok) {

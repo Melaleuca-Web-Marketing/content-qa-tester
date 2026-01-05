@@ -4,11 +4,10 @@ import { join } from 'path';
 import fs from 'fs';
 import { formatTimestamp } from './format-timestamp.js';
 import { saveToHistory } from './history.js';
-import { broadcast } from './broadcast.js';
 
 const REPORTS_DIR = join(process.cwd(), 'reports');
 
-export function autoGenerateReport(processor, reportGenerator, mode) {
+export function autoGenerateReport(processor, reportGenerator, mode, userId = null) {
   processor.on('status', (data) => {
     if (data.type === 'completed') {
       const results = processor.getResults();
@@ -29,6 +28,7 @@ export function autoGenerateReport(processor, reportGenerator, mode) {
 
       const now = new Date();
       const timestamp = formatTimestamp(now);
+      const msStamp = String(now.getMilliseconds()).padStart(3, '0');
       const env = results.environment || (Array.isArray(results) && results[0]?.environment) || 'unknown';
 
       // Handle both single and multiple culture tests
@@ -48,7 +48,8 @@ export function autoGenerateReport(processor, reportGenerator, mode) {
         }
       }
 
-      const filename = `${mode}-test-${env}-${culture}-${timestamp}.html`;
+      const userTag = userId ? String(userId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) : 'anon';
+      const filename = `${mode}-test-${env}-${culture}-${timestamp}-${msStamp}-${userTag}.html`;
       const filepath = join(REPORTS_DIR, filename);
 
       fs.writeFileSync(filepath, html);
@@ -79,8 +80,7 @@ export function autoGenerateReport(processor, reportGenerator, mode) {
         entry.screenshotsCount = results.screenshots?.length || 0;
       }
 
-      saveToHistory(entry);
+      saveToHistory(entry, userId);
     }
-    broadcast({ type: `${mode}-status`, data });
   });
 }
