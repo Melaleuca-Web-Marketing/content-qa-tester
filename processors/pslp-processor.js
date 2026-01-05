@@ -194,39 +194,44 @@ export class PSLPProcessor extends BaseProcessor {
       const totalSteps = screenWidths.length + options.components.length;
       let completedSteps = 0;
 
-      for (const width of screenWidths) {
-        if (this.shouldStop) throw new Error('Operation stopped by user');
+      await this.setScrollbarVisibility(true);
+      try {
+        for (const width of screenWidths) {
+          if (this.shouldStop) throw new Error('Operation stopped by user');
 
-        completedSteps++;
-        const progress = (completedSteps / totalSteps) * 100;
+          completedSteps++;
+          const progress = (completedSteps / totalSteps) * 100;
 
-        this.emit('progress', {
-          type: 'screenshot',
-          status: `Taking screenshot at ${width}px...`,
-          progress,
-          width,
-          current: completedSteps,
-          total: screenWidths.length
-        });
+          this.emit('progress', {
+            type: 'screenshot',
+            status: `Taking screenshot at ${width}px...`,
+            progress,
+            width,
+            current: completedSteps,
+            total: screenWidths.length
+          });
 
-        await this.page.setViewportSize({ width, height: 1080 });
-        await this.applyCarouselStacking({ stackMonthlySpecials: width >= 768 });
-        await this.normalizeTabletLayout(width);
-        await this.prepareForScreenshot();
-        await this.dismissModalIfPresent();
+          await this.page.setViewportSize({ width, height: 1080 });
+          await this.applyCarouselStacking({ stackMonthlySpecials: width >= 768 });
+          await this.normalizeTabletLayout(width);
+          await this.prepareForScreenshot();
+          await this.dismissModalIfPresent();
 
-        const screenshotBuffer = await this.page.screenshot({
-          fullPage: true,
-          type: 'jpeg',
-          quality: 80
-        });
+          const screenshotBuffer = await this.page.screenshot({
+            fullPage: true,
+            type: 'jpeg',
+            quality: 80
+          });
 
-        screenshots.push({
-          width,
-          data: screenshotBuffer.toString('base64')
-        });
+          screenshots.push({
+            width,
+            data: screenshotBuffer.toString('base64')
+          });
 
-        await this.page.waitForTimeout(500);
+          await this.page.waitForTimeout(500);
+        }
+      } finally {
+        await this.setScrollbarVisibility(false);
       }
 
       // Extract component data
@@ -385,6 +390,25 @@ export class PSLPProcessor extends BaseProcessor {
       await dots[i].evaluate((el) => el.click()).catch(() => { });
       await this.page.waitForTimeout(400);
     }
+  }
+
+  async setScrollbarVisibility(hidden) {
+    await this.page.evaluate((hide) => {
+      const styleId = 'pslp-hide-scrollbars';
+      const existing = document.getElementById(styleId);
+      if (hide) {
+        if (existing) return;
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+          * { scrollbar-width: none !important; }
+          *::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+        `;
+        document.head.appendChild(style);
+      } else if (existing) {
+        existing.remove();
+      }
+    }, hidden);
   }
 
   async prepareForScreenshot() {
