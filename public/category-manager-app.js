@@ -4,6 +4,8 @@ let categoriesData = {};
 let currentRegion = null;
 let expandedItems = new Set(); // Track which subcategory rows are expanded
 let hasUnsavedChanges = false; // Track if there are unsaved changes
+const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
+const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
 
 // Culture mappings per region
 const REGION_CULTURES = {
@@ -77,7 +79,7 @@ window.addEventListener('beforeunload', (e) => {
 // Load categories on page load
 async function loadCategories() {
   try {
-    const response = await fetch('/api/categories');
+    const response = await fetch(api('/api/categories'));
     if (!response.ok) throw new Error('Failed to load categories');
 
     categoriesData = await response.json();
@@ -380,7 +382,7 @@ async function saveCategories() {
   try {
     showStatus('success', 'Saving categories...');
 
-    const response = await fetch('/api/categories', {
+    const response = await fetch(api('/api/categories'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(categoriesData)

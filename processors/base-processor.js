@@ -41,8 +41,10 @@ export class BaseProcessor extends EventEmitter {
       status: 'Launching browser'
     });
 
+    // Default to headless in server environments; allow override per call.
+    const headless = options.headless !== undefined ? options.headless : true;
     this.browser = await chromium.launch({
-      headless: options.headless !== undefined ? options.headless : false,
+      headless,
       args: options.args || ['--start-maximized']
     });
 

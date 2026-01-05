@@ -26,15 +26,19 @@ import { initWebSocket, broadcast } from './utils/broadcast.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const app = express();
-const server = createServer(app);
-initWebSocket(server);
-
 const rawPort = process.env.TESTER_PORT || process.env.PORT || '3000';
 const PORT = Number.isNaN(Number(rawPort)) ? 3000 : Number(rawPort);
+const rawBasePath = process.env.TESTER_BASE_PATH || '/';
+const normalizedBase = rawBasePath === '/' ? '' : `/${rawBasePath.replace(/^\/+|\/+$/g, '')}`;
+const BASE_PATH = normalizedBase === '/' ? '' : normalizedBase;
 const DATA_DIR = process.env.TESTER_DATA_DIR || __dirname;
 const REPORTS_DIR = join(DATA_DIR, 'reports');
 const HISTORY_FILE = join(DATA_DIR, 'history.json');
+
+const app = express();
+const server = createServer(app);
+initWebSocket(server);
+const router = express.Router();
 
 // Ensure data directories exist
 if (!fs.existsSync(DATA_DIR)) {
@@ -46,14 +50,19 @@ if (!fs.existsSync(REPORTS_DIR)) {
 }
 
 // Middleware
-app.use(express.json());
-app.use((req, res, next) => {
+router.use(express.json());
+router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
   next();
 });
-app.use(express.static(join(__dirname, 'public')));
+// Serve a tiny script that exposes the base path to the frontend
+router.get('/base-path.js', (req, res) => {
+  res.type('application/javascript').send(`window.__BASE_PATH = ${JSON.stringify(BASE_PATH)};`);
+});
+
+router.use(express.static(join(__dirname, 'public')));
 
 // Set up processor event listeners
 const skuProcessor = getSkuProcessor();
@@ -116,7 +125,7 @@ mixinAdProcessor.on('error', (data) => {
 // ============ API Routes ============
 
 // Get unified configuration
-app.get('/api/config', (req, res) => {
+router.get('/api/config', (req, res) => {
   res.json({
     environments: Object.keys(config.environments),
     regions: config.regions,
@@ -144,7 +153,7 @@ app.get('/api/config', (req, res) => {
 
 // ============ Category Management API Routes ============
 
-app.get('/api/categories', (req, res) => {
+router.get('/api/categories', (req, res) => {
   try {
     const categoriesPath = join(__dirname, 'categories.json');
     const categoriesData = fs.readFileSync(categoriesPath, 'utf8');
@@ -155,7 +164,7 @@ app.get('/api/categories', (req, res) => {
   }
 });
 
-app.post('/api/categories', express.json(), (req, res) => {
+router.post('/api/categories', express.json(), (req, res) => {
   try {
     const categories = req.body;
 
@@ -197,11 +206,11 @@ app.post('/api/categories', express.json(), (req, res) => {
 
 // ============ SKU API Routes ============
 
-app.get('/api/sku/status', (req, res) => {
+router.get('/api/sku/status', (req, res) => {
   res.json(skuProcessor.getStatus());
 });
 
-app.post('/api/sku/start', asyncHandler(async (req, res) => {
+router.post('/api/sku/start', asyncHandler(async (req, res) => {
   const { skus, environment, region, culture, cultures, fullScreenshot, topScreenshot, addToCart, username, password } = req.body;
 
   if (!skus || !Array.isArray(skus) || skus.length === 0) {
@@ -251,25 +260,25 @@ app.post('/api/sku/start', asyncHandler(async (req, res) => {
   res.json({ ok: true, message: 'SKU capture started' });
 }));
 
-app.post('/api/sku/stop', (req, res) => {
+router.post('/api/sku/stop', (req, res) => {
   skuProcessor.stop();
   res.json({ ok: true, message: 'Stop requested' });
 });
 
-app.post('/api/sku/resume', (req, res) => {
+router.post('/api/sku/resume', (req, res) => {
   skuProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
 });
 
-app.get('/api/sku/results', (req, res) => {
+router.get('/api/sku/results', (req, res) => {
   res.json(skuProcessor.getResults());
 });
 
-app.get('/api/banner/status', (req, res) => {
+router.get('/api/banner/status', (req, res) => {
   res.json(bannerProcessor.getStatus());
 });
 
-app.post('/api/banner/start', asyncHandler(async (req, res) => {
+router.post('/api/banner/start', asyncHandler(async (req, res) => {
   const { environment, region, cultures, widths, categories, excelValidation } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
@@ -303,27 +312,27 @@ app.post('/api/banner/start', asyncHandler(async (req, res) => {
   res.json({ ok: true, message: 'Banner capture started' });
 }));
 
-app.post('/api/banner/stop', (req, res) => {
+router.post('/api/banner/stop', (req, res) => {
   bannerProcessor.stop();
   res.json({ ok: true, message: 'Stop requested' });
 });
 
-app.post('/api/banner/resume', (req, res) => {
+router.post('/api/banner/resume', (req, res) => {
   bannerProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
 });
 
-app.get('/api/banner/results', (req, res) => {
+router.get('/api/banner/results', (req, res) => {
   res.json(bannerProcessor.getResults());
 });
 
 // ============ PSLP API Routes ============
 
-app.get('/api/pslp/status', (req, res) => {
+router.get('/api/pslp/status', (req, res) => {
   res.json(pslpProcessor.getStatus());
 });
 
-app.post('/api/pslp/start', asyncHandler(async (req, res) => {
+router.post('/api/pslp/start', asyncHandler(async (req, res) => {
   const { environment, region, culture, components, widths, screenWidths, username, password, excelValidation } = req.body;
 
   if (!culture) {
@@ -356,27 +365,27 @@ app.post('/api/pslp/start', asyncHandler(async (req, res) => {
   res.json({ ok: true, message: 'PSLP capture started' });
 }));
 
-app.post('/api/pslp/stop', (req, res) => {
+router.post('/api/pslp/stop', (req, res) => {
   pslpProcessor.stop();
   res.json({ ok: true, message: 'Stop requested' });
 });
 
-app.post('/api/pslp/resume', (req, res) => {
+router.post('/api/pslp/resume', (req, res) => {
   pslpProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
 });
 
-app.get('/api/pslp/results', (req, res) => {
+router.get('/api/pslp/results', (req, res) => {
   res.json(pslpProcessor.getResults());
 });
 
 // ============ Mix-In Ad API Routes ============
 
-app.get('/api/mixinad/status', (req, res) => {
+router.get('/api/mixinad/status', (req, res) => {
   res.json(mixinAdProcessor.getStatus());
 });
 
-app.post('/api/mixinad/start', asyncHandler(async (req, res) => {
+router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   const { environment, region, cultures, widths, categories, excelValidation } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
@@ -410,17 +419,17 @@ app.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   res.json({ ok: true, message: 'Mix-In Ad capture started' });
 }));
 
-app.post('/api/mixinad/stop', (req, res) => {
+router.post('/api/mixinad/stop', (req, res) => {
   mixinAdProcessor.stop();
   res.json({ ok: true, message: 'Stop requested' });
 });
 
-app.post('/api/mixinad/resume', (req, res) => {
+router.post('/api/mixinad/resume', (req, res) => {
   mixinAdProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
 });
 
-app.get('/api/mixinad/results', (req, res) => {
+router.get('/api/mixinad/results', (req, res) => {
   res.json(mixinAdProcessor.getResults());
 });
 
@@ -430,16 +439,16 @@ autoGenerateReport(bannerProcessor, generateBannerReport, 'banner');
 autoGenerateReport(pslpProcessor, generatePslpReport, 'pslp');
 autoGenerateReport(mixinAdProcessor, generateMixInAdReport, 'mixinad');
 
-app.use('/reports', express.static(REPORTS_DIR));
+router.use('/reports', express.static(REPORTS_DIR));
 
 // ============ Shared Routes ============
 
-app.get('/api/history', (req, res) => {
+router.get('/api/history', (req, res) => {
   const history = loadHistory();
   res.json({ history, limit: getHistoryLimit() });
 });
 
-app.post('/api/history/limit', (req, res) => {
+router.post('/api/history/limit', (req, res) => {
   const { limit } = req.body;
   if (setHistoryLimit(limit)) {
     res.json({ ok: true, limit: getHistoryLimit() });
@@ -449,7 +458,7 @@ app.post('/api/history/limit', (req, res) => {
 });
 
 // Delete a single history entry and its report file
-app.delete('/api/history/:filename', (req, res) => {
+router.delete('/api/history/:filename', (req, res) => {
   const { filename } = req.params;
 
   // Validate filename to prevent path traversal
@@ -477,7 +486,7 @@ app.delete('/api/history/:filename', (req, res) => {
 });
 
 // Clear all history
-app.delete('/api/history', (req, res) => {
+router.delete('/api/history', (req, res) => {
   const deleteReports = req.query.deleteReports === 'true';
 
   if (deleteReports) {
@@ -499,7 +508,7 @@ app.delete('/api/history', (req, res) => {
 });
 
 // Download a report file
-app.get('/api/reports/:filename', (req, res) => {
+router.get('/api/reports/:filename', (req, res) => {
   const { filename } = req.params;
 
   // Validate filename to prevent path traversal
@@ -538,7 +547,7 @@ function resolveBrowserApp(browserName) {
 }
 
 // Global error handler (must be defined after all routes)
-app.use((err, req, res, next) => {
+router.use((err, req, res, next) => {
   console.error('Express error:', err);
 
   // Send error response
@@ -548,10 +557,13 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Mount router at base path
+app.use(BASE_PATH || '/', router);
+
 server.listen(PORT, () => {
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : PORT;
-  const url = `http://localhost:${port}`;
+  const url = `http://localhost:${port}${BASE_PATH}`;
   console.log('');
   console.log('='.repeat(50));
   console.log('  Melaleuca Content QA Tester');

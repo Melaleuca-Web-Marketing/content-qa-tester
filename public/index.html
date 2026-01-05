@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Melaleuca Content QA Tester</title>
+  <script src="base-path.js"></script>
   <link rel="stylesheet" href="shared.css">
   <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
   <script src="excel-validator.js"></script>
@@ -839,10 +840,14 @@
       }
     })();
 
+    const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
+    const api = (path) => `${BASE_PATH}${path}`;
+
     // Single WebSocket connection for the whole app
     (function initWebSocket() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}`);
+      const basePath = (window.__BASE_PATH || '').replace(/\/+$/, '');
+      const ws = new WebSocket(`${protocol}//${window.location.host}${basePath}`);
 
       ws.onmessage = (event) => {
         try {
@@ -905,7 +910,7 @@
 
         for (const tool of tools) {
           try {
-            const response = await fetch(`/api/${tool}/status`);
+            const response = await fetch(api(`/api/${tool}/status`));
             if (!response.ok) {
               jobStates[tool] = null;
               jobStartTimes[tool] = null;
@@ -1085,7 +1090,7 @@
       window.stopJob = async function (tool) {
         if (!confirm(`Are you sure you want to stop the ${toolConfig[tool].name}?`)) return;
         try {
-          const response = await fetch(`/api/${tool}/stop`, { method: 'POST' });
+          const response = await fetch(api(`/api/${tool}/stop`), { method: 'POST' });
           if (response.ok) {
             console.log(`${tool} job stopped`);
             setTimeout(updateAllStatuses, 500);
@@ -1098,7 +1103,7 @@
 
       window.resumeJob = async function (tool) {
         try {
-          const response = await fetch(`/api/${tool}/resume`, { method: 'POST' });
+          const response = await fetch(api(`/api/${tool}/resume`), { method: 'POST' });
           if (response.ok) {
             console.log(`${tool} job resumed`);
             // Update the job state to show it's resuming
@@ -1176,7 +1181,7 @@
       // Fetch history from server
       async function fetchHistory() {
         try {
-          const response = await fetch('/api/history');
+          const response = await fetch(api('/api/history'));
           const data = await response.json();
           history = data.history;
           historyLimit = data.limit;
@@ -1258,7 +1263,7 @@
             <a class="history-btn" href="/reports/${report.filename}" target="_blank">
               📂 Open
             </a>
-            <a class="history-btn download" href="/api/reports/${report.filename}" download>
+            <a class="history-btn download" href="${BASE_PATH}/api/reports/${report.filename}" download>
               ⬇️ Download
             </a>
             <button class="history-btn delete" onclick="deleteHistoryItem('${report.filename}')">
@@ -1272,7 +1277,7 @@
       window.deleteHistoryItem = async function (filename) {
         if (!confirm(`Are you sure you want to delete the report ${filename}?`)) return;
         try {
-          await fetch(`/api/history/${filename}`, { method: 'DELETE' });
+          await fetch(api(`/api/history/${filename}`), { method: 'DELETE' });
           loadHistory();
         } catch (err) {
           console.error('Error deleting history item:', err);
@@ -1283,7 +1288,7 @@
       window.saveHistoryLimit = async function () {
         const limit = document.getElementById('history-limit').value;
         try {
-          await fetch('/api/history/limit', {
+          await fetch(api('/api/history/limit'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ limit: parseInt(limit, 10) })
@@ -1297,7 +1302,7 @@
       window.clearHistory = async function () {
         if (!confirm('Are you sure you want to clear all job history?')) return;
         try {
-          await fetch('/api/history', { method: 'DELETE' });
+          await fetch(api('/api/history'), { method: 'DELETE' });
           loadHistory();
         } catch (err) {
           console.error('Error clearing history:', err);

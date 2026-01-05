@@ -283,7 +283,7 @@ export class MixInAdProcessor extends BaseProcessor {
 
         try {
             // Launch browser
-            await this.launchBrowser({ headless: false });
+            await this.launchBrowser({ headless: true });
             const initialWidth = selectedWidths[0] || config.mixinad.widths[0] || 320;
 
             await this.createContext({
