@@ -78,7 +78,7 @@ export class PSLPProcessor extends BaseProcessor {
 
     try {
       // Launch browser
-      await this.launchBrowser({ headless: true });
+      await this.launchBrowser();
       await this.createContext({ viewport: { width: 1920, height: 1080 } });
       await this.createPage();
 

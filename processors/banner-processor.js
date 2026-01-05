@@ -255,7 +255,7 @@ export class BannerProcessor extends BaseProcessor {
 
     try {
       // Launch browser
-    await this.launchBrowser({ headless: true });
+    await this.launchBrowser();
       const initialWidth = selectedWidths[0] || config.banner.widths[0] || 320;
 
       await this.createContext({
