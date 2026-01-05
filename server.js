@@ -270,7 +270,7 @@ app.get('/api/banner/status', (req, res) => {
 });
 
 app.post('/api/banner/start', asyncHandler(async (req, res) => {
-  const { environment, region, cultures, widths, categories } = req.body;
+  const { environment, region, cultures, widths, categories, excelValidation } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
     return res.status(400).json({ error: 'No cultures selected' });
@@ -289,6 +289,11 @@ app.post('/api/banner/start', asyncHandler(async (req, res) => {
   }
 
   const options = { environment, region, cultures, widths, categories };
+
+  // Include Excel validation data if provided
+  if (excelValidation && excelValidation.enabled) {
+    options.excelValidation = excelValidation;
+  }
 
   bannerProcessor.start(options).catch(err => {
     console.error('Banner capture error:', err);
@@ -319,7 +324,7 @@ app.get('/api/pslp/status', (req, res) => {
 });
 
 app.post('/api/pslp/start', asyncHandler(async (req, res) => {
-  const { environment, region, culture, components, widths, username, password } = req.body;
+  const { environment, region, culture, components, widths, username, password, excelValidation } = req.body;
 
   if (!culture) {
     return res.status(400).json({ error: 'No culture selected' });
@@ -338,6 +343,10 @@ app.post('/api/pslp/start', asyncHandler(async (req, res) => {
     username: username || null,
     password: password || null
   };
+
+  if (excelValidation && excelValidation.enabled) {
+    options.excelValidation = excelValidation;
+  }
 
   pslpProcessor.start(options).catch(err => {
     console.error('PSLP capture error:', err);
@@ -368,7 +377,7 @@ app.get('/api/mixinad/status', (req, res) => {
 });
 
 app.post('/api/mixinad/start', asyncHandler(async (req, res) => {
-  const { environment, region, cultures, widths, categories } = req.body;
+  const { environment, region, cultures, widths, categories, excelValidation } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
     return res.status(400).json({ error: 'No cultures selected' });
@@ -387,6 +396,11 @@ app.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   }
 
   const options = { environment, region, cultures, widths, categories };
+
+  // Include Excel validation data if provided
+  if (excelValidation && excelValidation.enabled) {
+    options.excelValidation = excelValidation;
+  }
 
   mixinAdProcessor.start(options).catch(err => {
     console.error('Mix-In Ad capture error:', err);

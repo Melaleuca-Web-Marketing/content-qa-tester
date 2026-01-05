@@ -517,6 +517,26 @@ async function startCapture() {
     password
   };
 
+  const excelEnabled = localStorage.getItem('excelValidationEnabled') === 'true';
+  if (excelEnabled) {
+    const excelDataStr = localStorage.getItem('excelValidationData');
+    if (excelDataStr) {
+      try {
+        const excelData = JSON.parse(excelDataStr);
+        options.excelValidation = {
+          enabled: true,
+          data: excelData.data,
+          filename: excelData.filename
+        };
+      } catch (e) {
+        console.error('Failed to parse Excel validation data:', e);
+      }
+    } else {
+      setStatusError('Excel validation enabled but no file uploaded', 'Please upload an Excel file or disable Excel validation');
+      return;
+    }
+  }
+
   progressEnv.textContent = `Env: ${options.environment}`;
   progressCulture.textContent = `Culture: ${options.culture}`;
   progressStep.textContent = `Screens: ${widths.length}`;

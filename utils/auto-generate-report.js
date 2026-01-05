@@ -15,10 +15,17 @@ export function autoGenerateReport(processor, reportGenerator, mode) {
       if (!results || (Array.isArray(results) && results.length === 0)) {
         return;
       }
-      
+
       const duration = data.duration || null;
       const theme = 'dark';
-      const { html, name } = reportGenerator(results, duration, theme);
+
+      // Get Excel validation options from processor if available
+      const options = processor.currentOptions || {};
+      const excelValidation = options.excelValidation || null;
+
+      console.log('[Auto-Generate-Report] Excel Validation:', excelValidation ? `Enabled (${excelValidation.data?.length || 0} rows)` : 'Disabled');
+
+      const { html, name } = reportGenerator(results, duration, theme, excelValidation);
 
       const now = new Date();
       const timestamp = formatTimestamp(now);

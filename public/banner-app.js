@@ -448,6 +448,27 @@ async function startCapture() {
     categories
   };
 
+  // Check if Excel validation is enabled and include data
+  const excelEnabled = localStorage.getItem('excelValidationEnabled') === 'true';
+  if (excelEnabled) {
+    const excelDataStr = localStorage.getItem('excelValidationData');
+    if (excelDataStr) {
+      try {
+        const excelData = JSON.parse(excelDataStr);
+        options.excelValidation = {
+          enabled: true,
+          data: excelData.data,
+          filename: excelData.filename
+        };
+      } catch (e) {
+        console.error('Failed to parse Excel validation data:', e);
+      }
+    } else {
+      setStatusError('Excel validation enabled but no file uploaded', 'Please upload an Excel file or disable Excel validation');
+      return;
+    }
+  }
+
   try {
     const response = await fetch('/api/banner/start', {
       method: 'POST',

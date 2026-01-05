@@ -6,6 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Melaleuca Content QA Tester</title>
   <link rel="stylesheet" href="shared.css">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <script src="excel-validator.js"></script>
   <style>
     .mode-selector {
       display: grid;
@@ -491,6 +493,182 @@
       margin-bottom: 16px;
       opacity: 0.5;
     }
+
+    /* Excel Validation Section */
+    .excel-validation-section {
+      background: var(--bg-item);
+      border: 2px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 24px;
+      margin-bottom: 16px;
+    }
+
+    .excel-section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .excel-section-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .excel-toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .excel-toggle-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .excel-toggle {
+      position: relative;
+      width: 48px;
+      height: 24px;
+      background: #475569;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .excel-toggle.active {
+      background: #10b981;
+    }
+
+    .excel-toggle-slider {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+
+    .excel-toggle.active .excel-toggle-slider {
+      transform: translateX(24px);
+    }
+
+    .excel-upload-area {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      background: var(--bg-hover);
+      border: 2px dashed var(--border-color);
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+
+    .excel-upload-area.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .excel-upload-area.has-file {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+    .excel-upload-button {
+      padding: 10px 20px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .excel-upload-button:hover {
+      background: #2563eb;
+    }
+
+    .excel-file-info {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .excel-file-name {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .excel-file-details {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .excel-clear-button {
+      padding: 6px 12px;
+      background: transparent;
+      color: #ef4444;
+      border: 1px solid #ef4444;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .excel-clear-button:hover {
+      background: #ef4444;
+      color: white;
+    }
+
+    .excel-preview {
+      margin-top: 12px;
+      padding: 12px;
+      background: var(--card-bg);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .excel-preview-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 4px;
+    }
+
+    .excel-preview-label {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .excel-errors {
+      margin-top: 12px;
+      padding: 12px;
+      background: #fee;
+      border: 1px solid #fcc;
+      border-radius: 6px;
+      color: #c00;
+      font-size: 13px;
+    }
+
+    .excel-error-item {
+      margin-bottom: 4px;
+    }
+
+    .excel-error-item:last-child {
+      margin-bottom: 0;
+    }
   </style>
 </head>
 
@@ -508,6 +686,34 @@
           <a class="secondary" href="credentials.html">Manage Credentials</a>
           <a class="secondary" href="category-manager.html">⚙️ Manage Categories</a>
         </div>
+      </div>
+
+      <!-- Excel Validation Section -->
+      <div class="excel-validation-section">
+        <div class="excel-section-header">
+          <span style="font-size: 20px;">📊</span>
+          <div class="excel-section-title">Excel Validation</div>
+          <div class="excel-toggle-container">
+            <label class="excel-toggle-label" for="excel-toggle-checkbox">Use Excel validation</label>
+            <div class="excel-toggle" id="excel-toggle" onclick="toggleExcelValidation()">
+              <div class="excel-toggle-slider"></div>
+            </div>
+            <input type="checkbox" id="excel-toggle-checkbox" style="display: none;">
+          </div>
+        </div>
+
+        <div class="excel-upload-area" id="excel-upload-area">
+          <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display: none;" onchange="handleExcelUpload(event)">
+          <button class="excel-upload-button" onclick="document.getElementById('excel-file-input').click()">
+            📁 Choose Excel File
+          </button>
+          <div class="excel-file-info" id="excel-file-info">
+            <span style="color: var(--text-secondary); font-size: 14px;">No file selected</span>
+          </div>
+        </div>
+
+        <div id="excel-preview" style="display: none;"></div>
+        <div id="excel-errors" style="display: none;"></div>
       </div>
 
       <div class="mode-selector">
@@ -1108,6 +1314,171 @@
 
       loadHistory();
     })();
+
+    // Excel Validation Management
+    (function initExcelValidation() {
+      const toggle = document.getElementById('excel-toggle');
+      const checkbox = document.getElementById('excel-toggle-checkbox');
+      const uploadArea = document.getElementById('excel-upload-area');
+
+      // Load saved state
+      const savedState = localStorage.getItem('excelValidationEnabled');
+      const savedData = localStorage.getItem('excelValidationData');
+
+      if (savedState === 'true') {
+        checkbox.checked = true;
+        toggle.classList.add('active');
+        uploadArea.classList.remove('disabled');
+
+        // Restore file info if available
+        if (savedData) {
+          try {
+            const data = JSON.parse(savedData);
+            displayExcelFileInfo(data);
+          } catch (e) {
+            console.error('Failed to restore Excel data:', e);
+          }
+        }
+      } else {
+        uploadArea.classList.add('disabled');
+      }
+    })();
+
+    window.toggleExcelValidation = function() {
+      const toggle = document.getElementById('excel-toggle');
+      const checkbox = document.getElementById('excel-toggle-checkbox');
+      const uploadArea = document.getElementById('excel-upload-area');
+
+      checkbox.checked = !checkbox.checked;
+      toggle.classList.toggle('active', checkbox.checked);
+      uploadArea.classList.toggle('disabled', !checkbox.checked);
+
+      localStorage.setItem('excelValidationEnabled', checkbox.checked);
+
+      if (!checkbox.checked) {
+        // Clear validation data when disabled
+        localStorage.removeItem('excelValidationData');
+        document.getElementById('excel-file-info').innerHTML = '<span style="color: var(--text-secondary); font-size: 14px;">No file selected</span>';
+        document.getElementById('excel-preview').style.display = 'none';
+        document.getElementById('excel-errors').style.display = 'none';
+        uploadArea.classList.remove('has-file');
+      }
+    };
+
+    window.handleExcelUpload = async function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const previewDiv = document.getElementById('excel-preview');
+      const errorsDiv = document.getElementById('excel-errors');
+
+      // Show loading state
+      document.getElementById('excel-file-info').innerHTML = '<span style="color: var(--text-secondary); font-size: 14px;">⏳ Parsing Excel file...</span>';
+      previewDiv.style.display = 'none';
+      errorsDiv.style.display = 'none';
+
+      try {
+        const result = await ExcelValidator.parseExcelFile(file);
+
+        if (result.success) {
+          // Store the validated data
+          const dataToStore = {
+            filename: file.name,
+            data: result.data,
+            preview: result.preview,
+            uploadedAt: new Date().toISOString()
+          };
+
+          localStorage.setItem('excelValidationData', JSON.stringify(dataToStore));
+
+          // Display success
+          displayExcelFileInfo(dataToStore);
+
+          // Show preview
+          previewDiv.innerHTML = `
+            <div class="excel-preview-row">
+              <span class="excel-preview-label">Sheet:</span>
+              <span>${result.preview.sheetName}</span>
+            </div>
+            <div class="excel-preview-row">
+              <span class="excel-preview-label">Total Rows:</span>
+              <span>${result.preview.totalRows}</span>
+            </div>
+            <div class="excel-preview-row">
+              <span class="excel-preview-label">Category Banners:</span>
+              <span>${result.preview.categoryBanners}</span>
+            </div>
+            <div class="excel-preview-row">
+              <span class="excel-preview-label">Mix-In Ads:</span>
+              <span>${result.preview.mixInAds}</span>
+            </div>
+          `;
+          previewDiv.style.display = 'block';
+
+        } else {
+          // Show errors
+          errorsDiv.innerHTML = `
+            <div style="font-weight: 600; margin-bottom: 8px;">⚠️ Validation Errors:</div>
+            ${result.errors.map(err => `<div class="excel-error-item">• ${err}</div>`).join('')}
+          `;
+          errorsDiv.style.display = 'block';
+
+          document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">❌ Invalid Excel file</span>';
+
+          // Clear stored data
+          localStorage.removeItem('excelValidationData');
+        }
+
+      } catch (error) {
+        console.error('Error processing Excel file:', error);
+        errorsDiv.innerHTML = `<div class="excel-error-item">❌ Failed to process file: ${error.message}</div>`;
+        errorsDiv.style.display = 'block';
+        document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">❌ Error processing file</span>';
+        localStorage.removeItem('excelValidationData');
+      }
+
+      // Reset file input
+      event.target.value = '';
+    };
+
+    function displayExcelFileInfo(dataToStore) {
+      const uploadArea = document.getElementById('excel-upload-area');
+      const fileInfoDiv = document.getElementById('excel-file-info');
+
+      uploadArea.classList.add('has-file');
+
+      const uploadDate = new Date(dataToStore.uploadedAt);
+      const timeAgo = formatTimeAgo(uploadDate);
+
+      fileInfoDiv.innerHTML = `
+        <div style="flex: 1;">
+          <div class="excel-file-name">✅ ${dataToStore.filename}</div>
+          <div class="excel-file-details">
+            ${dataToStore.preview.totalRows} rows • ${dataToStore.preview.categoryBanners} banners • ${dataToStore.preview.mixInAds} ads • Uploaded ${timeAgo}
+          </div>
+        </div>
+        <button class="excel-clear-button" onclick="clearExcelFile()">Clear</button>
+      `;
+    }
+
+    window.clearExcelFile = function() {
+      localStorage.removeItem('excelValidationData');
+      document.getElementById('excel-file-info').innerHTML = '<span style="color: var(--text-secondary); font-size: 14px;">No file selected</span>';
+      document.getElementById('excel-preview').style.display = 'none';
+      document.getElementById('excel-errors').style.display = 'none';
+      document.getElementById('excel-upload-area').classList.remove('has-file');
+    };
+
+    function formatTimeAgo(date) {
+      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+
+      if (seconds < 60) return 'just now';
+      if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)} hour${Math.floor(seconds / 3600) > 1 ? 's' : ''} ago`;
+      if (seconds < 604800) return `${Math.floor(seconds / 86400)} day${Math.floor(seconds / 86400) > 1 ? 's' : ''} ago`;
+
+      return date.toLocaleDateString();
+    }
   </script>
 </body>
 

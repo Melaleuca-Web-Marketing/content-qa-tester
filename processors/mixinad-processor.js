@@ -210,6 +210,7 @@ export class MixInAdProcessor extends BaseProcessor {
                     width,
                     adIndex: i,
                     domPosition: adInfo.domPosition,
+                    position: Number.isFinite(adInfo.domPosition) ? adInfo.domPosition : undefined,
                     image: imageBase64,
                     href: adInfo.href,
                     target: adInfo.target || '_self',
