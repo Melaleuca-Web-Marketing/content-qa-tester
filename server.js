@@ -3,16 +3,15 @@
 
 import express from 'express';
 import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
+import { dirname, join } from 'path';
 import fs from 'fs';
 import open, { apps } from 'open';
 
-import { getSkuProcessor } from './processors/sku-processor.js';
-import { getBannerProcessor } from './processors/banner-processor.js';
-import { getPSLPProcessor } from './processors/pslp-processor.js';
-import { getMixInAdProcessor } from './processors/mixinad-processor.js';
+import { SkuProcessor } from './processors/sku-processor.js';
+import { BannerProcessor } from './processors/banner-processor.js';
+import { PSLPProcessor } from './processors/pslp-processor.js';
+import { MixInAdProcessor } from './processors/mixinad-processor.js';
 import { generateSkuReport } from './report-generators/sku-report.js';
 import { generateBannerReport } from './report-generators/banner-report.js';
 import { generatePslpReport } from './report-generators/pslp-report.js';
@@ -33,7 +32,6 @@ const normalizedBase = rawBasePath === '/' ? '' : `/${rawBasePath.replace(/^\/+|
 const BASE_PATH = normalizedBase === '/' ? '' : normalizedBase;
 const DATA_DIR = process.env.TESTER_DATA_DIR || __dirname;
 const REPORTS_DIR = join(DATA_DIR, 'reports');
-const HISTORY_FILE = join(DATA_DIR, 'history.json');
 
 const app = express();
 const server = createServer(app);
@@ -64,63 +62,93 @@ router.get('/base-path.js', (req, res) => {
 
 router.use(express.static(join(__dirname, 'public')));
 
-// Set up processor event listeners
-const skuProcessor = getSkuProcessor();
-const bannerProcessor = getBannerProcessor();
-const pslpProcessor = getPSLPProcessor();
-const mixinAdProcessor = getMixInAdProcessor();
+// Per-user processor registry
+const userProcessors = new Map();
 
-// SKU Processor events
-skuProcessor.on('progress', (data) => {
-  broadcast({ type: 'sku-progress', data: { progress: data } });
-});
+function normalizeUserId(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  return raw.length > 0 ? raw.slice(0, 120) : null;
+}
 
-skuProcessor.on('status', (data) => {
-  broadcast({ type: 'sku-status', data });
-});
+function getUserId(req) {
+  const headerId = req.get('x-user-id') || req.get('X-User-Id');
+  const queryId = req.query.userId;
+  return normalizeUserId(headerId || queryId);
+}
 
-skuProcessor.on('error', (data) => {
-  broadcast({ type: 'sku-error', data });
-});
+function attachProcessorEvents(processor, tool, userId) {
+  processor.on('progress', (data) => {
+    broadcast({ type: `${tool}-progress`, data: { progress: data } }, userId);
+  });
 
-// Banner Processor events
-bannerProcessor.on('progress', (data) => {
-  broadcast({ type: 'banner-progress', data: { progress: data } });
-});
+  processor.on('status', (data) => {
+    broadcast({ type: `${tool}-status`, data }, userId);
+  });
 
-bannerProcessor.on('status', (data) => {
-  broadcast({ type: 'banner-status', data });
-});
+  processor.on('error', (data) => {
+    broadcast({ type: `${tool}-error`, data }, userId);
+  });
+}
 
-bannerProcessor.on('error', (data) => {
-  broadcast({ type: 'banner-error', data });
-});
+function createProcessor(tool, userId) {
+  let processor = null;
+  let reportGenerator = null;
 
-// PSLP Processor events
-pslpProcessor.on('progress', (data) => {
-  broadcast({ type: 'pslp-progress', data: { progress: data } });
-});
+  switch (tool) {
+    case 'sku':
+      processor = new SkuProcessor();
+      reportGenerator = generateSkuReport;
+      break;
+    case 'banner':
+      processor = new BannerProcessor();
+      reportGenerator = generateBannerReport;
+      break;
+    case 'pslp':
+      processor = new PSLPProcessor();
+      reportGenerator = generatePslpReport;
+      break;
+    case 'mixinad':
+      processor = new MixInAdProcessor();
+      reportGenerator = generateMixInAdReport;
+      break;
+    default:
+      return null;
+  }
 
-pslpProcessor.on('status', (data) => {
-  broadcast({ type: 'pslp-status', data });
-});
+  processor.userId = userId;
+  attachProcessorEvents(processor, tool, userId);
+  autoGenerateReport(processor, reportGenerator, tool, userId);
 
-pslpProcessor.on('error', (data) => {
-  broadcast({ type: 'pslp-error', data });
-});
+  return processor;
+}
 
-// Mix-In Ad Processor events
-mixinAdProcessor.on('progress', (data) => {
-  broadcast({ type: 'mixinad-progress', data: { progress: data } });
-});
+function getProcessor(userId, tool) {
+  const id = userId || 'anonymous';
+  if (!userProcessors.has(id)) {
+    userProcessors.set(id, {});
+  }
+  const entry = userProcessors.get(id);
+  if (!entry[tool]) {
+    entry[tool] = createProcessor(tool, id);
+  }
+  return entry[tool];
+}
 
-mixinAdProcessor.on('status', (data) => {
-  broadcast({ type: 'mixinad-status', data });
-});
+function getProcessorStatus(userId, tool) {
+  const entry = userProcessors.get(userId || 'anonymous');
+  const processor = entry ? entry[tool] : null;
+  if (!processor) {
+    return { isRunning: false, resultsCount: 0, options: null, statusType: null, message: null };
+  }
+  return processor.getStatus();
+}
 
-mixinAdProcessor.on('error', (data) => {
-  broadcast({ type: 'mixinad-error', data });
-});
+function getProcessorResults(userId, tool) {
+  const entry = userProcessors.get(userId || 'anonymous');
+  const processor = entry ? entry[tool] : null;
+  return processor ? processor.getResults() : [];
+}
 
 // ============ API Routes ============
 
@@ -207,10 +235,12 @@ router.post('/api/categories', express.json(), (req, res) => {
 // ============ SKU API Routes ============
 
 router.get('/api/sku/status', (req, res) => {
-  res.json(skuProcessor.getStatus());
+  const userId = getUserId(req);
+  res.json(getProcessorStatus(userId, 'sku'));
 });
 
 router.post('/api/sku/start', asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   const { skus, environment, region, culture, cultures, fullScreenshot, topScreenshot, addToCart, username, password } = req.body;
 
   if (!skus || !Array.isArray(skus) || skus.length === 0) {
@@ -244,6 +274,7 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: errors.join(', ') });
   }
 
+  const skuProcessor = getProcessor(userId, 'sku');
   if (skuProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'SKU capture already in progress' });
   }
@@ -254,31 +285,38 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
       type: 'error',
       tool: 'sku',
       data: { message: err.message, stack: err.stack }
-    });
+    }, userId);
   });
 
   res.json({ ok: true, message: 'SKU capture started' });
 }));
 
 router.post('/api/sku/stop', (req, res) => {
+  const userId = getUserId(req);
+  const skuProcessor = getProcessor(userId, 'sku');
   skuProcessor.stop();
   res.json({ ok: true, message: 'Stop requested' });
 });
 
 router.post('/api/sku/resume', (req, res) => {
+  const userId = getUserId(req);
+  const skuProcessor = getProcessor(userId, 'sku');
   skuProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
 });
 
 router.get('/api/sku/results', (req, res) => {
-  res.json(skuProcessor.getResults());
+  const userId = getUserId(req);
+  res.json(getProcessorResults(userId, 'sku'));
 });
 
 router.get('/api/banner/status', (req, res) => {
-  res.json(bannerProcessor.getStatus());
+  const userId = getUserId(req);
+  res.json(getProcessorStatus(userId, 'banner'));
 });
 
 router.post('/api/banner/start', asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   const { environment, region, cultures, widths, categories, excelValidation } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
@@ -293,6 +331,7 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'No categories selected' });
   }
 
+  const bannerProcessor = getProcessor(userId, 'banner');
   if (bannerProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Banner capture already in progress' });
   }
@@ -306,39 +345,47 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
 
   bannerProcessor.start(options).catch(err => {
     console.error('Banner capture error:', err);
-    broadcast({ type: 'banner-error', data: { message: err.message } });
+    broadcast({ type: 'banner-error', data: { message: err.message } }, userId);
   });
 
   res.json({ ok: true, message: 'Banner capture started' });
 }));
 
 router.post('/api/banner/stop', (req, res) => {
+  const userId = getUserId(req);
+  const bannerProcessor = getProcessor(userId, 'banner');
   bannerProcessor.stop();
   res.json({ ok: true, message: 'Stop requested' });
 });
 
 router.post('/api/banner/resume', (req, res) => {
+  const userId = getUserId(req);
+  const bannerProcessor = getProcessor(userId, 'banner');
   bannerProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
 });
 
 router.get('/api/banner/results', (req, res) => {
-  res.json(bannerProcessor.getResults());
+  const userId = getUserId(req);
+  res.json(getProcessorResults(userId, 'banner'));
 });
 
 // ============ PSLP API Routes ============
 
 router.get('/api/pslp/status', (req, res) => {
-  res.json(pslpProcessor.getStatus());
+  const userId = getUserId(req);
+  res.json(getProcessorStatus(userId, 'pslp'));
 });
 
 router.post('/api/pslp/start', asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   const { environment, region, culture, components, widths, screenWidths, username, password, excelValidation } = req.body;
 
   if (!culture) {
     return res.status(400).json({ error: 'No culture selected' });
   }
 
+  const pslpProcessor = getProcessor(userId, 'pslp');
   if (pslpProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'PSLP capture already in progress' });
   }
@@ -359,33 +406,40 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
 
   pslpProcessor.start(options).catch(err => {
     console.error('PSLP capture error:', err);
-    broadcast({ type: 'pslp-error', data: { message: err.message } });
+    broadcast({ type: 'pslp-error', data: { message: err.message } }, userId);
   });
 
   res.json({ ok: true, message: 'PSLP capture started' });
 }));
 
 router.post('/api/pslp/stop', (req, res) => {
+  const userId = getUserId(req);
+  const pslpProcessor = getProcessor(userId, 'pslp');
   pslpProcessor.stop();
   res.json({ ok: true, message: 'Stop requested' });
 });
 
 router.post('/api/pslp/resume', (req, res) => {
+  const userId = getUserId(req);
+  const pslpProcessor = getProcessor(userId, 'pslp');
   pslpProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
 });
 
 router.get('/api/pslp/results', (req, res) => {
-  res.json(pslpProcessor.getResults());
+  const userId = getUserId(req);
+  res.json(getProcessorResults(userId, 'pslp'));
 });
 
 // ============ Mix-In Ad API Routes ============
 
 router.get('/api/mixinad/status', (req, res) => {
-  res.json(mixinAdProcessor.getStatus());
+  const userId = getUserId(req);
+  res.json(getProcessorStatus(userId, 'mixinad'));
 });
 
 router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   const { environment, region, cultures, widths, categories, excelValidation } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
@@ -400,6 +454,7 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'No categories selected' });
   }
 
+  const mixinAdProcessor = getProcessor(userId, 'mixinad');
   if (mixinAdProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Mix-In Ad capture already in progress' });
   }
@@ -413,57 +468,84 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
 
   mixinAdProcessor.start(options).catch(err => {
     console.error('Mix-In Ad capture error:', err);
-    broadcast({ type: 'mixinad-error', data: { message: err.message } });
+    broadcast({ type: 'mixinad-error', data: { message: err.message } }, userId);
   });
 
   res.json({ ok: true, message: 'Mix-In Ad capture started' });
 }));
 
 router.post('/api/mixinad/stop', (req, res) => {
+  const userId = getUserId(req);
+  const mixinAdProcessor = getProcessor(userId, 'mixinad');
   mixinAdProcessor.stop();
   res.json({ ok: true, message: 'Stop requested' });
 });
 
 router.post('/api/mixinad/resume', (req, res) => {
+  const userId = getUserId(req);
+  const mixinAdProcessor = getProcessor(userId, 'mixinad');
   mixinAdProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
 });
 
-router.get('/api/mixinad/results', (req, res) => {
-  res.json(mixinAdProcessor.getResults());
+app.get('/api/mixinad/results', (req, res) => {
+  const userId = getUserId(req);
+  res.json(getProcessorResults(userId, 'mixinad'));
 });
 
-// Auto-generate reports on completion
-autoGenerateReport(skuProcessor, generateSkuReport, 'sku');
-autoGenerateReport(bannerProcessor, generateBannerReport, 'banner');
-autoGenerateReport(pslpProcessor, generatePslpReport, 'pslp');
-autoGenerateReport(mixinAdProcessor, generateMixInAdReport, 'mixinad');
+// Auto-generate reports on completion (per-user processors are wired on creation)
+
+// ============ Shared Routes ============
+
+app.get('/api/history', (req, res) => {
+  const userId = getUserId(req) || 'anonymous';
+  const history = loadHistory(userId);
+  res.json({ history, limit: getHistoryLimit(userId) });
+});
+
+app.post('/api/history/limit', (req, res) => {
+  const userId = getUserId(req) || 'anonymous';
+router.get('/api/mixinad/results', (req, res) => {
+  const userId = getUserId(req);
+  res.json(getProcessorResults(userId, 'mixinad'));
+});
+
+// Auto-generate reports on completion (per-user processors are wired on creation)
 
 router.use('/reports', express.static(REPORTS_DIR));
 
 // ============ Shared Routes ============
 
 router.get('/api/history', (req, res) => {
-  const history = loadHistory();
-  res.json({ history, limit: getHistoryLimit() });
+  const userId = getUserId(req) || 'anonymous';
+  const history = loadHistory(userId);
+  res.json({ history, limit: getHistoryLimit(userId) });
 });
 
 router.post('/api/history/limit', (req, res) => {
+  const userId = getUserId(req) || 'anonymous';
   const { limit } = req.body;
-  if (setHistoryLimit(limit)) {
-    res.json({ ok: true, limit: getHistoryLimit() });
-  } else {
+  if (setHistoryLimit(userId, limit)) {
+    res.json({ ok: true, limit: getHistoryLimit(userId) });
+    } else {
     res.status(400).json({ error: 'Invalid limit' });
   }
 });
 
 // Delete a single history entry and its report file
 router.delete('/api/history/:filename', (req, res) => {
+  const userId = getUserId(req) || 'anonymous';
   const { filename } = req.params;
 
   // Validate filename to prevent path traversal
   if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
     return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  const history = loadHistory(userId);
+  const entry = history.find((item) => item.filename === filename);
+  if (!entry) {
+    return res.status(404).json({ error: 'History item not found' });
   }
 
   const reportPath = join(REPORTS_DIR, filename);
@@ -478,7 +560,7 @@ router.delete('/api/history/:filename', (req, res) => {
   }
 
   // Remove from history
-  if (deleteFromHistory(filename)) {
+  if (deleteFromHistory(filename, userId)) {
     res.json({ ok: true, message: 'History item deleted' });
   } else {
     res.status(404).json({ error: 'History item not found' });
@@ -487,15 +569,18 @@ router.delete('/api/history/:filename', (req, res) => {
 
 // Clear all history
 router.delete('/api/history', (req, res) => {
+  const userId = getUserId(req) || 'anonymous';
   const deleteReports = req.query.deleteReports === 'true';
 
   if (deleteReports) {
-    // Optionally delete all report files
+    const history = loadHistory(userId);
     try {
-      const files = fs.readdirSync(REPORTS_DIR);
-      for (const file of files) {
-        if (file.endsWith('.html')) {
-          fs.unlinkSync(join(REPORTS_DIR, file));
+      for (const entry of history) {
+        if (entry.filename && entry.filename.endsWith('.html')) {
+          const filePath = join(REPORTS_DIR, entry.filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
         }
       }
     } catch (err) {
@@ -503,17 +588,24 @@ router.delete('/api/history', (req, res) => {
     }
   }
 
-  clearHistory();
+  clearHistory(userId);
   res.json({ ok: true, message: 'History cleared' });
 });
 
 // Download a report file
 router.get('/api/reports/:filename', (req, res) => {
+  const userId = getUserId(req) || 'anonymous';
   const { filename } = req.params;
 
   // Validate filename to prevent path traversal
   if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
     return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  const history = loadHistory(userId);
+  const entry = history.find((item) => item.filename === filename);
+  if (!entry) {
+    return res.status(404).json({ error: 'Report not found' });
   }
 
   const reportPath = join(REPORTS_DIR, filename);
@@ -522,7 +614,9 @@ router.get('/api/reports/:filename', (req, res) => {
     return res.status(404).json({ error: 'Report not found' });
   }
 
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  if (req.query.download === 'true') {
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  }
   res.setHeader('Content-Type', 'text/html');
   res.sendFile(reportPath);
 });

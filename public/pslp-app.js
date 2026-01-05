@@ -36,6 +36,7 @@ let isWaitingForResume = false;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
+const userId = window.UserSession?.getId?.() || null;
 
 // DOM Elements
 const envSelect = document.getElementById('env-select');
@@ -309,7 +310,7 @@ function loadPreferences() {
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}${BASE_PATH}`;
+  const wsUrl = `${protocol}//${window.location.host}${BASE_PATH}?userId=${encodeURIComponent(userId || '')}`;
 
   ws = new WebSocket(wsUrl);
 
@@ -550,7 +551,10 @@ async function startCapture() {
   try {
     const response = await fetch(api('/api/pslp/start'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(userId ? { 'X-User-Id': userId } : {})
+      },
       body: JSON.stringify(options)
     });
 
@@ -568,7 +572,10 @@ async function startCapture() {
 
 async function stopCapture() {
   try {
-    await fetch(api('/api/pslp/stop'), { method: 'POST' });
+    await fetch(api('/api/pslp/stop'), {
+      method: 'POST',
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
   } catch (err) {
     console.error('Error stopping capture:', err);
   }
@@ -579,7 +586,10 @@ async function resumeCapture() {
     setStatusRunning('Resuming...', 'Continuing capture after manual sign-in');
     startCaptureBtn.disabled = true;
 
-    const response = await fetch(api('/api/pslp/resume'), { method: 'POST' });
+    const response = await fetch(api('/api/pslp/resume'), {
+      method: 'POST',
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
     const result = await response.json();
 
     if (!result.ok) {
