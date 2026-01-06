@@ -441,7 +441,7 @@
         </div>
 
         <div class="actions">
-            <button class="btn btn-secondary" onclick="window.location.href='/'">← Back to Home</button>
+            <button class="btn btn-secondary" onclick="goHome()">← Back to Home</button>
             <button class="btn btn-secondary" onclick="reloadCategories()">Reload</button>
             <button class="btn btn-primary" onclick="saveCategories()">Save Changes</button>
         </div>
@@ -465,6 +465,13 @@
         </div>
     </div>
 
+    <script>
+        function goHome() {
+            const basePath = (window.__BASE_PATH || '').replace(/\/+$/, '');
+            const target = `${basePath || ''}/index.html`;
+            window.location.href = target;
+        }
+    </script>
     <script src="category-manager-app.js"></script>
 </body>
 
