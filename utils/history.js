@@ -44,13 +44,20 @@ function writeHistoryStore(store) {
 
 export function loadHistory(userId = null) {
   const store = readHistoryStore();
-  if (!userId) return store.entries;
-  return store.entries.filter(entry => entry.userId === userId);
+  console.log(`[History] loadHistory | userId: ${userId || '(all)'} | Total entries in store: ${store.entries.length}`);
+  if (!userId) {
+    console.log(`[History] loadHistory | Returning ALL ${store.entries.length} entries (no userId filter)`);
+    return store.entries;
+  }
+  const filtered = store.entries.filter(entry => entry.userId === userId);
+  console.log(`[History] loadHistory | userId: ${userId} | Filtered to ${filtered.length} entries for this user`);
+  return filtered;
 }
 
 export function saveToHistory(entry, userId = null) {
   const store = readHistoryStore();
   const scopedUserId = userId || 'anonymous';
+  console.log(`[History] saveToHistory | userId: ${scopedUserId} | Entry: ${entry.filename || 'unknown'}`);
   const entryWithUser = { ...entry, userId: scopedUserId };
   store.entries.unshift(entryWithUser);
 
@@ -92,9 +99,13 @@ export function setHistoryLimit(userId, limit) {
 export function deleteFromHistory(filename, userId = null) {
   const store = readHistoryStore();
   const initialLength = store.entries.length;
+  console.log(`[History] deleteFromHistory | filename: ${filename} | userId: ${userId || '(any)'} | Total entries: ${initialLength}`);
   store.entries = store.entries.filter(entry => {
     if (entry.filename !== filename) return true;
-    if (userId && entry.userId !== userId) return true;
+    if (userId && entry.userId !== userId) {
+      console.log(`[History] deleteFromHistory | Skipping entry with different userId: ${entry.userId}`);
+      return true;
+    }
     return false;
   });
 
@@ -107,12 +118,18 @@ export function deleteFromHistory(filename, userId = null) {
 
 export function clearHistory(userId = null) {
   const store = readHistoryStore();
+  console.log(`[History] clearHistory | userId: ${userId || '(all)'} | Current total: ${store.entries.length} entries`);
   if (!userId) {
+    console.log(`[History] clearHistory | Clearing ALL entries (no userId specified)`);
     store.entries = [];
     writeHistoryStore(store);
     return true;
   }
+  const beforeCount = store.entries.length;
   store.entries = store.entries.filter(entry => entry.userId !== userId);
+  const afterCount = store.entries.length;
+  const deletedCount = beforeCount - afterCount;
+  console.log(`[History] clearHistory | userId: ${userId} | Deleted ${deletedCount} entries | Remaining: ${afterCount}`);
   writeHistoryStore(store);
   return true;
 }

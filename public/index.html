@@ -870,8 +870,31 @@
     const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
     const api = (path) => `${BASE_PATH}${path}`;
     const userId = window.UserSession?.getId?.() || null;
-    const withUserHeaders = (headers = {}) => (userId ? { ...headers, 'X-User-Id': userId } : headers);
-    const withUserQuery = (url) => (userId ? `${url}${url.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}` : url);
+    const withUserHeaders = (headers = {}) => {
+      const headersWithUser = userId ? { ...headers, 'X-User-Id': userId } : headers;
+      console.log(`[Request] Preparing headers | userId: ${userId || '(none)'} | has X-User-Id: ${!!headersWithUser['X-User-Id']}`);
+      return headersWithUser;
+    };
+    const withUserQuery = (url) => {
+      const urlWithUser = userId ? `${url}${url.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}` : url;
+      console.log(`[Request] Preparing URL | userId: ${userId || '(none)'} | URL: ${urlWithUser}`);
+      return urlWithUser;
+    };
+
+    // Logging wrapper for fetch
+    const originalFetch = window.fetch;
+    window.fetch = function(url, options = {}) {
+      const method = options.method || 'GET';
+      const hasUserId = options.headers && options.headers['X-User-Id'];
+      console.log(`[Fetch] ${method} ${url} | userId in headers: ${hasUserId ? options.headers['X-User-Id'] : '(none)'}`);
+      return originalFetch.apply(this, arguments).then(response => {
+        console.log(`[Fetch Response] ${method} ${url} | Status: ${response.status}`);
+        return response;
+      }).catch(error => {
+        console.error(`[Fetch Error] ${method} ${url} | Error:`, error);
+        throw error;
+      });
+    };
 
     // Check storage status and show warning if degraded
     (function checkStorageStatus() {
@@ -964,6 +987,7 @@
       // Fetch status for all processors
       async function updateAllStatuses() {
         const tools = ['sku', 'banner', 'pslp', 'mixinad'];
+        console.log(`[Dashboard] Polling status for all tools | userId: ${userId || '(none)'}`);
 
         for (const tool of tools) {
           try {
@@ -974,9 +998,11 @@
               continue;
             }
             const status = await response.json();
+            console.log(`[Dashboard] Status for ${tool} | isRunning: ${status.isRunning} | progress: ${status.progress || 'none'}`);
 
             if (status.isRunning && !jobStates[tool]) {
               // New job started
+              console.log(`[Dashboard] New job detected for ${tool}`);
               jobStartTimes[tool] = Date.now();
               jobStates[tool] = status;
             } else if (status.isRunning && jobStates[tool]) {
@@ -1238,13 +1264,15 @@
       // Fetch history from server
       async function fetchHistory() {
         try {
+          console.log(`[History] Fetching history | userId: ${userId || '(none)'}`);
           const response = await fetch(api('/api/history'), { headers: withUserHeaders() });
           const data = await response.json();
           history = data.history;
           historyLimit = data.limit;
+          console.log(`[History] Received ${history.length} history entries from server`);
           document.getElementById('history-limit').value = historyLimit;
         } catch (err) {
-          console.error('Error fetching history:', err);
+          console.error('[History] Error fetching history:', err);
           history = [];
         }
       }
@@ -1361,10 +1389,12 @@
       window.clearHistory = async function () {
         if (!confirm('Are you sure you want to clear all job history?')) return;
         try {
+          console.log(`[History] Clearing all history | userId: ${userId || '(none)'}`);
           await fetch(api('/api/history'), { method: 'DELETE', headers: withUserHeaders() });
+          console.log(`[History] Clear request sent, reloading history`);
           loadHistory();
         } catch (err) {
-          console.error('Error clearing history:', err);
+          console.error('[History] Error clearing history:', err);
           alert('Failed to clear history');
         }
       };

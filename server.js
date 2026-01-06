@@ -242,11 +242,13 @@ router.post('/api/categories', express.json(), (req, res) => {
 
 router.get('/api/sku/status', (req, res) => {
   const userId = getUserId(req);
+  console.log(`[API] GET /api/sku/status | userId: ${userId || 'anonymous'}`);
   res.json(getProcessorStatus(userId, 'sku'));
 });
 
 router.post('/api/sku/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
+  console.log(`[API] POST /api/sku/start | userId: ${userId || 'anonymous'} | SKU count: ${req.body.skus?.length || 0}`);
   const { skus, environment, region, culture, cultures, fullScreenshot, topScreenshot, addToCart, username, password } = req.body;
 
   if (!skus || !Array.isArray(skus) || skus.length === 0) {
@@ -507,7 +509,9 @@ router.use('/reports', express.static(REPORTS_DIR));
 
 router.get('/api/history', (req, res) => {
   const userId = getUserId(req) || 'anonymous';
+  console.log(`[API] GET /api/history | userId: ${userId} | Requesting user's history`);
   const history = loadHistory(userId);
+  console.log(`[API] GET /api/history | userId: ${userId} | Returning ${history.length} entries`);
   res.json({ history, limit: getHistoryLimit(userId) });
 });
 
@@ -525,6 +529,7 @@ router.post('/api/history/limit', (req, res) => {
 router.delete('/api/history/:filename', (req, res) => {
   const userId = getUserId(req) || 'anonymous';
   const { filename } = req.params;
+  console.log(`[API] DELETE /api/history/${filename} | userId: ${userId} | Deleting single entry`);
 
   // Validate filename to prevent path traversal
   if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
@@ -560,6 +565,7 @@ router.delete('/api/history/:filename', (req, res) => {
 router.delete('/api/history', (req, res) => {
   const userId = getUserId(req) || 'anonymous';
   const deleteReports = req.query.deleteReports === 'true';
+  console.log(`[API] DELETE /api/history | userId: ${userId} | Clearing ALL history for this user | deleteReports: ${deleteReports}`);
 
   if (deleteReports) {
     const history = loadHistory(userId);
