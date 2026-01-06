@@ -872,23 +872,29 @@
     const userId = window.UserSession?.getId?.() || null;
     const withUserHeaders = (headers = {}) => {
       const headersWithUser = userId ? { ...headers, 'X-User-Id': userId } : headers;
-      console.log(`[Request] Preparing headers | userId: ${userId || '(none)'} | has X-User-Id: ${!!headersWithUser['X-User-Id']}`);
       return headersWithUser;
     };
     const withUserQuery = (url) => {
       const urlWithUser = userId ? `${url}${url.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}` : url;
-      console.log(`[Request] Preparing URL | userId: ${userId || '(none)'} | URL: ${urlWithUser}`);
       return urlWithUser;
     };
 
-    // Logging wrapper for fetch
+    // Logging wrapper for fetch (only logs important operations, not status polls)
     const originalFetch = window.fetch;
     window.fetch = function(url, options = {}) {
       const method = options.method || 'GET';
-      const hasUserId = options.headers && options.headers['X-User-Id'];
-      console.log(`[Fetch] ${method} ${url} | userId in headers: ${hasUserId ? options.headers['X-User-Id'] : '(none)'}`);
+      const isStatusPoll = typeof url === 'string' && url.includes('/status');
+
+      // Only log non-status requests
+      if (!isStatusPoll) {
+        const hasUserId = options.headers && options.headers['X-User-Id'];
+        console.log(`[Fetch] ${method} ${url} | userId in headers: ${hasUserId ? options.headers['X-User-Id'] : '(none)'}`);
+      }
+
       return originalFetch.apply(this, arguments).then(response => {
-        console.log(`[Fetch Response] ${method} ${url} | Status: ${response.status}`);
+        if (!isStatusPoll) {
+          console.log(`[Fetch Response] ${method} ${url} | Status: ${response.status}`);
+        }
         return response;
       }).catch(error => {
         console.error(`[Fetch Error] ${method} ${url} | Error:`, error);
@@ -987,7 +993,6 @@
       // Fetch status for all processors
       async function updateAllStatuses() {
         const tools = ['sku', 'banner', 'pslp', 'mixinad'];
-        console.log(`[Dashboard] Polling status for all tools | userId: ${userId || '(none)'}`);
 
         for (const tool of tools) {
           try {
@@ -998,11 +1003,10 @@
               continue;
             }
             const status = await response.json();
-            console.log(`[Dashboard] Status for ${tool} | isRunning: ${status.isRunning} | progress: ${status.progress || 'none'}`);
 
             if (status.isRunning && !jobStates[tool]) {
               // New job started
-              console.log(`[Dashboard] New job detected for ${tool}`);
+              console.log(`[Dashboard] Job started: ${tool} | userId: ${userId || '(none)'}`);
               jobStartTimes[tool] = Date.now();
               jobStates[tool] = status;
             } else if (status.isRunning && jobStates[tool]) {

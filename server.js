@@ -242,7 +242,6 @@ router.post('/api/categories', express.json(), (req, res) => {
 
 router.get('/api/sku/status', (req, res) => {
   const userId = getUserId(req);
-  console.log(`[API] GET /api/sku/status | userId: ${userId || 'anonymous'}`);
   res.json(getProcessorStatus(userId, 'sku'));
 });
 
