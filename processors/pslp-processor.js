@@ -686,6 +686,94 @@ export class PSLPProcessor extends BaseProcessor {
         arrowContainer.appendChild(prevArrow);
         arrowContainer.appendChild(nextArrow);
         slide.appendChild(arrowContainer);
+
+        // Create navigation dots container with play button
+        const dotsNav = document.createElement('nav');
+        dotsNav.className = 'pslp-injected-dots';
+        dotsNav.style.cssText = `
+          position: absolute;
+          bottom: 16px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 15;
+          pointer-events: none;
+        `;
+
+        const dotsContainer = document.createElement('div');
+        dotsContainer.className = 'pslp-dots-container';
+        dotsContainer.style.cssText = `
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background-color: #000000;
+          height: 30px;
+          padding: 0 16px;
+          border-radius: 15px;
+        `;
+
+        // Play button with SVG triangle
+        const playButton = document.createElement('button');
+        playButton.className = 'pslp-play-button';
+        playButton.setAttribute('type', 'button');
+        playButton.setAttribute('aria-label', 'Stop automatic slide show.');
+        playButton.style.cssText = `
+          width: 14px;
+          height: 14px;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          margin-right: 8px;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        `;
+        playButton.innerHTML = `<svg width="10" height="12" viewBox="0 0 10 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0V12L10 6L0 0Z" fill="white"/></svg>`;
+
+        // Dots list
+        const dotsList = document.createElement('ul');
+        dotsList.className = 'pslp-dots-list';
+        dotsList.style.cssText = `
+          display: flex !important;
+          gap: 8px;
+          list-style: none !important;
+          list-style-type: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        `;
+
+        // Create dots matching the number of slides
+        const slideCount = slides.length;
+        for (let i = 0; i < slideCount; i++) {
+          const dotLi = document.createElement('li');
+          dotLi.style.cssText = `list-style: none !important; margin: 0 !important; padding: 0 !important;`;
+
+          const dotButton = document.createElement('button');
+          dotButton.setAttribute('type', 'button');
+          dotButton.setAttribute('aria-label', `Slide ${i + 1}`);
+          dotButton.style.cssText = `
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: ${i === 0 ? 'white' : 'rgba(255, 255, 255, 0.5)'};
+            border: none;
+            font-size: 0;
+            line-height: 0;
+            text-indent: -9999px;
+            overflow: hidden;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+          `;
+
+          dotLi.appendChild(dotButton);
+          dotsList.appendChild(dotLi);
+        }
+
+        dotsContainer.appendChild(playButton);
+        dotsContainer.appendChild(dotsList);
+        dotsNav.appendChild(dotsContainer);
+        slide.appendChild(dotsNav);
       });
     }, width);
   }
