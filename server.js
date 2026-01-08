@@ -19,7 +19,7 @@ import { generateMixInAdReport } from './report-generators/mixinad-report.js';
 import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, reloadCategories } from './config.js';
 import { asyncHandler } from './utils/async-handler.js';
 import { autoGenerateReport } from './utils/auto-generate-report.js';
-import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory } from './utils/history.js';
+import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory, markAsRead } from './utils/history.js';
 import { initWebSocket, broadcast } from './utils/broadcast.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -519,7 +519,7 @@ router.post('/api/history/limit', (req, res) => {
   const { limit } = req.body;
   if (setHistoryLimit(userId, limit)) {
     res.json({ ok: true, limit: getHistoryLimit(userId) });
-    } else {
+  } else {
     res.status(400).json({ error: 'Invalid limit' });
   }
 });
@@ -557,6 +557,27 @@ router.delete('/api/history/:filename', (req, res) => {
     res.json({ ok: true, message: 'History item deleted' });
   } else {
     res.status(404).json({ error: 'History item not found' });
+  }
+});
+
+// Mark a history entry as read
+router.post('/api/history/:filename/read', (req, res) => {
+  const userId = getUserId(req) || 'anonymous';
+  const { filename } = req.params;
+  console.log(`[API] POST /api/history/${filename}/read | userId: ${userId}`);
+
+  // Validate filename
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  const marked = markAsRead(filename, userId);
+  if (marked) {
+    // Return updated history for frontend refresh
+    const history = loadHistory(userId);
+    res.json({ ok: true, history });
+  } else {
+    res.json({ ok: true, message: 'Already read or not found' });
   }
 });
 

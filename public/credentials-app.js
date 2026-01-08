@@ -175,6 +175,18 @@ function setupEventListeners() {
   saveBtn.addEventListener('click', saveCredentials);
   clearBtn.addEventListener('click', clearForm);
   deleteBtn.addEventListener('click', deleteCredentials);
+
+  // Password visibility toggle
+  const passwordInput = document.getElementById('login-password-input');
+  const passwordToggleBtn = document.querySelector('.password-toggle-btn');
+
+  if (passwordToggleBtn && passwordInput) {
+    passwordToggleBtn.addEventListener('click', () => {
+      const isPassword = passwordInput.type === 'password';
+      passwordInput.type = isPassword ? 'text' : 'password';
+      passwordToggleBtn.querySelector('.eye-icon').textContent = isPassword ? '🙈' : '👁️';
+    });
+  }
 }
 
 function loadSelectedEntry(preferredCulture) {

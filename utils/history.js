@@ -58,7 +58,7 @@ export function saveToHistory(entry, userId = null) {
   const store = readHistoryStore();
   const scopedUserId = userId || 'anonymous';
   console.log(`[History] saveToHistory | userId: ${scopedUserId} | Entry: ${entry.filename || 'unknown'}`);
-  const entryWithUser = { ...entry, userId: scopedUserId };
+  const entryWithUser = { ...entry, userId: scopedUserId, read: false };
   store.entries.unshift(entryWithUser);
 
   const limit = getHistoryLimit(scopedUserId, store);
@@ -132,4 +132,28 @@ export function clearHistory(userId = null) {
   console.log(`[History] clearHistory | userId: ${userId} | Deleted ${deletedCount} entries | Remaining: ${afterCount}`);
   writeHistoryStore(store);
   return true;
+}
+
+export function markAsRead(filename, userId = null) {
+  const store = readHistoryStore();
+  console.log(`[History] markAsRead | filename: ${filename} | userId: ${userId || '(any)'}`);
+
+  let found = false;
+  store.entries = store.entries.map(entry => {
+    if (entry.filename === filename && (!userId || entry.userId === userId)) {
+      if (!entry.read) {
+        found = true;
+        return { ...entry, read: true };
+      }
+    }
+    return entry;
+  });
+
+  if (found) {
+    writeHistoryStore(store);
+    console.log(`[History] markAsRead | Entry marked as read`);
+    return true;
+  }
+  console.log(`[History] markAsRead | Entry not found or already read`);
+  return false;
 }

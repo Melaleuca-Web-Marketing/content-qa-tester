@@ -299,6 +299,67 @@ export class BaseProcessor extends EventEmitter {
     await this.page.waitForTimeout(2000);
   }
 
+  /**
+   * Pauses job and waits for user to update credentials and resume
+   * @param {string} errorMessage - The authentication error message
+   * @param {string} environment - The environment that failed
+   */
+  async waitForCredentialUpdate(errorMessage, environment) {
+    log('warn', `Authentication failed: ${errorMessage}. Pausing for credential update...`);
+    this.shouldResume = false;
+
+    // Store current status
+    this.currentStatusType = 'waiting-for-credentials';
+    this.currentStatusMessage = `Authentication failed: ${errorMessage}. Update credentials and click Resume.`;
+
+    this.emit('status', {
+      type: 'waiting-for-credentials',
+      message: this.currentStatusMessage,
+      error: errorMessage,
+      environment: environment
+    });
+
+    // Poll until user clicks resume or stop (with 10-minute timeout)
+    const timeout = 10 * 60 * 1000;
+    const start = Date.now();
+
+    while (!this.shouldResume && !this.shouldStop) {
+      if (Date.now() - start > timeout) {
+        log('error', 'Credential update timeout after 10 minutes');
+        throw new Error('Credential update timeout after 10 minutes. Please try again.');
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    if (this.shouldStop) {
+      log('info', 'User cancelled during credential update');
+      throw new Error('Cancelled by user during credential update');
+    }
+
+    log('info', 'User resumed with updated credentials');
+    this.shouldResume = false;
+
+    // Set resuming status
+    this.currentStatusType = 'resuming';
+    this.currentStatusMessage = 'Retrying authentication with updated credentials...';
+
+    // Brief delay before retry
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  /**
+   * Updates credentials for retry
+   * @param {string} username - New username
+   * @param {string} password - New password
+   */
+  updateCredentials(username, password) {
+    if (this.currentOptions) {
+      this.currentOptions.username = username;
+      this.currentOptions.password = password;
+      log('info', 'Credentials updated, ready for retry');
+    }
+  }
+
   // Get current status
   getStatus() {
     return {

@@ -57,7 +57,12 @@
           <div class="label">Login Credentials (required for Add to Cart)</div>
           <div class="login-fields">
             <input type="text" id="username-input" placeholder="Username" autocomplete="username">
-            <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
+            <div class="password-input-wrapper">
+              <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
+              <button type="button" class="password-toggle-btn" aria-label="Toggle password visibility">
+                <span class="eye-icon">👁️</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -123,6 +128,21 @@
           <div id="current-sku-name">-</div>
           <div id="current-sku-price">-</div>
           <div id="current-sku-status">-</div>
+        </div>
+      </div>
+
+      <!-- Live Activity Feed -->
+      <div class="activity-feed" id="activity-feed" style="display: none;">
+        <div class="activity-header">
+          <span class="activity-title">📋 Live Activity</span>
+          <span class="activity-counts">
+            <span class="passed-count">✅ <span id="passed-count">0</span></span>
+            <span class="failed-count">❌ <span id="failed-count">0</span></span>
+          </span>
+          <button class="activity-clear-btn" id="clear-activity" title="Clear feed">🗑️ Clear</button>
+        </div>
+        <div class="activity-list" id="activity-list">
+          <div class="activity-empty">No activity yet</div>
         </div>
       </div>
     </div>

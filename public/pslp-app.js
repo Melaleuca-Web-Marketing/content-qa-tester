@@ -33,6 +33,7 @@ let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
 let isWaitingForResume = false;
+let activityItems = []; // Activity feed items
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
@@ -78,6 +79,13 @@ const currentStepName = document.getElementById('current-step-name');
 const currentStepStatus = document.getElementById('current-step-status');
 const connectionStatus = document.getElementById('connection-status');
 
+// Activity feed elements
+const activityFeed = document.getElementById('activity-feed');
+const activityList = document.getElementById('activity-list');
+const passedCountEl = document.getElementById('passed-count');
+const failedCountEl = document.getElementById('failed-count');
+const clearActivityBtn = document.getElementById('clear-activity');
+
 async function init() {
   try {
     await loadConfig();
@@ -87,9 +95,38 @@ async function init() {
     loadPreferences();
     connectWebSocket();
     updateComponentCount();
+    setStatusRunning('Checking status...', 'Loading job state');
+    await checkStatus(); // Check if a job is already running
+    loadActivityFromStorage(); // Restore activity feed from session
   } catch (err) {
     console.error('Initialization error:', err);
     setStatusError('Initialization failed', err.message);
+  }
+}
+
+async function checkStatus() {
+  try {
+    const response = await fetch(api('/api/pslp/status'), {
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
+    const status = await response.json();
+
+    if (status.isRunning) {
+      isCapturing = true;
+      setUICapturing();
+      setStatusRunning('Job in progress', 'Reconnected to running job');
+
+      if (status.statusType === 'waiting-for-auth') {
+        isWaitingForResume = true;
+        startCaptureBtn.textContent = 'Resume Capture';
+        startCaptureBtn.disabled = false;
+        setStatusRunning('Waiting for manual sign-in', status.message || 'Please sign in and click Resume');
+      }
+    } else {
+      setStatusIdle('Ready to capture', '');
+    }
+  } catch (err) {
+    console.error('Failed to check status:', err);
   }
 }
 
@@ -163,6 +200,23 @@ function setupEventListeners() {
     }
   });
   stopCaptureBtn.addEventListener('click', stopCapture);
+
+  // Activity feed clear button
+  if (clearActivityBtn) {
+    clearActivityBtn.addEventListener('click', clearActivityFeed);
+  }
+
+  // Password visibility toggle
+  const passwordInput = document.getElementById('password-input');
+  const passwordToggleBtn = document.querySelector('.password-toggle-btn');
+
+  if (passwordToggleBtn && passwordInput) {
+    passwordToggleBtn.addEventListener('click', () => {
+      const isPassword = passwordInput.type === 'password';
+      passwordInput.type = isPassword ? 'text' : 'password';
+      passwordToggleBtn.querySelector('.eye-icon').textContent = isPassword ? '🙈' : '👁️';
+    });
+  }
 }
 
 // Helper function to infer region from culture code
@@ -390,6 +444,15 @@ function handleProgress(data) {
       setStatusRunning('Capturing screenshots...', progress.status);
       if (progress.current !== undefined && progress.total !== undefined) {
         updateProgressBar(progress.current, progress.total);
+        // Add to activity feed when a width is complete
+        if (progress.width && progress.status && progress.status.includes('captured')) {
+          addActivityItem({
+            type: 'success',
+            component: 'Screenshot',
+            width: progress.width,
+            detail: progress.status
+          });
+        }
       }
       break;
 
@@ -400,6 +463,20 @@ function handleProgress(data) {
       setStatusRunning('Extracting component data...', `${progress.componentName || progress.component}: ${progress.status}`);
       if (progress.current !== undefined && progress.total !== undefined) {
         updateProgressBar(progress.current, progress.total);
+      }
+      // Add component completion to activity feed
+      if (progress.status === 'Complete' || progress.status === 'Extracted') {
+        addActivityItem({
+          type: 'success',
+          component: progress.componentName || progress.component,
+          detail: 'Data extracted successfully'
+        });
+      } else if (progress.status && progress.status.toLowerCase().includes('error')) {
+        addActivityItem({
+          type: 'error',
+          component: progress.componentName || progress.component,
+          error: progress.status
+        });
       }
       break;
 
@@ -418,6 +495,9 @@ function handleStatusUpdate(data) {
       captureStartTime = Date.now();
       setUICapturing();
       setStatusRunning('Starting PSLP capture...', `${data.componentsCount ?? data.componentCount ?? 0} components to extract`);
+      // Clear and show activity feed
+      clearActivityFeed();
+      activityFeed.style.display = 'block';
       break;
 
     case 'stopping':
@@ -428,7 +508,7 @@ function handleStatusUpdate(data) {
       isCapturing = false;
       setUIIdle();
       setStatusIdle('Capture cancelled', 'Operation was cancelled by user');
-      saveReportBtn.disabled = true;
+      if (saveReportBtn) saveReportBtn.disabled = true;
       break;
 
     case 'completed':
@@ -441,7 +521,7 @@ function handleStatusUpdate(data) {
 
       setStatusSuccess('Capture complete!', `${screenshots} screenshots, ${components} components extracted in ${formatDuration(data.duration)}`);
 
-      saveReportBtn.disabled = !data.results;
+      if (saveReportBtn) saveReportBtn.disabled = !data.results;
       break;
 
     case 'error':
@@ -569,7 +649,12 @@ async function startCapture() {
     const result = await response.json();
 
     if (!response.ok) {
-      setStatusError('Failed to start', result.error || 'Unknown error');
+      if (response.status === 409) {
+        alert('A PSLP job is already running. Please wait for it to complete or stop it first.');
+        await checkStatus();
+      } else {
+        setStatusError('Failed to start', result.error || 'Unknown error');
+      }
       return;
     }
 
@@ -614,7 +699,7 @@ async function resumeCapture() {
 function setUICapturing() {
   startCaptureBtn.disabled = true;
   stopCaptureBtn.disabled = false;
-  saveReportBtn.disabled = true;
+  if (saveReportBtn) saveReportBtn.disabled = true;
   progressContainer.style.display = 'block';
   progressBarInner.style.width = '0%';
   progressCount.textContent = '0 / 0';
@@ -668,6 +753,116 @@ function setConnectionStatus(status) {
     default:
       text.textContent = 'Connecting...';
   }
+}
+
+// ===== Activity Feed Functions =====
+const ACTIVITY_STORAGE_KEY = 'activityFeed-pslp';
+
+function loadActivityFromStorage() {
+  try {
+    const stored = sessionStorage.getItem(ACTIVITY_STORAGE_KEY);
+    if (stored) {
+      activityItems = JSON.parse(stored);
+      activityItems.forEach(item => {
+        if (item.timestamp) item.timestamp = new Date(item.timestamp);
+      });
+      renderActivityFeed();
+      if (activityItems.length > 0) {
+        activityFeed.style.display = 'block';
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load activity feed:', e);
+  }
+}
+
+function saveActivityToStorage() {
+  try {
+    sessionStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(activityItems));
+  } catch (e) {
+    console.error('Failed to save activity feed:', e);
+  }
+}
+
+function addActivityItem(item) {
+  item.timestamp = new Date();
+
+  if (item.type === 'error') {
+    activityItems.unshift(item);
+  } else {
+    const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
+    if (firstSuccessIndex === -1) {
+      activityItems.push(item);
+    } else {
+      activityItems.splice(firstSuccessIndex, 0, item);
+    }
+  }
+
+  saveActivityToStorage();
+  renderActivityFeed();
+}
+
+function clearActivityFeed() {
+  activityItems = [];
+  saveActivityToStorage();
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const passed = activityItems.filter(i => i.type === 'success').length;
+  const failed = activityItems.filter(i => i.type === 'error').length;
+
+  passedCountEl.textContent = passed;
+  failedCountEl.textContent = failed;
+
+  if (activityItems.length === 0) {
+    activityList.innerHTML = '<div class="activity-empty">No activity yet</div>';
+    return;
+  }
+
+  activityList.innerHTML = activityItems.map(item => {
+    const icon = item.type === 'error' ? '❌' : '✅';
+    const timeStr = formatActivityTime(item.timestamp);
+    const main = item.width ? `${item.component} @ ${item.width}px` : item.component;
+
+    if (item.type === 'error') {
+      return `
+        <div class="activity-item error">
+          <span class="activity-item-icon">${icon}</span>
+          <div class="activity-item-content">
+            <div class="activity-item-main">${main}</div>
+            <div class="activity-item-detail">${item.error}</div>
+          </div>
+          <span class="activity-item-time">${timeStr}</span>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="activity-item success">
+          <span class="activity-item-icon">${icon}</span>
+          <div class="activity-item-content">
+            <div class="activity-item-main">${main}</div>
+            <div class="activity-item-detail">${item.detail || 'Complete'}</div>
+          </div>
+          <span class="activity-item-time">${timeStr}</span>
+        </div>
+      `;
+    }
+  }).join('');
+
+  if (failed > 0) {
+    activityList.scrollTop = 0;
+  }
+}
+
+function formatActivityTime(date) {
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+
+  if (diff < 5) return 'just now';
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return date.toLocaleTimeString();
 }
 
 document.addEventListener('DOMContentLoaded', init);

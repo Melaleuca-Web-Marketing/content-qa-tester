@@ -33,6 +33,7 @@ let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
 let isWaitingForResume = false;
+let activityItems = []; // Activity feed items
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
@@ -79,6 +80,13 @@ const currentSkuPrice = document.getElementById('current-sku-price');
 const currentSkuStatus = document.getElementById('current-sku-status');
 const connectionStatus = document.getElementById('connection-status');
 
+// Activity feed elements
+const activityFeed = document.getElementById('activity-feed');
+const activityList = document.getElementById('activity-list');
+const passedCountEl = document.getElementById('passed-count');
+const failedCountEl = document.getElementById('failed-count');
+const clearActivityBtn = document.getElementById('clear-activity');
+
 async function init() {
   try {
     await loadConfig();
@@ -86,9 +94,38 @@ async function init() {
     renderCultureOptions();
     loadPreferences();
     connectWebSocket();
+    setStatusRunning('Checking status...', 'Loading job state');
+    await checkStatus(); // Check if a job is already running
+    loadActivityFromStorage(); // Restore activity feed from session
   } catch (err) {
     console.error('Initialization error:', err);
     setStatusError('Initialization failed', err.message);
+  }
+}
+
+async function checkStatus() {
+  try {
+    const response = await fetch(api('/api/sku/status'), {
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
+    const status = await response.json();
+
+    if (status.isRunning) {
+      isCapturing = true;
+      setUICapturing();
+      setStatusRunning('Job in progress', 'Reconnected to running job');
+
+      if (status.statusType === 'waiting-for-auth') {
+        isWaitingForResume = true;
+        startCaptureBtn.textContent = 'Resume Capture';
+        startCaptureBtn.disabled = false;
+        setStatusRunning('Waiting for manual sign-in', status.message || 'Please sign in and click Resume');
+      }
+    } else {
+      setStatusIdle('Ready to capture', '');
+    }
+  } catch (err) {
+    console.error('Failed to check status:', err);
   }
 }
 
@@ -145,6 +182,23 @@ function setupEventListeners() {
     }
   });
   stopCaptureBtn.addEventListener('click', stopCapture);
+
+  // Activity feed clear button
+  if (clearActivityBtn) {
+    clearActivityBtn.addEventListener('click', clearActivityFeed);
+  }
+
+  // Password visibility toggle
+  const passwordInput = document.getElementById('password-input');
+  const passwordToggleBtn = document.querySelector('.password-toggle-btn');
+
+  if (passwordToggleBtn && passwordInput) {
+    passwordToggleBtn.addEventListener('click', () => {
+      const isPassword = passwordInput.type === 'password';
+      passwordInput.type = isPassword ? 'text' : 'password';
+      passwordToggleBtn.querySelector('.eye-icon').textContent = isPassword ? '🙈' : '👁️';
+    });
+  }
 }
 
 function renderCultureOptions(selectedCultures = null) {
@@ -353,11 +407,48 @@ function handleProgress(data) {
       }
       currentSkuStatus.textContent = 'Complete';
       updateProgressBar(progress.current, progress.total);
+
+      // Check for validation issues
+      const data = progress.data || {};
+      const issues = [];
+      if (data.addToCart && data.addToCart.success === false) {
+        issues.push('Add to cart failed');
+      }
+      if (!data.description) {
+        issues.push('Missing description');
+      }
+      if (data.aboutHasContent === false) {
+        issues.push('Missing About content');
+      }
+      if (data.ingredientsHasContent === false) {
+        issues.push('Missing Ingredients');
+      }
+
+      // Determine item type based on issues
+      const hasErrors = data.addToCart && data.addToCart.success === false;
+      const hasWarnings = issues.length > 0;
+
+      addActivityItem({
+        type: hasErrors ? 'error' : (hasWarnings ? 'warning' : 'success'),
+        sku: progress.sku,
+        culture: progress.culture,
+        name: data.name || `SKU ${progress.sku}`,
+        price: data.price,
+        addToCart: data.addToCart,
+        issues: issues
+      });
       break;
 
     case 'sku-error':
       currentSkuStatus.textContent = `Error: ${progress.error}`;
       updateProgressBar(progress.current, progress.total);
+      // Add to activity feed
+      addActivityItem({
+        type: 'error',
+        sku: progress.sku,
+        culture: progress.culture,
+        error: progress.error
+      });
       break;
   }
 }
@@ -369,6 +460,9 @@ function handleStatusUpdate(data) {
       captureStartTime = Date.now();
       setUICapturing();
       setStatusRunning('Starting capture...', `${data.skuCount} captures to process`);
+      // Clear and show activity feed
+      clearActivityFeed();
+      activityFeed.style.display = 'block';
       break;
 
     case 'waiting-for-auth':
@@ -395,7 +489,7 @@ function handleStatusUpdate(data) {
       setUIIdle();
       const cancelledCount = data.results?.filter(r => r.success).length || 0;
       setStatusIdle('Capture cancelled', `${cancelledCount} captures completed before cancellation`);
-      saveReportBtn.disabled = !data.results?.length;
+      if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
       break;
 
     case 'completed':
@@ -409,7 +503,7 @@ function handleStatusUpdate(data) {
         setStatusSuccess('Capture complete with errors', `${data.successCount} captures succeeded, ${data.errorCount} failed`);
       }
 
-      saveReportBtn.disabled = !data.results?.length;
+      if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
       break;
   }
 }
@@ -510,7 +604,12 @@ async function startCapture() {
     const result = await response.json();
 
     if (!response.ok) {
-      setStatusError('Failed to start', result.error || 'Unknown error');
+      if (response.status === 409) {
+        alert('A SKU job is already running. Please wait for it to complete or stop it first.');
+        await checkStatus();
+      } else {
+        setStatusError('Failed to start', result.error || 'Unknown error');
+      }
       return;
     }
 
@@ -555,7 +654,7 @@ async function resumeCapture() {
 function setUICapturing() {
   startCaptureBtn.disabled = true;
   stopCaptureBtn.disabled = false;
-  saveReportBtn.disabled = true;
+  if (saveReportBtn) saveReportBtn.disabled = true;
   progressContainer.style.display = 'block';
   progressBarInner.style.width = '0%';
   progressCount.textContent = '0 / 0';
@@ -609,6 +708,129 @@ function setConnectionStatus(status) {
     default:
       text.textContent = 'Connecting...';
   }
+}
+
+// ===== Activity Feed Functions =====
+const ACTIVITY_STORAGE_KEY = 'activityFeed-sku';
+
+function loadActivityFromStorage() {
+  try {
+    const stored = sessionStorage.getItem(ACTIVITY_STORAGE_KEY);
+    if (stored) {
+      activityItems = JSON.parse(stored);
+      // Restore Date objects
+      activityItems.forEach(item => {
+        if (item.timestamp) item.timestamp = new Date(item.timestamp);
+      });
+      renderActivityFeed();
+      if (activityItems.length > 0) {
+        activityFeed.style.display = 'block';
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load activity feed:', e);
+  }
+}
+
+function saveActivityToStorage() {
+  try {
+    sessionStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(activityItems));
+  } catch (e) {
+    console.error('Failed to save activity feed:', e);
+  }
+}
+
+function addActivityItem(item) {
+  item.timestamp = new Date();
+
+  // Add to array - errors/warnings at start, success at end
+  if (item.type === 'error' || item.type === 'warning') {
+    activityItems.unshift(item);
+  } else {
+    // Find first success index or push to end
+    const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
+    if (firstSuccessIndex === -1) {
+      activityItems.push(item);
+    } else {
+      activityItems.splice(firstSuccessIndex, 0, item);
+    }
+  }
+
+  saveActivityToStorage();
+  renderActivityFeed();
+}
+
+function clearActivityFeed() {
+  activityItems = [];
+  saveActivityToStorage();
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const passed = activityItems.filter(i => i.type === 'success').length;
+  const warnings = activityItems.filter(i => i.type === 'warning').length;
+  const failed = activityItems.filter(i => i.type === 'error').length;
+
+  passedCountEl.textContent = passed;
+  failedCountEl.textContent = failed + warnings; // Count warnings as issues
+
+  if (activityItems.length === 0) {
+    activityList.innerHTML = '<div class="activity-empty">No activity yet</div>';
+    return;
+  }
+
+  activityList.innerHTML = activityItems.map(item => {
+    const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
+    const timeStr = formatActivityTime(item.timestamp);
+    const itemClass = item.type === 'error' ? 'error' : (item.type === 'warning' ? 'warning' : 'success');
+
+    if (item.type === 'error') {
+      return `
+        <div class="activity-item error">
+          <span class="activity-item-icon">${icon}</span>
+          <div class="activity-item-content">
+            <div class="activity-item-main">SKU ${item.sku}${item.culture ? ` (${item.culture})` : ''}</div>
+            <div class="activity-item-detail">${item.error}</div>
+          </div>
+          <span class="activity-item-time">${timeStr}</span>
+        </div>
+      `;
+    } else {
+      const details = [];
+      if (item.name && item.name !== `SKU ${item.sku}`) details.push(item.name);
+      if (item.price) details.push(item.price);
+      if (item.addToCart?.success) details.push('Added to Cart ✓');
+
+      // Show issues for warnings
+      const issueText = item.issues && item.issues.length > 0 ? item.issues.join(' • ') : '';
+
+      return `
+        <div class="activity-item ${itemClass}">
+          <span class="activity-item-icon">${icon}</span>
+          <div class="activity-item-content">
+            <div class="activity-item-main">SKU ${item.sku}${item.culture ? ` (${item.culture})` : ''}</div>
+            ${issueText ? `<div class="activity-item-detail">${issueText}</div>` : (details.length ? `<div class="activity-item-detail">${details.join(' • ')}</div>` : '')}
+          </div>
+          <span class="activity-item-time">${timeStr}</span>
+        </div>
+      `;
+    }
+  }).join('');
+
+  // Auto-scroll to top if there are errors/warnings (they appear at top)
+  if (failed > 0 || warnings > 0) {
+    activityList.scrollTop = 0;
+  }
+}
+
+function formatActivityTime(date) {
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+
+  if (diff < 5) return 'just now';
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return date.toLocaleTimeString();
 }
 
 document.addEventListener('DOMContentLoaded', init);

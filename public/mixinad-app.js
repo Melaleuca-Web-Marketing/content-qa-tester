@@ -33,6 +33,9 @@ let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
 let isWaitingForResume = false;
+let activityItems = []; // Activity feed items
+let mixinProgress = {}; // Track progress per category (culture-mainCategory-category)
+let expectedWidths = []; // Widths selected for current job
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
@@ -67,6 +70,13 @@ const progressCategory = document.getElementById('progress-category');
 const progressWidth = document.getElementById('progress-width');
 const connectionStatus = document.getElementById('connection-status');
 
+// Activity feed elements
+const activityFeed = document.getElementById('activity-feed');
+const activityList = document.getElementById('activity-list');
+const passedCountEl = document.getElementById('passed-count');
+const failedCountEl = document.getElementById('failed-count');
+const clearActivityBtn = document.getElementById('clear-activity');
+
 async function init() {
   try {
     await loadConfig();
@@ -76,9 +86,38 @@ async function init() {
     renderCategoryTree();
     loadPreferences();
     connectWebSocket();
+    setStatusRunning('Checking status...', 'Loading job state');
+    await checkStatus(); // Check if a job is already running
+    loadActivityFromStorage(); // Restore activity feed from session
   } catch (err) {
     console.error('Initialization error:', err);
     setStatusError('Initialization failed', err.message);
+  }
+}
+
+async function checkStatus() {
+  try {
+    const response = await fetch(api('/api/mixinad/status'), {
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
+    const status = await response.json();
+
+    if (status.isRunning) {
+      isCapturing = true;
+      setUICapturing();
+      setStatusRunning('Job in progress', 'Reconnected to running job');
+
+      if (status.statusType === 'waiting-for-auth') {
+        isWaitingForResume = true;
+        startCaptureBtn.textContent = 'Resume Capture';
+        startCaptureBtn.disabled = false;
+        setStatusRunning('Waiting for manual sign-in', status.message || 'Please sign in and click Resume');
+      }
+    } else {
+      setStatusIdle('Ready to capture', '');
+    }
+  } catch (err) {
+    console.error('Failed to check status:', err);
   }
 }
 
@@ -115,12 +154,21 @@ function setupEventListeners() {
     }
   });
   stopCaptureBtn.addEventListener('click', stopCapture);
+
+  // Activity feed clear button
+  if (clearActivityBtn) {
+    clearActivityBtn.addEventListener('click', clearActivityFeed);
+  }
 }
 
 function toggleAllCheckboxes(containerId, checked) {
   const container = document.getElementById(containerId);
   container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.checked = checked;
+    // Update highlight for width options
+    if (containerId === 'width-options') {
+      cb.closest('.width-option')?.classList.toggle('selected', checked);
+    }
   });
   if (containerId === 'culture-options') {
     applySavedCredentials();
@@ -332,15 +380,110 @@ function handleWebSocketMessage(message) {
 function handleProgress(data) {
   const progress = data.progress;
   progressCulture.textContent = `Culture: ${progress.culture || '-'}`;
-  progressCategory.textContent = `Category: ${progress.category || '-'}`;
+  progressCategory.textContent = `Category: ${progress.mainCategory ? `${progress.mainCategory} › ${progress.category}` : progress.category || '-'}`;
   progressWidth.textContent = `Width: ${progress.width}px`;
 
   if (progress.state === 'working') {
     setStatusRunning('Capturing...', `${progress.culture} - ${progress.category} at ${progress.width}px`);
-  } else if (progress.state === 'done') {
+  } else if (progress.state === 'done' || progress.state === 'error') {
     updateProgressBar(progress.completed, progress.total);
-  } else if (progress.state === 'error') {
-    updateProgressBar(progress.completed, progress.total);
+
+    // Track progress by culture-mainCategory-category key
+    const categoryKey = `${progress.culture}|${progress.mainCategory || ''}|${progress.category}`;
+
+    if (!mixinProgress[categoryKey]) {
+      mixinProgress[categoryKey] = {
+        culture: progress.culture,
+        mainCategory: progress.mainCategory || '',
+        category: progress.category,
+        widths: {},
+        totalWidths: expectedWidths.length || 1
+      };
+    }
+
+    // Track this width result with validation data
+    const resultData = progress.result || {};
+    mixinProgress[categoryKey].widths[progress.width] = {
+      success: progress.state === 'done',
+      error: progress.state === 'error' ? (resultData.errorMessage || progress.error || 'Unknown error') : null,
+      adsFound: resultData.adsFound || 0,
+      noAdsFound: resultData.noAdsFound || false,
+      validations: resultData.validations || []
+    };
+
+    const mixin = mixinProgress[categoryKey];
+    const completedWidths = Object.keys(mixin.widths).length;
+    const errorWidths = Object.values(mixin.widths).filter(w => !w.success).length;
+
+    // Aggregate results across widths
+    const widthResults = Object.values(mixin.widths).filter(w => w.success);
+    const totalAds = widthResults.reduce((sum, w) => sum + (w.adsFound || 0), 0);
+    const hasNoAds = widthResults.some(w => w.noAdsFound);
+
+    // Collect validation issues from all widths
+    const validationIssues = [];
+    widthResults.forEach(w => {
+      if (w.validations && w.validations.length > 0) {
+        w.validations.forEach(v => {
+          if (v.validation && v.validation.status === 'fail' && v.validation.failures) {
+            v.validation.failures.forEach(f => {
+              if (f === 'link') validationIssues.push('Link mismatch');
+              if (f === 'target') validationIssues.push('Target mismatch');
+              if (f === 'imageLocale') validationIssues.push('Image locale mismatch');
+            });
+          } else if (v.validation && v.validation.status === 'not-found') {
+            validationIssues.push('Not in Excel');
+          }
+        });
+      }
+    });
+    const uniqueIssues = [...new Set(validationIssues)];
+
+    // Check if all widths for this category are complete
+    if (completedWidths >= mixin.totalWidths) {
+      const categoryPath = mixin.mainCategory ? `${mixin.mainCategory} › ${mixin.category}` : mixin.category;
+
+      if (errorWidths > 0) {
+        const errorMessages = Object.entries(mixin.widths)
+          .filter(([_, w]) => !w.success)
+          .map(([width, w]) => `${width}px: ${w.error}`)
+          .join(', ');
+
+        addActivityItem({
+          type: 'error',
+          culture: mixin.culture,
+          categoryPath: categoryPath,
+          detail: `${completedWidths - errorWidths}/${completedWidths} widths captured`,
+          error: errorMessages
+        });
+      } else if (uniqueIssues.length > 0) {
+        addActivityItem({
+          type: 'warning',
+          culture: mixin.culture,
+          categoryPath: categoryPath,
+          detail: `${totalAds} ads • ${completedWidths} widths`,
+          issues: uniqueIssues
+        });
+      } else if (hasNoAds) {
+        addActivityItem({
+          type: 'warning',
+          culture: mixin.culture,
+          categoryPath: categoryPath,
+          detail: `${completedWidths} widths captured`,
+          issues: ['No mix-in ads found']
+        });
+      } else {
+        addActivityItem({
+          type: 'success',
+          culture: mixin.culture,
+          categoryPath: categoryPath,
+          detail: `${totalAds} ads • ${completedWidths} widths`
+        });
+      }
+
+      // Clean up tracked category
+      delete mixinProgress[categoryKey];
+    }
   }
 }
 
@@ -350,7 +493,13 @@ function handleStatusUpdate(data) {
       isCapturing = true;
       captureStartTime = Date.now();
       setUICapturing();
-      setStatusRunning('Starting capture...', `${data.totalCaptures} captures to process`);
+      setStatusRunning('Starting capture...', `${data.estimatedCaptures || data.totalCaptures} captures to process`);
+      // Reset tracking
+      mixinProgress = {};
+      expectedWidths = data.widths || [];
+      // Clear and show activity feed
+      clearActivityFeed();
+      activityFeed.style.display = 'block';
       break;
 
     case 'stopping':
@@ -361,7 +510,7 @@ function handleStatusUpdate(data) {
       isCapturing = false;
       setUIIdle();
       setStatusIdle('Capture cancelled', `${data.successCount} captures completed before cancellation`);
-      saveReportBtn.disabled = !data.results?.length;
+      if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
       break;
 
     case 'completed':
@@ -375,7 +524,7 @@ function handleStatusUpdate(data) {
         setStatusSuccess('Capture complete with errors', `${data.successCount} succeeded, ${data.errorCount} failed`);
       }
 
-      saveReportBtn.disabled = !data.results?.length;
+      if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
       break;
 
     case 'waiting-for-auth':
@@ -493,7 +642,12 @@ async function startCapture() {
     const result = await response.json();
 
     if (!response.ok) {
-      setStatusError('Failed to start', result.error || 'Unknown error');
+      if (response.status === 409) {
+        alert('A Mix-In Ad job is already running. Please wait for it to complete or stop it first.');
+        await checkStatus();
+      } else {
+        setStatusError('Failed to start', result.error || 'Unknown error');
+      }
       return;
     }
 
@@ -538,7 +692,7 @@ async function resumeCapture() {
 function setUICapturing() {
   startCaptureBtn.disabled = true;
   stopCaptureBtn.disabled = false;
-  saveReportBtn.disabled = true;
+  if (saveReportBtn) saveReportBtn.disabled = true;
   progressContainer.style.display = 'block';
   progressBarInner.style.width = '0%';
   progressCount.textContent = '0 / 0';
@@ -590,6 +744,132 @@ function setConnectionStatus(status) {
     default:
       text.textContent = 'Connecting...';
   }
+}
+
+// ===== Activity Feed Functions =====
+const ACTIVITY_STORAGE_KEY = 'activityFeed-mixinad';
+
+function loadActivityFromStorage() {
+  try {
+    const stored = sessionStorage.getItem(ACTIVITY_STORAGE_KEY);
+    if (stored) {
+      activityItems = JSON.parse(stored);
+      activityItems.forEach(item => {
+        if (item.timestamp) item.timestamp = new Date(item.timestamp);
+      });
+      renderActivityFeed();
+      if (activityItems.length > 0) {
+        activityFeed.style.display = 'block';
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load activity feed:', e);
+  }
+}
+
+function saveActivityToStorage() {
+  try {
+    sessionStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(activityItems));
+  } catch (e) {
+    console.error('Failed to save activity feed:', e);
+  }
+}
+
+function addActivityItem(item) {
+  item.timestamp = new Date();
+
+  if (item.type === 'error') {
+    activityItems.unshift(item);
+  } else {
+    const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
+    if (firstSuccessIndex === -1) {
+      activityItems.push(item);
+    } else {
+      activityItems.splice(firstSuccessIndex, 0, item);
+    }
+  }
+
+  saveActivityToStorage();
+  renderActivityFeed();
+}
+
+function clearActivityFeed() {
+  activityItems = [];
+  saveActivityToStorage();
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const passed = activityItems.filter(i => i.type === 'success').length;
+  const warnings = activityItems.filter(i => i.type === 'warning').length;
+  const failed = activityItems.filter(i => i.type === 'error').length;
+
+  passedCountEl.textContent = passed;
+  failedCountEl.textContent = failed + warnings; // Count warnings as issues
+
+  if (activityItems.length === 0) {
+    activityList.innerHTML = '<div class="activity-empty">No activity yet</div>';
+    return;
+  }
+
+  activityList.innerHTML = activityItems.map(item => {
+    const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
+    const timeStr = formatActivityTime(item.timestamp);
+    // Use categoryPath for grouped items, fallback to old format
+    const location = item.categoryPath
+      ? `${item.culture} › ${item.categoryPath}`
+      : `${item.culture} › ${item.category}`;
+
+    if (item.type === 'error') {
+      return `
+        <div class="activity-item error">
+          <span class="activity-item-icon">${icon}</span>
+          <div class="activity-item-content">
+            <div class="activity-item-main">${location}</div>
+            <div class="activity-item-detail">${item.detail || ''} ${item.error ? '- ' + item.error : ''}</div>
+          </div>
+          <span class="activity-item-time">${timeStr}</span>
+        </div>
+      `;
+    } else if (item.type === 'warning') {
+      const issueText = item.issues ? item.issues.join(' • ') : '';
+      return `
+        <div class="activity-item warning">
+          <span class="activity-item-icon">${icon}</span>
+          <div class="activity-item-content">
+            <div class="activity-item-main">${location}</div>
+            <div class="activity-item-detail">${item.detail || ''} ${issueText ? '- ' + issueText : ''}</div>
+          </div>
+          <span class="activity-item-time">${timeStr}</span>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="activity-item success">
+          <span class="activity-item-icon">${icon}</span>
+          <div class="activity-item-content">
+            <div class="activity-item-main">${location}</div>
+            <div class="activity-item-detail">${item.detail || 'Captured'}</div>
+          </div>
+          <span class="activity-item-time">${timeStr}</span>
+        </div>
+      `;
+    }
+  }).join('');
+
+  if (failed > 0 || warnings > 0) {
+    activityList.scrollTop = 0;
+  }
+}
+
+function formatActivityTime(date) {
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+
+  if (diff < 5) return 'just now';
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return date.toLocaleTimeString();
 }
 
 document.addEventListener('DOMContentLoaded', init);

@@ -207,10 +207,13 @@
     }
 
     @keyframes pulse-border {
-      0%, 100% {
+
+      0%,
+      100% {
         border-left-color: currentColor;
         box-shadow: 0 0 0 rgba(251, 191, 36, 0);
       }
+
       50% {
         border-left-color: #fbbf24;
         box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
@@ -405,6 +408,16 @@
       border-left: 4px solid #ec4899;
     }
 
+    /* Unread history items */
+    .history-item.unread {
+      background: linear-gradient(90deg, rgba(59, 130, 246, 0.12) 0%, var(--bg-secondary) 100%);
+      border-left-width: 5px;
+    }
+
+    .history-item.unread .history-title {
+      font-weight: 700;
+    }
+
     .history-info {
       flex: 1;
     }
@@ -494,6 +507,29 @@
       font-size: 48px;
       margin-bottom: 16px;
       opacity: 0.5;
+    }
+
+    /* NEW Badge for Unread Jobs */
+    .history-item .new-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 8px;
+      background: linear-gradient(135deg, #ff4444, #ff6b6b);
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      margin-left: 8px;
+      box-shadow: 0 2px 4px rgba(255, 68, 68, 0.3);
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 2px 4px rgba(255, 68, 68, 0.3); }
+      50% { box-shadow: 0 2px 8px rgba(255, 68, 68, 0.6); }
     }
 
     /* Excel Validation Section */
@@ -731,7 +767,8 @@
         </div>
 
         <div class="excel-upload-area" id="excel-upload-area">
-          <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display: none;" onchange="handleExcelUpload(event)">
+          <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display: none;"
+            onchange="handleExcelUpload(event)">
           <button class="excel-upload-button" onclick="document.getElementById('excel-file-input').click()">
             📁 Choose Excel File
           </button>
@@ -881,7 +918,7 @@
 
     // Logging wrapper for fetch (only logs important operations, not status polls)
     const originalFetch = window.fetch;
-    window.fetch = function(url, options = {}) {
+    window.fetch = function (url, options = {}) {
       const method = options.method || 'GET';
       const isStatusPoll = typeof url === 'string' && url.includes('/status');
 
@@ -1069,7 +1106,7 @@
 
         // Check if job is waiting for authentication
         const isWaitingForAuth = status.statusType === 'waiting-for-auth' ||
-                                  (status.message && status.message.includes('Please sign in'));
+          (status.message && status.message.includes('Please sign in'));
 
         // Add appropriate classes
         card.className = `job-card ${config.class}${isWaitingForAuth ? ' waiting-auth' : ''}`;
@@ -1078,7 +1115,7 @@
         const elapsedStr = formatElapsedTime(elapsed);
 
         let progressPercent = 0;
-        let progressText = 'Initializing...';
+        let progressText = status.message || 'Loading status...';
         let detailText = '';
 
         // If waiting for auth, show specific status
@@ -1332,17 +1369,22 @@
       function createHistoryItem(report) {
         const item = document.createElement('div');
         const config = toolConfig[report.mode] || { name: 'Unknown', icon: '📄', class: '' };
-        item.className = `history-item ${config.class}`;
+        const isUnread = report.read === false;
+        item.className = `history-item ${config.class}${isUnread ? ' unread' : ''}`;
 
         const timeAgo = formatTimeAgo(new Date(report.timestamp));
         const reportUrl = withUserQuery(api(`/api/reports/${report.filename}`));
         const downloadUrl = `${reportUrl}${reportUrl.includes('?') ? '&' : '?'}download=true`;
+
+        // Folder icon: closed for unread, open for read
+        const folderIcon = isUnread ? '📁' : '📂';
 
         item.innerHTML = `
           <div class="history-info">
             <div class="history-title">
               <span>${config.icon}</span>
               ${config.name}
+              ${isUnread ? '<span class="new-badge">NEW</span>' : ''}
             </div>
             <div class="history-meta">
               <span>🌐 ${report.environment}</span>
@@ -1351,10 +1393,10 @@
             </div>
           </div>
           <div class="history-actions">
-            <a class="history-btn" href="${reportUrl}" target="_blank">
-              📂 Open
+            <a class="history-btn open-btn" href="${reportUrl}" target="_blank" data-filename="${report.filename}">
+              ${folderIcon} Open
             </a>
-            <a class="history-btn download" href="${downloadUrl}" download>
+            <a class="history-btn download" href="${downloadUrl}" download data-filename="${report.filename}">
               ⬇️ Download
             </a>
             <button class="history-btn delete" onclick="deleteHistoryItem('${report.filename}')">
@@ -1362,7 +1404,32 @@
             </button>
           </div>
         `;
+
+        // Add click handlers to mark as read when opened or downloaded
+        const openBtn = item.querySelector('.open-btn');
+        const downloadBtn = item.querySelector('.download');
+
+        openBtn.addEventListener('click', () => markAsRead(report.filename));
+        downloadBtn.addEventListener('click', () => markAsRead(report.filename));
+
         return item;
+      }
+
+      // Mark entry as read
+      async function markAsRead(filename) {
+        try {
+          const response = await fetch(api(`/api/history/${filename}/read`), {
+            method: 'POST',
+            headers: withUserHeaders()
+          });
+          const data = await response.json();
+          if (data.history) {
+            history = data.history;
+            renderHistory();
+          }
+        } catch (err) {
+          console.error('Error marking as read:', err);
+        }
       }
 
       window.deleteHistoryItem = async function (filename) {
@@ -1442,7 +1509,7 @@
       }
     })();
 
-    window.toggleExcelValidation = function() {
+    window.toggleExcelValidation = function () {
       const toggle = document.getElementById('excel-toggle');
       const checkbox = document.getElementById('excel-toggle-checkbox');
       const uploadArea = document.getElementById('excel-upload-area');
@@ -1463,7 +1530,7 @@
       }
     };
 
-    window.handleExcelUpload = async function(event) {
+    window.handleExcelUpload = async function (event) {
       const file = event.target.files[0];
       if (!file) return;
 
@@ -1559,7 +1626,7 @@
       `;
     }
 
-    window.clearExcelFile = function() {
+    window.clearExcelFile = function () {
       localStorage.removeItem('excelValidationData');
       document.getElementById('excel-file-info').innerHTML = '<span style="color: var(--text-secondary); font-size: 14px;">No file selected</span>';
       document.getElementById('excel-preview').style.display = 'none';
