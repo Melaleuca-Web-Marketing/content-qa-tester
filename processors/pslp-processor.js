@@ -213,6 +213,7 @@ export class PSLPProcessor extends BaseProcessor {
 
           await this.page.setViewportSize({ width, height: 1080 });
           await this.applyCarouselStacking({ stackMonthlySpecials: width >= 768 });
+          await this.injectCarouselSlideArrows(width);
           await this.normalizeTabletLayout(width);
           await this.prepareForScreenshot();
           await this.dismissModalIfPresent();
@@ -594,6 +595,99 @@ export class PSLPProcessor extends BaseProcessor {
         }
       `;
     }, { stackMonthlySpecials });
+  }
+
+  async injectCarouselSlideArrows(width) {
+    // Only inject arrows for specific widths: 768, 992, 1210
+    const arrowWidths = [768, 992, 1210];
+    if (!arrowWidths.includes(width)) return;
+
+    await this.page.evaluate((currentWidth) => {
+      // Remove any previously injected arrows
+      document.querySelectorAll('.pslp-injected-arrows').forEach(el => el.remove());
+
+      // Width-specific sizing
+      let buttonSize, marginSize;
+      if (currentWidth === 1210) {
+        buttonSize = 70;
+        marginSize = 40;
+      } else {
+        // 768 and 992
+        buttonSize = 50;
+        marginSize = 20;
+      }
+
+      // Get all non-cloned hero carousel slides
+      const slides = document.querySelectorAll('.o-heroCarousel .slick-slide:not(.slick-cloned)');
+
+      slides.forEach(slide => {
+        // Make the slide position relative for arrow positioning
+        slide.style.position = 'relative';
+
+        // Create arrow container
+        const arrowContainer = document.createElement('div');
+        arrowContainer.className = 'pslp-injected-arrows';
+        arrowContainer.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          pointer-events: none;
+          z-index: 10;
+        `;
+
+        // Common arrow button styles
+        const arrowBaseStyle = `
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          width: ${buttonSize}px;
+          height: ${buttonSize}px;
+          background-color: white;
+          border-radius: 50%;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+          pointer-events: none;
+        `;
+
+        // SVG size scales with button
+        const svgSize = Math.round(buttonSize * 0.5);
+
+        // Additional inset for 1210px width (moves entire button, not just content)
+        const insetAdjustment = currentWidth === 1210 ? 20 : 0;
+
+        // Left arrow (prev)
+        const prevArrow = document.createElement('button');
+        prevArrow.className = 'pslp-arrow-prev';
+        prevArrow.setAttribute('aria-label', 'Previous Slide');
+        prevArrow.style.cssText = arrowBaseStyle + `left: ${marginSize + insetAdjustment}px;`;
+        prevArrow.innerHTML = `
+          <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 18L9 12L15 6" stroke="#3a913f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        `;
+
+        // Right arrow (next)
+        const nextArrow = document.createElement('button');
+        nextArrow.className = 'pslp-arrow-next';
+        nextArrow.setAttribute('aria-label', 'Next Slide');
+        nextArrow.style.cssText = arrowBaseStyle + `right: ${marginSize + insetAdjustment}px;`;
+        nextArrow.innerHTML = `
+          <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 18L15 12L9 6" stroke="#3a913f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        `;
+
+        arrowContainer.appendChild(prevArrow);
+        arrowContainer.appendChild(nextArrow);
+        slide.appendChild(arrowContainer);
+      });
+    }, width);
   }
 
   async removeCarouselStacking() {
