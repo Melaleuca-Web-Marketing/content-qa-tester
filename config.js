@@ -213,7 +213,8 @@ export const config = {
       deviceScaleFactor: 2,
       captureHeight: 1800,
       isMobile: true,
-      hasTouch: true
+      hasTouch: true,
+      headless: true
     },
 
     // Culture code mapping for URL lang parameter
@@ -256,7 +257,7 @@ export const config = {
         uk: "productstore2-uatuk.melaleuca.com",
         de: "productstore2-uatde.melaleuca.com",
         pl: "productstore2-uatpl.melaleuca.com",
-        nl: "productstore2-uatl.melaleuca.com",
+        nl: "productstore2-uatnl.melaleuca.com",
         lt: "productstore2-uatlt.melaleuca.com"
       },
       production: {
@@ -303,18 +304,6 @@ export const config = {
         ],
         categories: loadedCategories['Europe'] || []
       }
-    },
-
-    // Full Width Banner widths for testing
-    // widths: [320, 415, 576, 768, 992, 1210], // Moved to top of object
-
-    // Maximum timeouts
-    // timeouts: { ... }, // Moved to top of object
-
-    // Browser settings
-    browser: {
-      captureHeight: 1200,
-      headless: true
     },
 
     // Default values
