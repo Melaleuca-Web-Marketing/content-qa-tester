@@ -569,6 +569,8 @@ export class SkuProcessor extends BaseProcessor {
   async processSku(sku, currentIndex, total, culture) {
     const options = this.currentOptions;
     const url = buildPdpUrl(options.environment, options.region, culture, sku);
+    const wantsTopScreenshot = options.topScreenshot === true;
+    const wantsFullScreenshot = options.fullScreenshot && !wantsTopScreenshot;
 
     log('info', `Processing SKU ${currentIndex}/${total}`, { sku, culture, url });
 
@@ -623,16 +625,14 @@ export class SkuProcessor extends BaseProcessor {
 
       // First SKU needs extra time for image gallery to fully initialize
       // (subsequent SKUs benefit from betweenSkus delay which allows the browser/page to warm up)
-      if (currentIndex === 1) {
-        log('info', 'First SKU - waiting extra time for image gallery to initialize...');
-        await this.page.waitForTimeout(1500);
-
-        // Also wait for the main product image to be fully loaded
+      if (currentIndex === 1 && wantsFullScreenshot) {
+        log('info', 'First SKU - waiting for main product image to load...');
         try {
           await this.page.waitForFunction(() => {
             const mainImg = document.querySelector('.m-prodMedia__image');
             return mainImg && mainImg.complete && mainImg.naturalWidth > 0;
-          }, { timeout: 5000 });
+          }, { timeout: 3000 });
+          await this.page.waitForTimeout(300);
           log('info', 'Main product image confirmed loaded');
         } catch (e) {
           log('warn', 'Main product image load check timed out, continuing anyway');
@@ -676,8 +676,6 @@ export class SkuProcessor extends BaseProcessor {
       log('info', 'Product data extracted successfully', { name: productData.name });
 
       // Capture screenshot
-      const wantsTopScreenshot = options.topScreenshot === true;
-      const wantsFullScreenshot = options.fullScreenshot && !wantsTopScreenshot;
       if (wantsTopScreenshot || wantsFullScreenshot) {
         log('info', 'Preparing page for screenshot...');
         await this.prepareForScreenshot();
