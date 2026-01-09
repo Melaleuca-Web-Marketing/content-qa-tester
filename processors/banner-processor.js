@@ -18,7 +18,7 @@ export class BannerProcessor extends BaseProcessor {
    * @returns {Promise<Object>} Banner information object
    */
   async _detectBannerElement(includeScrollOffset = false) {
-    const result = await this.page.evaluate((selector, includeScroll) => {
+    const result = await this.page.evaluate(({ selector, includeScroll }) => {
       const el =
         document.querySelector(selector) ||
         document.querySelector('[data-testid="container-fullWidthBanner"]') ||
@@ -72,7 +72,7 @@ export class BannerProcessor extends BaseProcessor {
       }
 
       return response;
-    }, config.banner.selector, includeScrollOffset);
+    }, { selector: config.banner.selector, includeScroll: includeScrollOffset });
 
     return result;
   }
