@@ -102,6 +102,10 @@ async function checkStatus() {
     });
     const status = await response.json();
 
+    if (Array.isArray(status.options?.widths) && status.options.widths.length > 0) {
+      expectedWidths = status.options.widths;
+    }
+
     if (status.isRunning) {
       isCapturing = true;
       setUICapturing();
@@ -162,6 +166,7 @@ async function restoreActivityFromServer() {
           mainCategory: result.mainCategory,
           category: result.category,
           widths: [],
+          widthResults: {},
           hasError: false,
           errorMessages: [],
           issues: [],
@@ -169,16 +174,46 @@ async function restoreActivityFromServer() {
         };
       }
 
+      const isError = result.error === true;
+
       // Track this width result
       categoryGroups[key].widths.push(result.width);
 
       // Check if this is an error result (error: true is set, not a boolean check on success)
-      const isError = result.error === true;
       if (isError) {
         categoryGroups[key].hasError = true;
         // Error message is in result.message, not result.error
         const errorMsg = result.message || 'Capture failed';
         categoryGroups[key].errorMessages.push(`${result.width}px: ${errorMsg}`);
+      }
+
+      const widthKey = String(result.width);
+      if (!categoryGroups[key].widthResults[widthKey]) {
+        categoryGroups[key].widthResults[widthKey] = {
+          success: true,
+          error: null,
+          adsFound: 0,
+          noAdsFound: false,
+          validations: []
+        };
+      }
+
+      const widthEntry = categoryGroups[key].widthResults[widthKey];
+      if (isError) {
+        widthEntry.success = false;
+        widthEntry.error = result.message || 'Capture failed';
+      } else if (result.noAdsFound) {
+        widthEntry.noAdsFound = true;
+      } else {
+        widthEntry.adsFound += 1;
+      }
+
+      if (result.validation) {
+        widthEntry.validations.push({
+          adIndex: result.adIndex,
+          position: result.position,
+          validation: result.validation
+        });
       }
 
       // Collect validation issues (only for successful captures)
@@ -191,6 +226,9 @@ async function restoreActivityFromServer() {
             }
             if (f === 'target' && !categoryGroups[key].issues.includes('Target mismatch')) {
               categoryGroups[key].issues.push('Target mismatch');
+            }
+            if (f === 'position' && !categoryGroups[key].issues.includes('Position mismatch')) {
+              categoryGroups[key].issues.push('Position mismatch');
             }
             if (f === 'imageLocale' && !categoryGroups[key].issues.includes('Image locale mismatch')) {
               categoryGroups[key].issues.push('Image locale mismatch');
@@ -213,11 +251,32 @@ async function restoreActivityFromServer() {
       }
     }
 
+    const expectedWidthCount = Array.isArray(expectedWidths) ? expectedWidths.length : 0;
+    const filterIncomplete = isCapturing && expectedWidthCount > 0;
+
     // Now create ONE activity item per category group
     let addedCount = 0;
     for (const key of Object.keys(categoryGroups)) {
       const group = categoryGroups[key];
       const uniqueWidths = [...new Set(group.widths)].length;
+      const isComplete = !filterIncomplete || uniqueWidths >= expectedWidthCount;
+
+      if (!isComplete) {
+        const categoryKey = `${group.culture}|${group.mainCategory || ''}|${group.category}`;
+        if (!mixinProgress[categoryKey]) {
+          mixinProgress[categoryKey] = {
+            culture: group.culture,
+            mainCategory: group.mainCategory || '',
+            category: group.category,
+            widths: {},
+            totalWidths: expectedWidthCount
+          };
+        }
+        Object.entries(group.widthResults).forEach(([width, result]) => {
+          mixinProgress[categoryKey].widths[width] = result;
+        });
+        continue;
+      }
 
       let type = 'success';
       let detail = `${uniqueWidths} widths captured`;
@@ -255,8 +314,11 @@ async function restoreActivityFromServer() {
 
     if (addedCount > 0) {
       console.log(`[Activity] Restored ${addedCount} categories from server`);
-      saveActivityToStorage();
-      renderActivityFeed();
+    }
+
+    saveActivityToStorage();
+    renderActivityFeed();
+    if (activityItems.length > 0 || isCapturing) {
       activityFeed.style.display = 'block';
     }
   } catch (err) {
@@ -575,6 +637,7 @@ function handleProgress(data) {
             v.validation.failures.forEach(f => {
               if (f === 'link') validationIssues.push('Link mismatch');
               if (f === 'target') validationIssues.push('Target mismatch');
+              if (f === 'position') validationIssues.push('Position mismatch');
               if (f === 'imageLocale') validationIssues.push('Image locale mismatch');
             });
           } else if (v.validation && v.validation.status === 'not-found') {

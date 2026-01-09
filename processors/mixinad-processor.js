@@ -381,6 +381,7 @@ export class MixInAdProcessor extends BaseProcessor {
                             for (const result of pageResults) {
                                 if (!result.error && !result.noAdsFound) {
                                     const validation = validateSingleResult(result, excelData, 'mix-in-ad');
+                                    result.validation = validation;
                                     validationResults.push({
                                         adIndex: result.adIndex,
                                         position: result.position,

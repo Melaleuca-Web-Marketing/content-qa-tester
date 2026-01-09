@@ -102,6 +102,10 @@ async function checkStatus() {
     });
     const status = await response.json();
 
+    if (Array.isArray(status.options?.widths) && status.options.widths.length > 0) {
+      expectedWidths = status.options.widths;
+    }
+
     if (status.isRunning) {
       isCapturing = true;
       setUICapturing();
@@ -162,6 +166,7 @@ async function restoreActivityFromServer() {
           mainCategory: result.mainCategory,
           category: result.category,
           widths: [],
+          widthResults: {},
           hasError: false,
           errorMessages: [],
           issues: [],
@@ -169,17 +174,27 @@ async function restoreActivityFromServer() {
         };
       }
 
+      const isError = result.error === true;
+
       // Track this width result
       bannerGroups[key].widths.push(result.width);
 
       // Check if this is an error result (error: true is set, not a boolean check on success)
-      const isError = result.error === true;
       if (isError) {
         bannerGroups[key].hasError = true;
         // Error message is in result.message, not result.error
         const errorMsg = result.message || 'Capture failed';
         bannerGroups[key].errorMessages.push(`${result.width}px: ${errorMsg}`);
       }
+
+      bannerGroups[key].widthResults[String(result.width)] = {
+        success: !isError,
+        error: isError ? (result.message || 'Capture failed') : null,
+        href: result.href,
+        target: result.target,
+        imageLocale: result.imageLocale,
+        validation: result.validation || null
+      };
 
       // Collect validation issues (only for successful captures)
       if (!isError) {
@@ -213,11 +228,32 @@ async function restoreActivityFromServer() {
       }
     }
 
+    const expectedWidthCount = Array.isArray(expectedWidths) ? expectedWidths.length : 0;
+    const filterIncomplete = isCapturing && expectedWidthCount > 0;
+
     // Now create ONE activity item per banner group
     let addedCount = 0;
     for (const key of Object.keys(bannerGroups)) {
       const group = bannerGroups[key];
       const uniqueWidths = [...new Set(group.widths)].length;
+      const isComplete = !filterIncomplete || uniqueWidths >= expectedWidthCount;
+
+      if (!isComplete) {
+        const bannerKey = `${group.culture}|${group.mainCategory || ''}|${group.category}`;
+        if (!bannerProgress[bannerKey]) {
+          bannerProgress[bannerKey] = {
+            culture: group.culture,
+            mainCategory: group.mainCategory || '',
+            category: group.category,
+            widths: {},
+            totalWidths: expectedWidthCount
+          };
+        }
+        Object.entries(group.widthResults).forEach(([width, result]) => {
+          bannerProgress[bannerKey].widths[width] = result;
+        });
+        continue;
+      }
 
       let type = 'success';
       let detail = `${uniqueWidths} widths captured`;
@@ -255,8 +291,11 @@ async function restoreActivityFromServer() {
 
     if (addedCount > 0) {
       console.log(`[Activity] Restored ${addedCount} banners from server`);
-      saveActivityToStorage();
-      renderActivityFeed();
+    }
+
+    saveActivityToStorage();
+    renderActivityFeed();
+    if (activityItems.length > 0 || isCapturing) {
       activityFeed.style.display = 'block';
     }
   } catch (err) {

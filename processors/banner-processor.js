@@ -326,6 +326,7 @@ export class BannerProcessor extends BaseProcessor {
             const excelData = options.excelValidation?.data;
             if (excelData && excelData.length > 0 && !result.error) {
               validation = validateSingleResult(result, excelData, 'category-banner');
+              result.validation = validation;
               log('debug', `Excel validation for ${job.category}: ${validation.status}`, validation.failures || []);
             }
 

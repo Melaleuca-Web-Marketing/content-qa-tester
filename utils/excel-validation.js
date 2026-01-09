@@ -354,25 +354,41 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
   const linkResult = compareLinks(result.href, match.bannerLink, culture, result.environment);
   const targetResult = compareTargets(result.target, match.target);
   const localeResult = compareImageLocale(result.imageLocale, match[localeField]);
+  const positionResult = type === 'mix-in-ad' && result.position !== undefined
+    ? {
+      actual: result.position,
+      expected: match.position,
+      match: result.position === match.position
+    }
+    : null;
 
   // Collect failures
   const failures = [];
   if (!linkResult.match) failures.push('link');
   if (!targetResult.match) failures.push('target');
   if (!localeResult.match) failures.push('imageLocale');
+  if (positionResult && !positionResult.match) failures.push('position');
+
+  const expected = {
+    link: match.bannerLink,
+    target: match.target,
+    imageLocale: match[localeField]
+  };
+  const actual = {
+    link: result.href,
+    target: result.target,
+    imageLocale: result.imageLocale
+  };
+
+  if (positionResult) {
+    expected.position = match.position;
+    actual.position = result.position;
+  }
 
   return {
     status: failures.length === 0 ? 'pass' : 'fail',
     failures,
-    expected: {
-      link: match.bannerLink,
-      target: match.target,
-      imageLocale: match[localeField]
-    },
-    actual: {
-      link: result.href,
-      target: result.target,
-      imageLocale: result.imageLocale
-    }
+    expected,
+    actual
   };
 }
