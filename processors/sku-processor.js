@@ -2,6 +2,7 @@
 
 import { BaseProcessor, log } from './base-processor.js';
 import { config, buildPdpUrl } from '../config.js';
+import { getSingleton } from '../utils/singleton.js';
 
 export class SkuProcessor extends BaseProcessor {
   constructor() {
@@ -887,12 +888,10 @@ export class SkuProcessor extends BaseProcessor {
   }
 }
 
-// Singleton instance
-let processorInstance = null;
-
+/**
+ * Get or create the singleton SkuProcessor instance
+ * @returns {SkuProcessor} The singleton instance
+ */
 export function getSkuProcessor() {
-  if (!processorInstance) {
-    processorInstance = new SkuProcessor();
-  }
-  return processorInstance;
+  return getSingleton('SkuProcessor', () => new SkuProcessor());
 }

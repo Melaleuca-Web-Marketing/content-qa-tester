@@ -6,6 +6,7 @@ import { detectImageLocale } from '../utils/image-utils.js';
 import { MEMORY } from '../utils/constants.js';
 import { validateSingleResult } from '../utils/excel-validation.js';
 import { getMemoryUsageMB, checkMemoryThreshold } from '../utils/memory-monitor.js';
+import { getSingleton } from '../utils/singleton.js';
 
 export class MixInAdProcessor extends BaseProcessor {
     constructor() {
@@ -545,12 +546,10 @@ export class MixInAdProcessor extends BaseProcessor {
     }
 }
 
-// Singleton instance
-let processorInstance = null;
-
+/**
+ * Get or create the singleton MixInAdProcessor instance
+ * @returns {MixInAdProcessor} The singleton instance
+ */
 export function getMixInAdProcessor() {
-    if (!processorInstance) {
-        processorInstance = new MixInAdProcessor();
-    }
-    return processorInstance;
+    return getSingleton('MixInAdProcessor', () => new MixInAdProcessor());
 }

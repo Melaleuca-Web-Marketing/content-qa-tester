@@ -3,6 +3,7 @@
 import { BaseProcessor, log } from './base-processor.js';
 import { config, getBaseUrl, buildPslpUrl, validatePslpConfig } from '../config.js';
 import { SCREEN } from '../utils/constants.js';
+import { getSingleton } from '../utils/singleton.js';
 
 // Component extractors
 import { extractHeroCarouselData } from './pslp-components/heroCarousel.js';
@@ -888,12 +889,10 @@ export class PSLPProcessor extends BaseProcessor {
   }
 }
 
-// Singleton instance
-let processorInstance = null;
-
+/**
+ * Get or create the singleton PSLPProcessor instance
+ * @returns {PSLPProcessor} The singleton instance
+ */
 export function getPSLPProcessor() {
-  if (!processorInstance) {
-    processorInstance = new PSLPProcessor();
-  }
-  return processorInstance;
+  return getSingleton('PSLPProcessor', () => new PSLPProcessor());
 }

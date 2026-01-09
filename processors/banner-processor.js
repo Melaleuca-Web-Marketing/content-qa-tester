@@ -6,6 +6,7 @@ import { detectImageLocale } from '../utils/image-utils.js';
 import { MEMORY } from '../utils/constants.js';
 import { validateSingleResult } from '../utils/excel-validation.js';
 import { getMemoryUsageMB, checkMemoryThreshold } from '../utils/memory-monitor.js';
+import { getSingleton } from '../utils/singleton.js';
 
 export class BannerProcessor extends BaseProcessor {
   constructor() {
@@ -612,12 +613,10 @@ export class BannerProcessor extends BaseProcessor {
   }
 }
 
-// Singleton instance
-let processorInstance = null;
-
+/**
+ * Get or create the singleton BannerProcessor instance
+ * @returns {BannerProcessor} The singleton instance
+ */
 export function getBannerProcessor() {
-  if (!processorInstance) {
-    processorInstance = new BannerProcessor();
-  }
-  return processorInstance;
+  return getSingleton('BannerProcessor', () => new BannerProcessor());
 }
