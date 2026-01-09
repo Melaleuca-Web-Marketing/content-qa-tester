@@ -312,6 +312,19 @@ router.post('/api/sku/resume', (req, res) => {
   res.json({ ok: true, message: 'Resume requested' });
 });
 
+router.post('/api/sku/update-credentials', (req, res) => {
+  const userId = getUserId(req);
+  const skuProcessor = getProcessor(userId, 'sku');
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  skuProcessor.updateCredentials(username, password);
+  res.json({ ok: true, message: 'Credentials updated' });
+});
+
 router.get('/api/sku/results', (req, res) => {
   const userId = getUserId(req);
   res.json(getProcessorResults(userId, 'sku'));
@@ -431,6 +444,19 @@ router.post('/api/pslp/resume', (req, res) => {
   const pslpProcessor = getProcessor(userId, 'pslp');
   pslpProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
+});
+
+router.post('/api/pslp/update-credentials', (req, res) => {
+  const userId = getUserId(req);
+  const pslpProcessor = getProcessor(userId, 'pslp');
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  pslpProcessor.updateCredentials(username, password);
+  res.json({ ok: true, message: 'Credentials updated' });
 });
 
 router.get('/api/pslp/results', (req, res) => {

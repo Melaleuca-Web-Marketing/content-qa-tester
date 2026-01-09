@@ -37,7 +37,7 @@ export class SkuProcessor extends BaseProcessor {
       // User must manually sign in, then click Resume
       if (environment === 'stage' || environment === 'uat') {
         const isMicrosoftLogin = this.page.url().includes('login.microsoftonline.com') ||
-                                  this.page.url().includes('login.windows.net');
+          this.page.url().includes('login.windows.net');
         if (isMicrosoftLogin) {
           log('info', 'Detected Microsoft login page, waiting for user to sign in...');
           await this.waitForManualAuth(environment.toUpperCase());
@@ -138,8 +138,15 @@ export class SkuProcessor extends BaseProcessor {
         const isVisible = await errorEl.isVisible();
         if (isVisible) {
           const errorText = await errorEl.textContent();
-          log('error', 'Login failed - error message displayed', { error: errorText.trim() });
-          return { success: false, error: errorText.trim() || 'Invalid username or password' };
+          const errorMessage = errorText.trim() || 'Invalid username or password';
+          log('error', 'Login failed - error message displayed', { error: errorMessage });
+
+          // Pause and wait for credential update
+          await this.waitForCredentialUpdate(errorMessage, environment);
+
+          // Retry login with updated credentials
+          log('info', 'Retrying login with updated credentials');
+          return await this.login(this.currentOptions.username, this.currentOptions.password, this.currentOptions.environment, this.currentOptions.region);
         }
       }
 
@@ -148,11 +155,32 @@ export class SkuProcessor extends BaseProcessor {
         return { success: true };
       }
 
+      // Still on login page - credentials likely incorrect
       log('warn', 'Still on login page, login may have failed');
-      return { success: false, error: 'Login failed - still on login page' };
+      const errorMessage = 'Invalid username or password';
+
+      // Pause and wait for credential update
+      await this.waitForCredentialUpdate(errorMessage, environment);
+
+      // Retry login with updated credentials
+      log('info', 'Retrying login with updated credentials');
+      return await this.login(this.currentOptions.username, this.currentOptions.password, this.currentOptions.environment, this.currentOptions.region);
 
     } catch (err) {
       log('error', 'Login failed with error', { error: err.message });
+
+      // Check if it's a credential-related error
+      const errorMsg = err.message.toLowerCase();
+      if (errorMsg.includes('invalid') || errorMsg.includes('password') || errorMsg.includes('credentials') || errorMsg.includes('authentication')) {
+        // Pause and wait for credential update
+        await this.waitForCredentialUpdate(err.message, environment);
+
+        // Retry login with updated credentials
+        log('info', 'Retrying login with updated credentials after error');
+        return await this.login(this.currentOptions.username, this.currentOptions.password, this.currentOptions.environment, this.currentOptions.region);
+      }
+
+      // Re-throw non-credential errors
       return { success: false, error: err.message };
     }
   }
@@ -707,6 +735,10 @@ export class SkuProcessor extends BaseProcessor {
         data: {
           name: productData.name,
           price: productData.price,
+          description: productData.description,
+          aboutHasContent: productData.aboutHasContent,
+          ingredientsHasContent: productData.ingredientsHasContent,
+          ingredientsHasLabel: productData.ingredientsHasLabel,
           addToCart: result.addToCartResult
         }
       });

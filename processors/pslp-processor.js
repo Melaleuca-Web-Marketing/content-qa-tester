@@ -149,14 +149,107 @@ export class PSLPProcessor extends BaseProcessor {
       const loginErrorLocator = this.page.locator(config.pslp.selectors.login.errorMessage).first();
       if (await loginErrorLocator.isVisible().catch(() => false)) {
         const errorText = await loginErrorLocator.textContent().catch(() => '');
-        throw new Error(errorText?.trim() || 'Login failed: invalid username or password');
+        const errorMessage = errorText?.trim() || 'Invalid username or password';
+        log('error', 'Login failed - error message displayed', { error: errorMessage });
+
+        // Pause and wait for credential update
+        await this.waitForCredentialUpdate(errorMessage, options.environment);
+
+        // Retry login with updated credentials
+        log('info', 'Retrying login with updated credentials');
+
+        // Fill in the new credentials and try again
+        await this.page.fill(config.pslp.selectors.login.username, this.currentOptions.username);
+        await this.page.fill(config.pslp.selectors.login.password, this.currentOptions.password);
+
+        try {
+          await Promise.all([
+            this.page.waitForNavigation({ timeout: config.pslp.timeouts.loginWait }),
+            this.page.click(config.pslp.selectors.login.loginButton)
+          ]);
+        } catch (e) {
+          await this.page.waitForTimeout(3000);
+        }
+
+        await this.page.waitForLoadState('domcontentloaded').catch(() => { });
+        await this.page.waitForTimeout(500);
+
+        try {
+          await this.page.waitForURL((url) => !url.href.includes('singlesignon'), {
+            timeout: 20000,
+            waitUntil: 'load'
+          });
+
+          if (this.page.url().includes('LoadProfile')) {
+            await this.page.waitForURL((url) => !url.href.includes('LoadProfile'), {
+              timeout: 30000,
+              waitUntil: 'load'
+            });
+          }
+        } catch (e) {
+          await this.page.waitForTimeout(1000);
+        }
+
+        // Check again for errors after retry
+        const retryErrorLocator = this.page.locator(config.pslp.selectors.login.errorMessage).first();
+        if (await retryErrorLocator.isVisible().catch(() => false)) {
+          const retryErrorText = await retryErrorLocator.textContent().catch(() => '');
+          throw new Error(retryErrorText?.trim() || 'Login still failed after credential update');
+        }
       }
 
       const loginFieldVisible = await this.page.locator(config.pslp.selectors.login.username).first()
         .isVisible()
         .catch(() => false);
       if (loginFieldVisible) {
-        throw new Error('Login failed - still on login page');
+        const errorMessage = 'Invalid username or password';
+        log('warn', 'Login failed - still on login page');
+
+        // Pause and wait for credential update
+        await this.waitForCredentialUpdate(errorMessage, options.environment);
+
+        // Retry login with updated credentials
+        log('info', 'Retrying login with updated credentials');
+
+        // Fill in the new credentials and try again
+        await this.page.fill(config.pslp.selectors.login.username, this.currentOptions.username);
+        await this.page.fill(config.pslp.selectors.login.password, this.currentOptions.password);
+
+        try {
+          await Promise.all([
+            this.page.waitForNavigation({ timeout: config.pslp.timeouts.loginWait }),
+            this.page.click(config.pslp.selectors.login.loginButton)
+          ]);
+        } catch (e) {
+          await this.page.waitForTimeout(3000);
+        }
+
+        await this.page.waitForLoadState('domcontentloaded').catch(() => { });
+        await this.page.waitForTimeout(500);
+
+        try {
+          await this.page.waitForURL((url) => !url.href.includes('singlesignon'), {
+            timeout: 20000,
+            waitUntil: 'load'
+          });
+
+          if (this.page.url().includes('LoadProfile')) {
+            await this.page.waitForURL((url) => !url.href.includes('LoadProfile'), {
+              timeout: 30000,
+              waitUntil: 'load'
+            });
+          }
+        } catch (e) {
+          await this.page.waitForTimeout(1000);
+        }
+
+        // Check again if still on login page after retry
+        const stillOnLoginPage = await this.page.locator(config.pslp.selectors.login.username).first()
+          .isVisible()
+          .catch(() => false);
+        if (stillOnLoginPage) {
+          throw new Error('Login still failed after credential update - still on login page');
+        }
       }
 
       await this.dismissModalIfPresent();

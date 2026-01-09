@@ -220,6 +220,48 @@
       }
     }
 
+    /* Credential error indicator for dashboard */
+    .credential-error-indicator {
+      background: linear-gradient(135deg, #fee2e2, #fecaca);
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #ef4444;
+    }
+
+    .credential-error-indicator .error-icon {
+      font-size: 20px;
+    }
+
+    .credential-error-indicator .error-content {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+    }
+
+    .credential-error-indicator .error-text {
+      font-size: 13px;
+      font-weight: 600;
+      color: #991b1b;
+    }
+
+    .credential-error-indicator .go-to-tool-link {
+      color: #dc2626;
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .credential-error-indicator .go-to-tool-link:hover {
+      color: #991b1b;
+      text-decoration: underline;
+    }
+
     .job-header {
       display: flex;
       justify-content: space-between;
@@ -641,17 +683,25 @@
       display: flex;
       align-items: center;
       gap: 12px;
+      min-width: 0; /* Allow flex item to shrink below content size */
+      overflow: hidden;
     }
 
     .excel-file-name {
       font-size: 14px;
       color: var(--text-primary);
       font-weight: 500;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      max-width: 100%;
     }
 
     .excel-file-details {
       font-size: 12px;
       color: var(--text-secondary);
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     .excel-clear-button {
@@ -1007,10 +1057,10 @@
       const resourceWarning = document.getElementById('resource-warning');
 
       const toolConfig = {
-        sku: { name: 'SKU Test', icon: '&#128230;', class: 'sku' },
-        banner: { name: 'Banner Test', icon: '&#128444;', class: 'banner' },
-        pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp' },
-        mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad' }
+        sku: { name: 'SKU Test', icon: '&#128230;', class: 'sku', page: 'sku-tester.html' },
+        banner: { name: 'Banner Test', icon: '&#128444;', class: 'banner', page: 'banner-tester.html' },
+        pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp', page: 'pslp-tester.html' },
+        mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad', page: 'mixinad-tester.html' }
       };
 
       let jobStates = {
@@ -1104,12 +1154,14 @@
       function createJobCard(tool, config, status) {
         const card = document.createElement('div');
 
-        // Check if job is waiting for authentication
+        // Check if job is waiting for authentication or credentials
         const isWaitingForAuth = status.statusType === 'waiting-for-auth' ||
           (status.message && status.message.includes('Please sign in'));
+        const isWaitingForCredentials = status.statusType === 'waiting-for-credentials';
+        const needsAttention = isWaitingForAuth || isWaitingForCredentials;
 
         // Add appropriate classes
-        card.className = `job-card ${config.class}${isWaitingForAuth ? ' waiting-auth' : ''}`;
+        card.className = `job-card ${config.class}${needsAttention ? ' waiting-auth' : ''}`;
 
         const elapsed = jobStartTimes[tool] ? Math.floor((Date.now() - jobStartTimes[tool]) / 1000) : 0;
         const elapsedStr = formatElapsedTime(elapsed);
@@ -1117,9 +1169,23 @@
         let progressPercent = 0;
         let progressText = status.message || 'Loading status...';
         let detailText = '';
+        let errorIndicator = '';
 
-        // If waiting for auth, show specific status
-        if (isWaitingForAuth) {
+        // If waiting for credentials, show error indicator
+        if (isWaitingForCredentials) {
+          errorIndicator = `
+            <div class="credential-error-indicator">
+              <span class="error-icon">⚠️</span>
+              <div class="error-content">
+                <span class="error-text">Authentication Failed - Update Credentials</span>
+                <a href="${config.page}" class="go-to-tool-link">Go to ${config.name} →</a>
+              </div>
+            </div>
+          `;
+          progressText = '⚠️ Authentication Failed';
+          detailText = status.message || 'Invalid username or password';
+        } else if (isWaitingForAuth) {
+          // If waiting for auth, show specific status
           progressText = '⚠️ Waiting for Authentication';
           detailText = status.message || 'Please authenticate in the browser window';
         } else {
@@ -1182,6 +1248,7 @@
         }
 
         card.innerHTML = `
+          ${errorIndicator}
           <div class="job-header">
             <div class="job-name">
               <span class="job-icon">${config.icon}</span>
@@ -1500,6 +1567,7 @@
           try {
             const data = JSON.parse(savedData);
             displayExcelFileInfo(data);
+            displayExcelPreview(data);
           } catch (e) {
             console.error('Failed to restore Excel data:', e);
           }
@@ -1554,31 +1622,35 @@
             uploadedAt: new Date().toISOString()
           };
 
-          localStorage.setItem('excelValidationData', JSON.stringify(dataToStore));
+          try {
+            localStorage.setItem('excelValidationData', JSON.stringify(dataToStore));
 
-          // Display success
-          displayExcelFileInfo(dataToStore);
-
-          // Show preview
-          previewDiv.innerHTML = `
-            <div class="excel-preview-row">
-              <span class="excel-preview-label">Sheet:</span>
-              <span>${result.preview.sheetName}</span>
-            </div>
-            <div class="excel-preview-row">
-              <span class="excel-preview-label">Total Rows:</span>
-              <span>${result.preview.totalRows}</span>
-            </div>
-            <div class="excel-preview-row">
-              <span class="excel-preview-label">Category Banners:</span>
-              <span>${result.preview.categoryBanners}</span>
-            </div>
-            <div class="excel-preview-row">
-              <span class="excel-preview-label">Mix-In Ads:</span>
-              <span>${result.preview.mixInAds}</span>
-            </div>
-          `;
-          previewDiv.style.display = 'block';
+            // Display success
+            displayExcelFileInfo(dataToStore);
+            displayExcelPreview(dataToStore);
+          } catch (storageError) {
+            // Handle storage quota exceeded error
+            if (storageError.name === 'QuotaExceededError' || storageError.message.includes('quota')) {
+              errorsDiv.innerHTML = `
+                <div style="font-weight: 600; margin-bottom: 8px; color: #ef4444;">❌ File Too Large</div>
+                <div class="excel-error-item">
+                  The Excel file is too large to store in browser memory (${result.preview.totalRows} rows).
+                </div>
+                <div class="excel-error-item" style="margin-top: 8px;">
+                  <strong>Suggestions:</strong>
+                  <ul style="margin: 8px 0 0 20px;">
+                    <li>Reduce the number of rows in your Excel file</li>
+                    <li>Split the file into smaller files and test them separately</li>
+                    <li>Remove unnecessary columns or data</li>
+                  </ul>
+                </div>
+              `;
+              errorsDiv.style.display = 'block';
+              document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">❌ File too large</span>';
+            } else {
+              throw storageError;
+            }
+          }
 
         } else {
           // Show errors
@@ -1615,15 +1687,126 @@
       const uploadDate = new Date(dataToStore.uploadedAt);
       const timeAgo = formatTimeAgo(uploadDate);
 
+      // Build summary of content types
+      const contentTypes = [];
+      const p = dataToStore.preview;
+
+      if (p.categoryBanners > 0) contentTypes.push(`${p.categoryBanners} banners`);
+      if (p.mixInAds > 0) contentTypes.push(`${p.mixInAds} ads`);
+      if (p.monthlySpecials > 0) contentTypes.push(`${p.monthlySpecials} monthly specials`);
+      if (p.heroCarousel > 0) contentTypes.push(`${p.heroCarousel} hero carousel`);
+      if (p.variableWindows > 0) contentTypes.push(`${p.variableWindows} variable windows`);
+      if (p.fullWidthBanner > 0) contentTypes.push(`${p.fullWidthBanner} full width banner`);
+      if (p.seasonalCarousel > 0) contentTypes.push(`${p.seasonalCarousel} seasonal carousel`);
+      if (p.brandCtaWindows > 0) contentTypes.push(`${p.brandCtaWindows} brand CTA`);
+
+      const warningIcon = p.unexpectedColumns ? '⚠️ ' : '';
+      const summary = contentTypes.join(' • ') || 'No content';
+
       fileInfoDiv.innerHTML = `
-        <div style="flex: 1;">
-          <div class="excel-file-name">✅ ${dataToStore.filename}</div>
+        <div style="flex: 1; min-width: 0;">
+          <div class="excel-file-name">${warningIcon}✅ ${dataToStore.filename}</div>
           <div class="excel-file-details">
-            ${dataToStore.preview.totalRows} rows • ${dataToStore.preview.categoryBanners} banners • ${dataToStore.preview.mixInAds} ads • Uploaded ${timeAgo}
+            ${p.totalRows} rows • ${summary} • Uploaded ${timeAgo}
           </div>
         </div>
         <button class="excel-clear-button" onclick="clearExcelFile()">Clear</button>
       `;
+    }
+
+    function displayExcelPreview(dataToStore) {
+      const previewDiv = document.getElementById('excel-preview');
+      const p = dataToStore.preview;
+
+      let previewHTML = `
+        <div class="excel-preview-row">
+          <span class="excel-preview-label">Sheet:</span>
+          <span>${p.sheetName}</span>
+        </div>
+        <div class="excel-preview-row">
+          <span class="excel-preview-label">Total Rows:</span>
+          <span>${p.totalRows}</span>
+        </div>
+        <div class="excel-preview-row">
+          <span class="excel-preview-label">Category Banners:</span>
+          <span>${p.categoryBanners}</span>
+        </div>
+        <div class="excel-preview-row">
+          <span class="excel-preview-label">Mix-In Ads:</span>
+          <span>${p.mixInAds}</span>
+        </div>
+      `;
+
+      // Add additional content types if they exist
+      if (p.monthlySpecials > 0) {
+        previewHTML += `
+          <div class="excel-preview-row">
+            <span class="excel-preview-label">Monthly Specials:</span>
+            <span>${p.monthlySpecials}</span>
+          </div>
+        `;
+      }
+
+      if (p.heroCarousel > 0) {
+        previewHTML += `
+          <div class="excel-preview-row">
+            <span class="excel-preview-label">Hero Carousel:</span>
+            <span>${p.heroCarousel}</span>
+          </div>
+        `;
+      }
+
+      if (p.variableWindows > 0) {
+        previewHTML += `
+          <div class="excel-preview-row">
+            <span class="excel-preview-label">Variable Windows:</span>
+            <span>${p.variableWindows}</span>
+          </div>
+        `;
+      }
+
+      if (p.fullWidthBanner > 0) {
+        previewHTML += `
+          <div class="excel-preview-row">
+            <span class="excel-preview-label">Full Width Banner:</span>
+            <span>${p.fullWidthBanner}</span>
+          </div>
+        `;
+      }
+
+      if (p.seasonalCarousel > 0) {
+        previewHTML += `
+          <div class="excel-preview-row">
+            <span class="excel-preview-label">Seasonal Carousel:</span>
+            <span>${p.seasonalCarousel}</span>
+          </div>
+        `;
+      }
+
+      if (p.brandCtaWindows > 0) {
+        previewHTML += `
+          <div class="excel-preview-row">
+            <span class="excel-preview-label">Brand CTA Windows:</span>
+            <span>${p.brandCtaWindows}</span>
+          </div>
+        `;
+      }
+
+      // Show warning if there are unexpected columns
+      if (p.unexpectedColumns) {
+        previewHTML += `
+          <div class="excel-preview-row" style="color: #f59e0b; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color);">
+            <span class="excel-preview-label">⚠️ Warning:</span>
+            <span>Unexpected columns found: <strong>${p.unexpectedColumns.join(', ')}</strong></span>
+          </div>
+          <div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; padding-left: 8px;">
+            These columns are not part of the standard Excel template and will be ignored during validation.
+          </div>
+        `;
+      }
+
+      previewDiv.innerHTML = previewHTML;
+      previewDiv.style.display = 'block';
     }
 
     window.clearExcelFile = function () {

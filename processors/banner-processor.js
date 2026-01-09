@@ -4,6 +4,7 @@ import { BaseProcessor, log } from './base-processor.js';
 import { config, buildBannerUrl } from '../config.js';
 import { detectImageLocale } from '../utils/image-utils.js';
 import { MEMORY } from '../utils/constants.js';
+import { validateSingleResult } from '../utils/excel-validation.js';
 
 export class BannerProcessor extends BaseProcessor {
   constructor() {
@@ -248,6 +249,7 @@ export class BannerProcessor extends BaseProcessor {
       type: 'started',
       jobCount: jobs.length,
       widthCount: selectedWidths.length,
+      widths: selectedWidths,
       totalCaptures
     });
 
@@ -255,7 +257,7 @@ export class BannerProcessor extends BaseProcessor {
 
     try {
       // Launch browser
-    await this.launchBrowser();
+      await this.launchBrowser();
       const initialWidth = selectedWidths[0] || config.banner.widths[0] || 320;
 
       await this.createContext({
@@ -308,6 +310,14 @@ export class BannerProcessor extends BaseProcessor {
               log('warn', `${this.results.length} screenshots captured. Large test runs may consume significant memory.`);
             }
 
+            // Validate against Excel data if available
+            let validation = null;
+            const excelData = options.excelValidation?.data;
+            if (excelData && excelData.length > 0 && !result.error) {
+              validation = validateSingleResult(result, excelData, 'category-banner');
+              log('debug', `Excel validation for ${job.category}: ${validation.status}`, validation.failures || []);
+            }
+
             this.emit('progress', {
               type: 'capture-progress',
               width,
@@ -317,7 +327,16 @@ export class BannerProcessor extends BaseProcessor {
               mainCategory: job.mainCategory,
               remaining: totalCaptures - completedCaptures,
               total: totalCaptures,
-              completed: completedCaptures
+              completed: completedCaptures,
+              // Include result data for validation display
+              result: {
+                href: result.href,
+                target: result.target,
+                imageLocale: result.imageLocale,
+                error: result.error,
+                message: result.message,
+                validation: validation
+              }
             });
 
           } catch (err) {

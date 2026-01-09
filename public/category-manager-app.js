@@ -106,14 +106,13 @@ function renderUI() {
   renderCategoryContent();
 }
 
-// Render add category/region buttons at top
+// Render add category button at top
 function renderAddButtons() {
   const addButtonsContainer = document.getElementById('add-buttons');
   if (!addButtonsContainer) return;
 
   addButtonsContainer.innerHTML = `
     <button class="btn btn-primary" onclick="addCategory()">+ Add New Category</button>
-    <button class="btn btn-secondary" onclick="addRegion()" style="margin-left: 12px;">+ Add New Region</button>
   `;
 }
 
@@ -306,6 +305,72 @@ function submitModal() {
   closeModal();
 }
 
+// Show confirmation modal (returns promise)
+function showConfirmModal(options) {
+  const {
+    icon = '⚠️',
+    title = 'Confirm Action',
+    message = '',
+    confirmText = 'Continue',
+    cancelText = 'Cancel',
+    confirmStyle = 'btn-primary'
+  } = options;
+
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('confirm-modal-overlay');
+    const iconEl = document.getElementById('confirm-modal-icon');
+    const titleEl = document.getElementById('confirm-modal-title');
+    const messageEl = document.getElementById('confirm-modal-message');
+    const confirmBtn = document.getElementById('confirm-modal-confirm');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+
+    // Set content
+    iconEl.textContent = icon;
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    confirmBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+
+    // Set button style
+    confirmBtn.className = `btn ${confirmStyle}`;
+
+    // Show modal
+    overlay.classList.add('active');
+
+    // Handle confirm
+    const handleConfirm = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    // Handle cancel
+    const handleCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    // Handle overlay click
+    const handleOverlayClick = (e) => {
+      if (e.target === overlay) {
+        handleCancel();
+      }
+    };
+
+    // Cleanup function
+    const cleanup = () => {
+      overlay.classList.remove('active');
+      confirmBtn.removeEventListener('click', handleConfirm);
+      cancelBtn.removeEventListener('click', handleCancel);
+      overlay.removeEventListener('click', handleOverlayClick);
+    };
+
+    // Add event listeners
+    confirmBtn.addEventListener('click', handleConfirm);
+    cancelBtn.addEventListener('click', handleCancel);
+    overlay.addEventListener('click', handleOverlayClick);
+  });
+}
+
 // Rename category
 function renameCategory(oldName, newName) {
   if (!newName || oldName === newName) return;
@@ -323,12 +388,55 @@ function renameCategory(oldName, newName) {
 }
 
 // Delete category
-function deleteCategory(catName) {
-  if (!confirm(`Delete category "${catName}" and all its subcategories?`)) return;
+async function deleteCategory(catName) {
+  // First warning: affects all users
+  const continueDelete = await showConfirmModal({
+    icon: '⚠️',
+    title: 'WARNING',
+    message: 'Deleting this category will affect ALL USERS of the Banner and Mix-In Ad testers.\n\nAll users will see this change immediately. Do you want to continue?',
+    confirmText: 'Continue',
+    cancelText: 'Cancel',
+    confirmStyle: 'btn-warning'
+  });
+
+  if (!continueDelete) return;
+
+  // Second confirmation: are you sure?
+  const confirmDelete = await showConfirmModal({
+    icon: '🗑️',
+    title: 'Confirm Deletion',
+    message: `Are you sure you want to delete category "${catName}" and all its subcategories?`,
+    confirmText: 'Yes, Delete',
+    cancelText: 'Cancel',
+    confirmStyle: 'btn-danger'
+  });
+
+  if (!confirmDelete) return;
 
   delete categoriesData[currentRegion][catName];
-  markUnsaved();
   renderUI();
+
+  // Auto-save the deletion
+  try {
+    showStatus('success', 'Saving changes...');
+
+    const response = await fetch(api('/api/categories'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(categoriesData)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || result.message || 'Failed to save');
+    }
+
+    clearUnsaved();
+    showStatus('success', `✅ Category "${catName}" deleted successfully!`);
+  } catch (err) {
+    showStatus('error', 'Failed to save deletion: ' + err.message);
+  }
 }
 
 // Add subcategory
@@ -369,16 +477,75 @@ function updateSubcategory(catName, idx, field, value) {
 }
 
 // Delete subcategory
-function deleteSubcategory(catName, idx) {
-  if (!confirm('Delete this subcategory?')) return;
+async function deleteSubcategory(catName, idx) {
+  const subcategoryLabel = categoriesData[currentRegion][catName][idx].label;
+
+  // First warning: affects all users
+  const continueDelete = await showConfirmModal({
+    icon: '⚠️',
+    title: 'WARNING',
+    message: 'Deleting this subcategory will affect ALL USERS of the Banner and Mix-In Ad testers.\n\nAll users will see this change immediately. Do you want to continue?',
+    confirmText: 'Continue',
+    cancelText: 'Cancel',
+    confirmStyle: 'btn-warning'
+  });
+
+  if (!continueDelete) return;
+
+  // Second confirmation: are you sure?
+  const confirmDelete = await showConfirmModal({
+    icon: '🗑️',
+    title: 'Confirm Deletion',
+    message: `Are you sure you want to delete the subcategory "${subcategoryLabel}"?`,
+    confirmText: 'Yes, Delete',
+    cancelText: 'Cancel',
+    confirmStyle: 'btn-danger'
+  });
+
+  if (!confirmDelete) return;
 
   categoriesData[currentRegion][catName].splice(idx, 1);
-  markUnsaved();
   renderUI();
+
+  // Auto-save the deletion
+  try {
+    showStatus('success', 'Saving changes...');
+
+    const response = await fetch(api('/api/categories'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(categoriesData)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || result.message || 'Failed to save');
+    }
+
+    clearUnsaved();
+    showStatus('success', `✅ Subcategory "${subcategoryLabel}" deleted successfully!`);
+  } catch (err) {
+    showStatus('error', 'Failed to save deletion: ' + err.message);
+  }
 }
 
 // Save categories
 async function saveCategories() {
+  // Show warning before saving if there are unsaved changes
+  if (hasUnsavedChanges) {
+    const confirmSave = await showConfirmModal({
+      icon: '⚠️',
+      title: 'WARNING',
+      message: 'Saving these changes will affect ALL USERS of the Banner and Mix-In Ad testers.\n\nAll users will see these changes immediately. Do you want to continue?',
+      confirmText: 'Continue',
+      cancelText: 'Cancel',
+      confirmStyle: 'btn-warning'
+    });
+
+    if (!confirmSave) return;
+  }
+
   try {
     showStatus('success', 'Saving categories...');
 

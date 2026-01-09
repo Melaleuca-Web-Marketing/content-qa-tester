@@ -323,3 +323,56 @@ export function generateValidationSummary(validatedResults) {
     passRate: total > 0 ? ((passed / total) * 100).toFixed(1) : 0
   };
 }
+
+/**
+ * Validate a single capture result against Excel data (for real-time activity feed)
+ * @param {Object} result - Single capture result with href, target, imageLocale, culture, category, mainCategory
+ * @param {Array} excelData - Normalized Excel data array
+ * @param {string} type - Type: 'category-banner' or 'mix-in-ad'
+ * @returns {Object} Validation result: { status, failures, expected }
+ */
+export function validateSingleResult(result, excelData, type = 'category-banner') {
+  if (!excelData || excelData.length === 0) {
+    return { status: 'skipped', message: 'No Excel data provided' };
+  }
+
+  const culture = result.culture || '';
+  const isCanada = culture.toLowerCase().includes('ca');
+  const localeField = isCanada ? 'imageLocaleCA' : 'imageLocaleUS';
+
+  // Find matching Excel row
+  const match = findMatchingRow(result, excelData, type);
+
+  if (!match) {
+    return {
+      status: 'not-found',
+      message: 'No matching row in Excel'
+    };
+  }
+
+  // Compare fields
+  const linkResult = compareLinks(result.href, match.bannerLink, culture, result.environment);
+  const targetResult = compareTargets(result.target, match.target);
+  const localeResult = compareImageLocale(result.imageLocale, match[localeField]);
+
+  // Collect failures
+  const failures = [];
+  if (!linkResult.match) failures.push('link');
+  if (!targetResult.match) failures.push('target');
+  if (!localeResult.match) failures.push('imageLocale');
+
+  return {
+    status: failures.length === 0 ? 'pass' : 'fail',
+    failures,
+    expected: {
+      link: match.bannerLink,
+      target: match.target,
+      imageLocale: match[localeField]
+    },
+    actual: {
+      link: result.href,
+      target: result.target,
+      imageLocale: result.imageLocale
+    }
+  };
+}

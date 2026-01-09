@@ -313,6 +313,23 @@
             justify-content: flex-end;
         }
 
+        .confirm-modal {
+            max-width: 550px;
+        }
+
+        .confirm-modal .modal-actions {
+            justify-content: center;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
         /* Culture-specific path styles */
         .subcategory-item-container {
             background: var(--bg-color);
@@ -461,6 +478,19 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="submitModal()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" id="confirm-modal-overlay">
+        <div class="modal confirm-modal" onclick="event.stopPropagation()">
+            <div id="confirm-modal-icon" style="text-align: center; font-size: 48px; margin-bottom: 16px;">⚠️</div>
+            <h2 id="confirm-modal-title" style="text-align: center; margin-bottom: 16px;">Confirm Action</h2>
+            <p id="confirm-modal-message" style="text-align: center; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.6; white-space: pre-line;"></p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="confirm-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="confirm-modal-confirm">Continue</button>
             </div>
         </div>
     </div>

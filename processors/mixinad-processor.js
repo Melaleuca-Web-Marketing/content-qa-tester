@@ -4,6 +4,7 @@ import { BaseProcessor, log } from './base-processor.js';
 import { config, buildBannerUrl } from '../config.js';
 import { detectImageLocale } from '../utils/image-utils.js';
 import { MEMORY } from '../utils/constants.js';
+import { validateSingleResult } from '../utils/excel-validation.js';
 
 export class MixInAdProcessor extends BaseProcessor {
     constructor() {
@@ -92,7 +93,7 @@ export class MixInAdProcessor extends BaseProcessor {
         try {
             await page.setViewportSize({ width, height: config.mixinad.browser.captureHeight });
 
-            // Navigate to URL
+            // Navigate to URL (needed for proper layout at each width)
             await page.goto(url, {
                 waitUntil: 'load',
                 timeout: config.mixinad.timeouts.singleCapture
@@ -102,7 +103,8 @@ export class MixInAdProcessor extends BaseProcessor {
             await page.waitForTimeout(config.mixinad.timeouts.pageLoad);
 
             // Handle Microsoft authentication for stage/UAT environments
-            if (meta.environment === 'stage' || meta.environment === 'uat') {
+            // Skip if we've already authenticated at the start of the process
+            if (!meta.skipAuthCheck && (meta.environment === 'stage' || meta.environment === 'uat')) {
                 const isMicrosoftLogin = page.url().includes('login.microsoftonline.com') ||
                     page.url().includes('login.windows.net');
                 if (isMicrosoftLogin) {
@@ -276,6 +278,7 @@ export class MixInAdProcessor extends BaseProcessor {
             type: 'started',
             jobCount: jobs.length,
             widthCount: selectedWidths.length,
+            widths: selectedWidths,
             estimatedCaptures
         });
 
@@ -295,8 +298,25 @@ export class MixInAdProcessor extends BaseProcessor {
             });
             await this.createPage();
 
-            // Note: Authentication is handled within captureAtWidth() for each job
-            // This ensures auth works correctly even if session expires mid-process
+            // Handle authentication ONCE before the capture loop for stage/uat
+            let hasAuthenticated = false;
+            if ((options.environment === 'stage' || options.environment === 'uat') && jobs.length > 0) {
+                log('info', 'Performing initial authentication check...');
+                const firstJob = jobs[0];
+                await this.page.goto(firstJob.url, {
+                    waitUntil: 'load',
+                    timeout: config.mixinad.timeouts.singleCapture
+                });
+                await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
+
+                const isMicrosoftLogin = this.page.url().includes('login.microsoftonline.com') ||
+                    this.page.url().includes('login.windows.net');
+                if (isMicrosoftLogin) {
+                    log('info', 'Detected Microsoft login page, waiting for user to sign in...');
+                    await this.waitForManualAuth(options.environment.toUpperCase());
+                    hasAuthenticated = true;
+                }
+            }
 
             // Process each job
             for (const job of jobs) {
@@ -315,12 +335,14 @@ export class MixInAdProcessor extends BaseProcessor {
                     });
 
                     try {
+                        // Pass hasAuthenticated flag to skip auth checks during captures
                         const pageResults = await this.captureAtWidth(job.url, width, {
                             category: job.category,
                             culture: job.culture,
                             order: job.order,
                             mainCategory: job.mainCategory,
-                            environment: options.environment
+                            environment: options.environment,
+                            skipAuthCheck: hasAuthenticated
                         });
 
                         // pageResults is an array (one result per ad found, or one error/noAdsFound result)
@@ -335,16 +357,45 @@ export class MixInAdProcessor extends BaseProcessor {
 
                         completedCaptures++;
 
+                        // Build result summary for progress event
+                        const adsFound = pageResults.filter(r => !r.error && !r.noAdsFound).length;
+                        const noAdsFound = pageResults.some(r => r.noAdsFound);
+                        const hasError = pageResults.some(r => r.error);
+
+                        // Validate each ad result against Excel if data available
+                        const excelData = options.excelValidation?.data;
+                        let validationResults = [];
+                        if (excelData && excelData.length > 0 && adsFound > 0) {
+                            for (const result of pageResults) {
+                                if (!result.error && !result.noAdsFound) {
+                                    const validation = validateSingleResult(result, excelData, 'mix-in-ad');
+                                    validationResults.push({
+                                        adIndex: result.adIndex,
+                                        position: result.position,
+                                        validation
+                                    });
+                                }
+                            }
+                        }
+
                         this.emit('progress', {
                             type: 'capture-progress',
                             width,
-                            state: 'done',
+                            state: hasError ? 'error' : 'done',
                             category: job.category,
                             culture: job.culture,
                             mainCategory: job.mainCategory,
                             remaining: estimatedCaptures - completedCaptures,
                             total: estimatedCaptures,
-                            completed: completedCaptures
+                            completed: completedCaptures,
+                            // Include result data for activity feed
+                            result: {
+                                adsFound,
+                                noAdsFound,
+                                hasError,
+                                errorMessage: hasError ? pageResults.find(r => r.error)?.message : null,
+                                validations: validationResults
+                            }
                         });
 
                     } catch (err) {

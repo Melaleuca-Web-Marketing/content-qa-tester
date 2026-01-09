@@ -2,11 +2,11 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mix-In Ad Tester - Melaleuca Unified Tester</title>
-  <script src="base-path.js"></script>
-  <link rel="stylesheet" href="shared.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mix-In Ad Tester - Melaleuca Unified Tester</title>
+    <script src="base-path.js"></script>
+    <link rel="stylesheet" href="shared.css">
 </head>
 
 <body>
@@ -98,6 +98,21 @@
                 <div class="progress-stats">
                     <span id="progress-count">0 / 0</span>
                     <span id="progress-eta">ETR: --:--</span>
+                </div>
+            </div>
+
+            <!-- Live Activity Feed -->
+            <div class="activity-feed" id="activity-feed" style="display: none;">
+                <div class="activity-header">
+                    <span class="activity-title">📋 Live Activity</span>
+                    <span class="activity-counts">
+                        <span class="passed-count">✅ <span id="passed-count">0</span></span>
+                        <span class="failed-count">❌ <span id="failed-count">0</span></span>
+                    </span>
+                    <button class="activity-clear-btn" id="clear-activity" title="Clear feed">🗑️ Clear</button>
+                </div>
+                <div class="activity-list" id="activity-list">
+                    <div class="activity-empty">No activity yet</div>
                 </div>
             </div>
         </div>

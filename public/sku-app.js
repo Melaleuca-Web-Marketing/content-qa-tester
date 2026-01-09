@@ -120,6 +120,16 @@ async function checkStatus() {
         startCaptureBtn.textContent = 'Resume Capture';
         startCaptureBtn.disabled = false;
         setStatusRunning('Waiting for manual sign-in', status.message || 'Please sign in and click Resume');
+      } else if (status.statusType === 'waiting-for-credentials') {
+        // Restore credential error UI state
+        setStatusError('Authentication Failed', status.message);
+        showCredentialErrorAlert(status.error || 'Invalid username or password');
+        startCaptureBtn.textContent = '🔄 Update & Resume';
+        startCaptureBtn.disabled = false;
+        stopCaptureBtn.disabled = false;
+        usernameInput.disabled = false;
+        passwordInput.disabled = false;
+        loginSection.classList.add('credential-error');
       }
     } else {
       setStatusIdle('Ready to capture', '');
@@ -174,8 +184,11 @@ function setupEventListeners() {
     savePreferences();
   });
 
-  startCaptureBtn.addEventListener('click', () => {
-    if (isWaitingForResume) {
+  startCaptureBtn.addEventListener('click', async () => {
+    // Check if we're in credential update mode
+    if (startCaptureBtn.textContent.includes('Update & Resume')) {
+      await updateCredentialsAndResume();
+    } else if (isWaitingForResume) {
       resumeCapture();
     } else {
       startCapture();
@@ -473,6 +486,24 @@ function handleStatusUpdate(data) {
       stopCaptureBtn.disabled = false;
       break;
 
+    case 'waiting-for-credentials':
+      setStatusError('Authentication Failed', data.message || 'Invalid username or password. Update credentials and click Resume.');
+      showCredentialErrorAlert(data.error || 'Invalid username or password');
+      isWaitingForResume = true;
+      startCaptureBtn.textContent = '🔄 Update & Resume';
+      startCaptureBtn.disabled = false;
+      stopCaptureBtn.disabled = false;
+      // Enable credential inputs
+      usernameInput.disabled = false;
+      passwordInput.disabled = false;
+      usernameInput.focus();
+      // Add visual highlight to credential fields
+      const loginSection = document.getElementById('login-section');
+      if (loginSection) {
+        loginSection.classList.add('credential-error');
+      }
+      break;
+
     case 'resuming':
       setStatusRunning('Resuming capture...', 'Continuing with SKU processing');
       isWaitingForResume = false;
@@ -512,6 +543,46 @@ function handleError(data) {
   isCapturing = false;
   setUIIdle();
   setStatusError('Error', data.message);
+}
+
+function showCredentialErrorAlert(errorMessage) {
+  // Create or update alert banner
+  let alertBanner = document.getElementById('credential-error-alert');
+
+  if (!alertBanner) {
+    alertBanner = document.createElement('div');
+    alertBanner.id = 'credential-error-alert';
+    alertBanner.className = 'credential-error-alert';
+    document.querySelector('.container').prepend(alertBanner);
+  }
+
+  alertBanner.innerHTML = `
+    <div class="alert-icon">⚠️</div>
+    <div class="alert-content">
+      <div class="alert-title">Authentication Failed</div>
+      <div class="alert-message">${errorMessage}</div>
+      <div class="alert-instructions">Please update your username and password below, then click "Update & Resume"</div>
+    </div>
+  `;
+
+  alertBanner.style.display = 'flex';
+}
+
+function hideCredentialErrorAlert() {
+  const alertBanner = document.getElementById('credential-error-alert');
+  if (alertBanner) {
+    alertBanner.style.display = 'none';
+  }
+  const loginSection = document.getElementById('login-section');
+  if (loginSection) {
+    loginSection.classList.remove('credential-error');
+  }
+}
+
+function resetCredentialPromptState() {
+  isWaitingForResume = false;
+  startCaptureBtn.textContent = 'Start Capture';
+  hideCredentialErrorAlert();
 }
 
 function updateProgressBar(current, total) {
@@ -629,6 +700,67 @@ async function stopCapture() {
   }
 }
 
+async function updateCredentialsAndResume() {
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+
+  if (!username || !password) {
+    setStatusError('Credentials Required', 'Enter username and password to retry');
+    return;
+  }
+
+  try {
+    setStatusRunning('Updating credentials...', 'Sending new credentials to server');
+    startCaptureBtn.disabled = true;
+
+    // Send updated credentials to server
+    const updateResponse = await fetch(api('/api/sku/update-credentials'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(userId ? { 'X-User-Id': userId } : {})
+      },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!updateResponse.ok) {
+      const error = await updateResponse.json();
+      setStatusError('Update Failed', error.error || 'Failed to update credentials');
+      startCaptureBtn.disabled = false;
+      return;
+    }
+
+    // Resume capture
+    const resumeResponse = await fetch(api('/api/sku/resume'), {
+      method: 'POST',
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
+    const result = await resumeResponse.json();
+
+    if (!result.ok) {
+      setStatusError('Failed to resume', result.message || 'Unknown error');
+      startCaptureBtn.disabled = false;
+      return;
+    }
+
+    // Hide error alert and remove highlighting
+    hideCredentialErrorAlert();
+
+    // Disable credential inputs
+    usernameInput.disabled = true;
+    passwordInput.disabled = true;
+
+    setStatusRunning('Retrying authentication...', 'Logging in with updated credentials');
+    isWaitingForResume = false;
+    startCaptureBtn.textContent = 'Start Capture';
+
+  } catch (err) {
+    console.error('Error updating credentials:', err);
+    setStatusError('Connection error', err.message);
+    startCaptureBtn.disabled = false;
+  }
+}
+
 async function resumeCapture() {
   try {
     setStatusRunning('Resuming...', 'Continuing capture after manual sign-in');
@@ -668,6 +800,7 @@ function setUIIdle() {
   stopCaptureBtn.disabled = true;
   progressContainer.style.display = 'none';
   currentSkuInfo.style.display = 'none';
+  resetCredentialPromptState();
 }
 
 function setStatusIdle(main, detail) {

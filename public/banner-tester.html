@@ -99,6 +99,21 @@
           <span id="progress-eta">ETR: --:--</span>
         </div>
       </div>
+
+      <!-- Live Activity Feed -->
+      <div class="activity-feed" id="activity-feed" style="display: none;">
+        <div class="activity-header">
+          <span class="activity-title">📋 Live Activity</span>
+          <span class="activity-counts">
+            <span class="passed-count">✅ <span id="passed-count">0</span></span>
+            <span class="failed-count">❌ <span id="failed-count">0</span></span>
+          </span>
+          <button class="activity-clear-btn" id="clear-activity" title="Clear feed">🗑️ Clear</button>
+        </div>
+        <div class="activity-list" id="activity-list">
+          <div class="activity-empty">No activity yet</div>
+        </div>
+      </div>
     </div>
 
     <div class="connection-status" id="connection-status">

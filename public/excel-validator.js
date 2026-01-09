@@ -195,12 +195,23 @@ async function parseExcelFile(file) {
           .filter(row => row.error)
           .map(row => `Row ${row.rowNumber}: ${row.error}`);
 
+        // Check for unexpected columns
+        const unexpectedColumns = headers.filter(col => !REQUIRED_COLUMNS.includes(col) && col !== 'SKUs');
+        const hasUnexpectedColumns = unexpectedColumns.length > 0;
+
         // Create preview (first 5 rows)
         const preview = {
           sheetName: firstSheetName,
           totalRows: jsonData.length,
           categoryBanners: normalizedData.filter(r => r.type === 'category-banner').length,
           mixInAds: normalizedData.filter(r => r.type === 'mix-in-ad').length,
+          monthlySpecials: normalizedData.filter(r => r.type === 'monthly-specials').length,
+          heroCarousel: normalizedData.filter(r => r.type === 'hero-carousel').length,
+          variableWindows: normalizedData.filter(r => r.type === 'variable-windows').length,
+          fullWidthBanner: normalizedData.filter(r => r.type === 'full-width-banner').length,
+          seasonalCarousel: normalizedData.filter(r => r.type === 'seasonal-carousel').length,
+          brandCtaWindows: normalizedData.filter(r => r.type === 'brand-cta-windows').length,
+          unexpectedColumns: hasUnexpectedColumns ? unexpectedColumns : null,
           sampleRows: normalizedData.slice(0, 5).map(row => ({
             type: row.type,
             mainCategory: row.mainCategory,
@@ -209,11 +220,17 @@ async function parseExcelFile(file) {
           }))
         };
 
+        // Add warning if there are unexpected columns
+        if (hasUnexpectedColumns) {
+          dataErrors.push(`⚠️ Unexpected columns found: ${unexpectedColumns.join(', ')}`);
+        }
+
         resolve({
           success: dataErrors.length === 0,
           data: normalizedData,
           errors: dataErrors.length > 0 ? dataErrors : undefined,
-          preview
+          preview,
+          warnings: hasUnexpectedColumns ? [`Unexpected columns: ${unexpectedColumns.join(', ')}`] : undefined
         });
 
       } catch (error) {
