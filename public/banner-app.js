@@ -167,6 +167,7 @@ async function restoreActivityFromServer() {
           categoryPath: categoryPath,
           mainCategory: result.mainCategory,
           category: result.category,
+          url: result.url || '',
           widths: [],
           widthResults: {},
           hasError: false,
@@ -195,8 +196,13 @@ async function restoreActivityFromServer() {
         href: result.href,
         target: result.target,
         imageLocale: result.imageLocale,
-        validation: result.validation || null
+        validation: result.validation || null,
+        url: result.url
       };
+
+      if (result.url && !bannerGroups[key].url) {
+        bannerGroups[key].url = result.url;
+      }
 
       // Collect validation issues (only for successful captures)
       if (!isError) {
@@ -248,7 +254,8 @@ async function restoreActivityFromServer() {
             mainCategory: group.mainCategory || '',
             category: group.category,
             widths: {},
-            totalWidths: expectedWidthCount
+            totalWidths: expectedWidthCount,
+            url: group.url || ''
           };
         }
         Object.entries(group.widthResults).forEach(([width, result]) => {
@@ -274,6 +281,7 @@ async function restoreActivityFromServer() {
         detail: detail,
         issues: group.issues.length > 0 ? group.issues : undefined,
         error: group.hasError ? (group.errorMessages[0] || 'Capture failed') : undefined,
+        url: group.url || undefined,
         timestamp: new Date(group.timestamp)
       };
 
@@ -619,7 +627,8 @@ function handleProgress(data) {
         mainCategory: progress.mainCategory || '',
         category: progress.category,
         widths: {},
-        totalWidths: expectedWidths.length || 1
+        totalWidths: expectedWidths.length || 1,
+        url: ''
       };
     }
 
@@ -635,6 +644,10 @@ function handleProgress(data) {
       imageLocale: resultData.imageLocale,
       validation: validation
     };
+
+    if (resultData.url) {
+      bannerProgress[bannerKey].url = resultData.url;
+    }
 
     const banner = bannerProgress[bannerKey];
     const completedWidths = Object.keys(banner.widths).length;
@@ -682,7 +695,8 @@ function handleProgress(data) {
           culture: banner.culture,
           categoryPath: categoryPath,
           detail: `${completedWidths - errorWidths}/${completedWidths} widths captured`,
-          error: errorMessages
+          error: errorMessages,
+          url: banner.url
         });
       } else if (uniqueIssues.length > 0) {
         // Show warning for validation issues
@@ -691,14 +705,16 @@ function handleProgress(data) {
           culture: banner.culture,
           categoryPath: categoryPath,
           detail: `${completedWidths} widths captured`,
-          issues: uniqueIssues
+          issues: uniqueIssues,
+          url: banner.url
         });
       } else {
         addActivityItem({
           type: 'success',
           culture: banner.culture,
           categoryPath: categoryPath,
-          detail: `${completedWidths} widths captured`
+          detail: `${completedWidths} widths captured`,
+          url: banner.url
         });
       }
 
@@ -1038,6 +1054,9 @@ function renderActivityFeed() {
     const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
     const timeStr = formatActivityTime(item.timestamp);
     const itemClass = item.type === 'error' ? 'error' : (item.type === 'warning' ? 'warning' : 'success');
+    const linkMarkup = item.url
+      ? `<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`
+      : '';
     // Use categoryPath for grouped banners, fallback to old format for compatibility
     const location = item.categoryPath
       ? `${item.culture} › ${item.categoryPath}`
@@ -1050,6 +1069,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || ''} ${item.error ? '- ' + item.error : ''}</div>
+            ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
@@ -1062,6 +1082,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || ''} ${issueText ? '- ' + issueText : ''}</div>
+            ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
@@ -1073,6 +1094,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || 'Captured'}</div>
+            ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>

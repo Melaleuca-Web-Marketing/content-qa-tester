@@ -652,7 +652,8 @@ export class SkuProcessor extends BaseProcessor {
         culture,
         current: currentIndex,
         total,
-        status: 'Extracting data'
+        status: 'Extracting data',
+        url
       });
 
       const productData = await this.extractProductData();
@@ -667,7 +668,8 @@ export class SkuProcessor extends BaseProcessor {
           culture,
           current: currentIndex,
           total,
-          error: result.error
+          error: result.error,
+          url
         });
         return result;
       }
@@ -679,14 +681,15 @@ export class SkuProcessor extends BaseProcessor {
       if (wantsTopScreenshot || wantsFullScreenshot) {
         log('info', 'Preparing page for screenshot...');
         await this.prepareForScreenshot();
-        this.emit('progress', {
-          type: 'sku-status',
-          sku,
-          culture,
-          current: currentIndex,
-          total,
-          status: 'Capturing screenshot'
-        });
+      this.emit('progress', {
+        type: 'sku-status',
+        sku,
+        culture,
+        current: currentIndex,
+        total,
+        status: 'Capturing screenshot',
+        url
+      });
 
         let screenshotBuffer = null;
         if (wantsTopScreenshot) {
@@ -731,7 +734,8 @@ export class SkuProcessor extends BaseProcessor {
           culture,
           current: currentIndex,
           total,
-          status: 'Adding to cart'
+          status: 'Adding to cart',
+          url
         });
 
         result.addToCartResult = await this.addToCart();
@@ -748,6 +752,7 @@ export class SkuProcessor extends BaseProcessor {
         current: currentIndex,
         total,
         status: 'Complete',
+        url,
         data: {
           name: productData.name,
           price: productData.price,
@@ -768,7 +773,8 @@ export class SkuProcessor extends BaseProcessor {
         culture,
         current: currentIndex,
         total,
-        error: err.message
+        error: err.message,
+        url
       });
     }
 

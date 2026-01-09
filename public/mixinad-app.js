@@ -167,6 +167,7 @@ async function restoreActivityFromServer() {
           categoryPath: categoryPath,
           mainCategory: result.mainCategory,
           category: result.category,
+          url: result.url || '',
           widths: [],
           widthResults: {},
           hasError: false,
@@ -216,6 +217,10 @@ async function restoreActivityFromServer() {
           position: result.position,
           validation: result.validation
         });
+      }
+
+      if (result.url && !categoryGroups[key].url) {
+        categoryGroups[key].url = result.url;
       }
 
       // Collect validation issues (only for successful captures)
@@ -271,7 +276,8 @@ async function restoreActivityFromServer() {
             mainCategory: group.mainCategory || '',
             category: group.category,
             widths: {},
-            totalWidths: expectedWidthCount
+            totalWidths: expectedWidthCount,
+            url: group.url || ''
           };
         }
         Object.entries(group.widthResults).forEach(([width, result]) => {
@@ -297,6 +303,7 @@ async function restoreActivityFromServer() {
         detail: detail,
         issues: group.issues.length > 0 ? group.issues : undefined,
         error: group.hasError ? (group.errorMessages[0] || 'Capture failed') : undefined,
+        url: group.url || undefined,
         timestamp: new Date(group.timestamp)
       };
 
@@ -642,7 +649,8 @@ function handleProgress(data) {
         mainCategory: progress.mainCategory || '',
         category: progress.category,
         widths: {},
-        totalWidths: expectedWidths.length || 1
+        totalWidths: expectedWidths.length || 1,
+        url: ''
       };
     }
 
@@ -655,6 +663,10 @@ function handleProgress(data) {
       noAdsFound: resultData.noAdsFound || false,
       validations: resultData.validations || []
     };
+
+    if (resultData.url) {
+      mixinProgress[categoryKey].url = resultData.url;
+    }
 
     const mixin = mixinProgress[categoryKey];
     const completedWidths = Object.keys(mixin.widths).length;
@@ -700,7 +712,8 @@ function handleProgress(data) {
           culture: mixin.culture,
           categoryPath: categoryPath,
           detail: `${completedWidths - errorWidths}/${completedWidths} widths captured`,
-          error: errorMessages
+          error: errorMessages,
+          url: mixin.url
         });
       } else if (uniqueIssues.length > 0) {
         addActivityItem({
@@ -708,7 +721,8 @@ function handleProgress(data) {
           culture: mixin.culture,
           categoryPath: categoryPath,
           detail: `${totalAds} ads • ${completedWidths} widths`,
-          issues: uniqueIssues
+          issues: uniqueIssues,
+          url: mixin.url
         });
       } else if (hasNoAds) {
         addActivityItem({
@@ -716,13 +730,15 @@ function handleProgress(data) {
           culture: mixin.culture,
           categoryPath: categoryPath,
           detail: `${completedWidths} widths captured`,
-          issues: ['No mix-in ads found']
+          issues: ['No mix-in ads found'],
+          url: mixin.url
         });
       } else {
         addActivityItem({
           type: 'success',
           culture: mixin.culture,
           categoryPath: categoryPath,
+          url: mixin.url,
           detail: `${totalAds} ads • ${completedWidths} widths`
         });
       }
@@ -1062,6 +1078,9 @@ function renderActivityFeed() {
   activityList.innerHTML = activityItems.map(item => {
     const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
     const timeStr = formatActivityTime(item.timestamp);
+    const linkMarkup = item.url
+      ? `<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`
+      : '';
     // Use categoryPath for grouped items, fallback to old format
     const location = item.categoryPath
       ? `${item.culture} › ${item.categoryPath}`
@@ -1074,6 +1093,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || ''} ${item.error ? '- ' + item.error : ''}</div>
+            ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
@@ -1086,6 +1106,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || ''} ${issueText ? '- ' + issueText : ''}</div>
+            ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
@@ -1097,6 +1118,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || 'Captured'}</div>
+            ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>

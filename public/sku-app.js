@@ -196,6 +196,7 @@ async function restoreActivityFromServer() {
           sku: result.sku,
           culture: result.culture,
           error: result.error || 'Failed',
+          url: result.url,
           timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
         };
         activityItems.unshift(item);
@@ -233,6 +234,7 @@ async function restoreActivityFromServer() {
         price: data.price,
         addToCart: result.addToCartResult,
         issues: issues,
+        url: result.url,
         timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
       };
 
@@ -574,7 +576,8 @@ function handleProgress(data) {
         name: data.name || `SKU ${progress.sku}`,
         price: data.price,
         addToCart: data.addToCart,
-        issues: issues
+        issues: issues,
+        url: progress.url
       });
       break;
 
@@ -586,7 +589,8 @@ function handleProgress(data) {
         type: 'error',
         sku: progress.sku,
         culture: progress.culture,
-        error: progress.error
+        error: progress.error,
+        url: progress.url
       });
       break;
   }
@@ -1096,6 +1100,9 @@ function renderActivityFeed() {
     const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
     const timeStr = formatActivityTime(item.timestamp);
     const itemClass = item.type === 'error' ? 'error' : (item.type === 'warning' ? 'warning' : 'success');
+    const linkMarkup = item.url
+      ? `<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`
+      : '';
 
     if (item.type === 'error') {
       return `
@@ -1104,6 +1111,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">SKU ${item.sku}${item.culture ? ` (${item.culture})` : ''}</div>
             <div class="activity-item-detail">${item.error}</div>
+            ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
@@ -1123,6 +1131,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">SKU ${item.sku}${item.culture ? ` (${item.culture})` : ''}</div>
             ${issueText ? `<div class="activity-item-detail">${issueText}</div>` : (details.length ? `<div class="activity-item-detail">${details.join(' • ')}</div>` : '')}
+            ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>

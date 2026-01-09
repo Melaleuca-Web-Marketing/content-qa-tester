@@ -352,6 +352,7 @@ export class BannerProcessor extends BaseProcessor {
               isLastWidthForBanner,
               // Include result data for validation display
               result: {
+                url: result.url,
                 href: result.href,
                 target: result.target,
                 imageLocale: result.imageLocale,

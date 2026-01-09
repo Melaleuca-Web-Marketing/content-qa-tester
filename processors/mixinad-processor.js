@@ -413,6 +413,7 @@ export class MixInAdProcessor extends BaseProcessor {
                             isLastWidthForBanner: isLastWidthForCategory,
                             // Include result data for activity feed
                             result: {
+                                url: job.url,
                                 adsFound,
                                 noAdsFound,
                                 hasError,

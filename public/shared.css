@@ -886,6 +886,31 @@ button:disabled {
   margin-top: 2px;
 }
 
+.activity-item-link {
+  margin-top: 6px;
+}
+
+.activity-item-link a {
+  display: inline-block;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-decoration: none;
+  letter-spacing: 0.2px;
+}
+
+.activity-item-link a:hover {
+  background: #2563eb;
+}
+
+.activity-item-link a:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.6);
+  outline-offset: 2px;
+}
+
 .activity-item-time {
   color: var(--text-muted);
   font-size: 11px;
