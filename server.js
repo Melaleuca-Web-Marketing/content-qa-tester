@@ -21,6 +21,7 @@ import { asyncHandler } from './utils/async-handler.js';
 import { autoGenerateReport } from './utils/auto-generate-report.js';
 import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory, markAsRead } from './utils/history.js';
 import { initWebSocket, broadcast } from './utils/broadcast.js';
+import { cleanupOldReports, getReportStats } from './utils/report-cleanup.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -662,6 +663,28 @@ router.get('/api/reports/:filename', (req, res) => {
   res.sendFile(reportPath);
 });
 
+// ============ Report Cleanup Routes ============
+
+router.get('/api/reports/stats', (req, res) => {
+  const stats = getReportStats(REPORTS_DIR);
+  if (stats) {
+    res.json(stats);
+  } else {
+    res.status(500).json({ error: 'Failed to get report stats' });
+  }
+});
+
+router.post('/api/reports/cleanup', express.json(), (req, res) => {
+  const { daysToKeep = 30 } = req.body;
+
+  if (typeof daysToKeep !== 'number' || daysToKeep < 1) {
+    return res.status(400).json({ error: 'Invalid daysToKeep value' });
+  }
+
+  const result = cleanupOldReports(REPORTS_DIR, daysToKeep);
+  res.json({ ok: true, ...result });
+});
+
 
 // ============ Start Server ============
 
@@ -694,6 +717,19 @@ router.use((err, req, res, next) => {
 
 // Mount router at base path
 app.use(BASE_PATH || '/', router);
+
+// Auto-cleanup old reports on startup (configurable)
+const autoCleanupDays = process.env.TESTER_CLEANUP_DAYS
+  ? parseInt(process.env.TESTER_CLEANUP_DAYS)
+  : null;
+
+if (autoCleanupDays && autoCleanupDays > 0) {
+  console.log(`[Startup] Auto-cleanup enabled: deleting reports older than ${autoCleanupDays} days`);
+  const result = cleanupOldReports(REPORTS_DIR, autoCleanupDays);
+  console.log(`[Startup] Cleanup result: ${result.deleted} deleted, ${result.kept} kept, ${result.errors} errors`);
+} else {
+  console.log('[Startup] Auto-cleanup disabled (set TESTER_CLEANUP_DAYS to enable)');
+}
 
 server.listen(PORT, () => {
   const address = server.address();

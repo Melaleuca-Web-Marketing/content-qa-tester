@@ -5,6 +5,7 @@ import { config, buildBannerUrl } from '../config.js';
 import { detectImageLocale } from '../utils/image-utils.js';
 import { MEMORY } from '../utils/constants.js';
 import { validateSingleResult } from '../utils/excel-validation.js';
+import { getMemoryUsageMB, checkMemoryThreshold } from '../utils/memory-monitor.js';
 
 export class BannerProcessor extends BaseProcessor {
   constructor() {
@@ -283,9 +284,15 @@ export class BannerProcessor extends BaseProcessor {
             this.results.push(result);
             completedCaptures++;
 
-            // Warn about memory usage for very large test runs
+            // Enhanced memory warning with actual usage metrics
             if (this.results.length % MEMORY.SCREENSHOT_WARNING_INTERVAL === 0 && this.results.length > 0) {
-              log('warn', `${this.results.length} screenshots captured. Large test runs may consume significant memory.`);
+              const memUsage = getMemoryUsageMB();
+              log('warn', `${this.results.length} screenshots in memory. Heap: ${memUsage.heapUsed}MB / ${memUsage.heapTotal}MB. Consider reducing batch size for very large runs.`);
+
+              // Suggest generating report early if memory is high
+              if (checkMemoryThreshold(1024)) {
+                log('warn', 'Memory usage high (>1GB heap). Consider stopping and generating report to free memory.');
+              }
             }
 
             // Validate against Excel data if available
