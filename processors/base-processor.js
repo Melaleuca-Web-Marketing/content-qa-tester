@@ -221,6 +221,53 @@ export class BaseProcessor extends EventEmitter {
     return true;
   }
 
+  /**
+   * Consolidated Microsoft authentication handler for stage/UAT environments
+   * Detects Microsoft login and handles it automatically (with credentials) or manually
+   * @param {string} environment - Environment name (stage/uat/production)
+   * @param {string} username - Optional username for automatic auth
+   * @param {string} password - Optional password for automatic auth
+   * @param {object} page - Page object (defaults to this.page)
+   * @returns {Promise<boolean>} True if Microsoft auth was handled, false if not on Microsoft login
+   */
+  async handleMicrosoftAuthIfNeeded(environment, username = null, password = null, page = this.page) {
+    if (!page) return false;
+
+    // Only check for Microsoft auth on stage/UAT environments
+    if (environment !== 'stage' && environment !== 'uat') {
+      return false;
+    }
+
+    const loginDomains = ['login.microsoftonline.com', 'login.windows.net'];
+    const url = page.url();
+    const isMicrosoftLogin = loginDomains.some(domain => url.includes(domain));
+
+    if (!isMicrosoftLogin) {
+      return false;
+    }
+
+    log('info', 'Detected Microsoft login page');
+
+    // If credentials provided, try automatic authentication
+    if (username && password) {
+      log('info', 'Attempting automatic Microsoft authentication...');
+      try {
+        const result = await this.handleMicrosoftAuth(username, password, page, true);
+        if (result) {
+          log('info', 'Automatic Microsoft authentication successful');
+          return true;
+        }
+      } catch (err) {
+        log('warn', 'Automatic Microsoft authentication failed, falling back to manual', { error: err.message });
+      }
+    }
+
+    // Fall back to manual authentication
+    log('info', 'Waiting for manual Microsoft sign-in...');
+    await this.waitForManualAuth(environment.toUpperCase());
+    return true;
+  }
+
   // Close browser and cleanup
   async closeBrowser() {
     log('info', 'Closing browser...');

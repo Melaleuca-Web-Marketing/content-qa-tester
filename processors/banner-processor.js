@@ -11,9 +11,13 @@ export class BannerProcessor extends BaseProcessor {
     super('Banner');
   }
 
-  // Detect banner on page and get its info
-  async detectBanner() {
-    const result = await this.page.evaluate((selector) => {
+  /**
+   * Private method: Detect banner element and extract its information
+   * @param {boolean} includeScrollOffset - Whether to include pageRect with scroll offsets
+   * @returns {Promise<Object>} Banner information object
+   */
+  async _detectBannerElement(includeScrollOffset = false) {
+    const result = await this.page.evaluate((selector, includeScroll) => {
       const el =
         document.querySelector(selector) ||
         document.querySelector('[data-testid="container-fullWidthBanner"]') ||
@@ -40,20 +44,11 @@ export class BannerProcessor extends BaseProcessor {
 
       const imageAlt = anchor.querySelector('img')?.alt || anchor.getAttribute('aria-label') || '';
 
-      const scrollX = window.scrollX || document.documentElement.scrollLeft || 0;
-      const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
-
-      return {
+      const response = {
         found: true,
         rect: {
           x: rect.x,
           y: rect.y,
-          width: rect.width,
-          height: rect.height
-        },
-        pageRect: {
-          x: rect.x + scrollX,
-          y: rect.y + scrollY,
           width: rect.width,
           height: rect.height
         },
@@ -62,9 +57,28 @@ export class BannerProcessor extends BaseProcessor {
         imageSrc,
         imageAlt
       };
-    }, config.banner.selector);
+
+      // Optionally include page coordinates with scroll offsets
+      if (includeScroll) {
+        const scrollX = window.scrollX || document.documentElement.scrollLeft || 0;
+        const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        response.pageRect = {
+          x: rect.x + scrollX,
+          y: rect.y + scrollY,
+          width: rect.width,
+          height: rect.height
+        };
+      }
+
+      return response;
+    }, config.banner.selector, includeScrollOffset);
 
     return result;
+  }
+
+  // Detect banner on page and get its info
+  async detectBanner() {
+    return await this._detectBannerElement(true);
   }
 
   // Capture banner at a specific width
@@ -89,21 +103,14 @@ export class BannerProcessor extends BaseProcessor {
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
 
       // Handle Microsoft authentication for stage/UAT environments
-      // User must manually sign in, then click Resume
-      if (meta.environment === 'stage' || meta.environment === 'uat') {
-        const isMicrosoftLogin = page.url().includes('login.microsoftonline.com') ||
-          page.url().includes('login.windows.net');
-        if (isMicrosoftLogin) {
-          log('info', 'Detected Microsoft login page, waiting for user to sign in...');
-          await this.waitForManualAuth(meta.environment.toUpperCase());
-
-          // Navigate back to the original URL after auth
-          await page.goto(url, {
-            waitUntil: 'load',
-            timeout: config.banner.timeouts.singleCapture
-          });
-          await page.waitForTimeout(config.banner.timeouts.pageLoad);
-        }
+      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(meta.environment, null, null, page);
+      if (msAuthHandled) {
+        // Navigate back to the original URL after auth
+        await page.goto(url, {
+          waitUntil: 'load',
+          timeout: config.banner.timeouts.singleCapture
+        });
+        await page.waitForTimeout(config.banner.timeouts.pageLoad);
       }
 
       // Retry banner detection with exponential backoff
@@ -115,47 +122,7 @@ export class BannerProcessor extends BaseProcessor {
           await page.waitForTimeout(500 * attempt);
         }
 
-        bannerInfo = await page.evaluate((selector) => {
-          const el =
-            document.querySelector(selector) ||
-            document.querySelector('[data-testid="container-fullWidthBanner"]') ||
-            document.querySelector('.m-fwBanner');
-
-          if (!el) return { found: false };
-
-          const anchor = el.closest('a') || el;
-          anchor.scrollIntoView({ block: 'center', inline: 'center' });
-
-          const rect = anchor.getBoundingClientRect();
-
-          let imageSrc = '';
-          const bgDiv = el.querySelector('.m-fwBanner__bg');
-          if (bgDiv) {
-            const bg = window.getComputedStyle(bgDiv).backgroundImage;
-            imageSrc = bg.match(/url\(['"]?([^'"]+)['"]?\)/)?.[1] || '';
-          }
-
-          if (!imageSrc) {
-            const img = anchor.querySelector('img');
-            imageSrc = img?.currentSrc || img?.src || '';
-          }
-
-          const imageAlt = anchor.querySelector('img')?.alt || anchor.getAttribute('aria-label') || '';
-
-          return {
-            found: true,
-            rect: {
-              x: rect.x,
-              y: rect.y,
-              width: rect.width,
-              height: rect.height
-            },
-            href: anchor?.href || '',
-            target: anchor?.target || '',
-            imageSrc,
-            imageAlt
-          };
-        }, config.banner.selector);
+        bannerInfo = await this._detectBannerElement(false);
 
         if (bannerInfo?.found) break;
       }

@@ -104,13 +104,9 @@ export class MixInAdProcessor extends BaseProcessor {
 
             // Handle Microsoft authentication for stage/UAT environments
             // Skip if we've already authenticated at the start of the process
-            if (!meta.skipAuthCheck && (meta.environment === 'stage' || meta.environment === 'uat')) {
-                const isMicrosoftLogin = page.url().includes('login.microsoftonline.com') ||
-                    page.url().includes('login.windows.net');
-                if (isMicrosoftLogin) {
-                    log('info', 'Detected Microsoft login page, waiting for user to sign in...');
-                    await this.waitForManualAuth(meta.environment.toUpperCase());
-
+            if (!meta.skipAuthCheck) {
+                const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(meta.environment, null, null, page);
+                if (msAuthHandled) {
                     // Navigate back to the original URL after auth
                     await page.goto(url, {
                         waitUntil: 'load',

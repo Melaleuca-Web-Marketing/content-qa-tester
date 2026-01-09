@@ -89,18 +89,11 @@ export class PSLPProcessor extends BaseProcessor {
       if (this.shouldStop) throw new Error('Operation stopped by user');
 
       // Handle Microsoft authentication for stage/UAT environments
-      // User must manually sign in, then click Resume
-      if (options.environment === 'stage' || options.environment === 'uat') {
-        const isMicrosoftLogin = this.page.url().includes('login.microsoftonline.com') ||
-          this.page.url().includes('login.windows.net');
-        if (isMicrosoftLogin) {
-          log('info', 'Detected Microsoft login page, waiting for user to sign in...');
-          await this.waitForManualAuth(options.environment.toUpperCase());
-
-          // Navigate back to the base URL after auth
-          await this.page.goto(baseUrl, { waitUntil: 'load', timeout: config.pslp.timeouts.pageLoad });
-          await this.page.waitForTimeout(2000);
-        }
+      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password);
+      if (msAuthHandled) {
+        // Navigate back to the base URL after auth
+        await this.page.goto(baseUrl, { waitUntil: 'load', timeout: config.pslp.timeouts.pageLoad });
+        await this.page.waitForTimeout(2000);
       }
 
       if (this.shouldStop) throw new Error('Operation stopped by user');

@@ -33,16 +33,8 @@ export class SkuProcessor extends BaseProcessor {
       // Wait for page to settle
       await this.page.waitForTimeout(2000);
 
-      // Handle Microsoft authentication for stage/UAT environments
-      // User must manually sign in, then click Resume
-      if (environment === 'stage' || environment === 'uat') {
-        const isMicrosoftLogin = this.page.url().includes('login.microsoftonline.com') ||
-          this.page.url().includes('login.windows.net');
-        if (isMicrosoftLogin) {
-          log('info', 'Detected Microsoft login page, waiting for user to sign in...');
-          await this.waitForManualAuth(environment.toUpperCase());
-        }
-      }
+      // Handle Microsoft authentication for stage/UAT environments (if intercepted)
+      await this.handleMicrosoftAuthIfNeeded(environment, username, password);
 
       // Step 2: Click Sign In button on home page
       log('info', 'Step 2: Looking for Sign In button on home page...');
