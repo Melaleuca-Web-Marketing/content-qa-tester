@@ -1,7 +1,7 @@
 // banner-report.js - Generate HTML report for Banner test results
 
 import { config } from '../config.js';
-import { validateResults, generateValidationSummary } from '../utils/excel-validation.js';
+import { validateResults } from '../utils/excel-validation.js';
 
 export function generateBannerReport(results, captureDuration, theme = 'dark', excelValidation = null) {
   if (!results || !results.length) {
@@ -22,14 +22,10 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
   if (excelValidation && excelValidation.enabled && excelValidation.data) {
     console.log('[Banner Report] Running validation...');
     validatedResults = validateResults(results, excelValidation.data, 'category-banner');
-    validationSummary = generateValidationSummary(validatedResults);
     excelFilename = excelValidation.filename || 'Unknown';
-    console.log('[Banner Report] Validation complete. Summary:', validationSummary);
   }
 
   const timestamp = new Date().toISOString();
-  const successCount = validatedResults.filter(r => !r.error).length;
-  const errorCount = validatedResults.filter(r => r.error).length;
   const environment = validatedResults[0]?.environment || 'Unknown';
   const durationText = captureDuration ? (captureDuration / 1000).toFixed(1) + 's' : 'N/A';
   const isDark = theme === 'dark';
@@ -86,6 +82,16 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
   });
 
   const groups = Object.values(groupedItems);
+  if (excelValidation && excelValidation.enabled && excelValidation.data) {
+    validationSummary = buildGroupValidationSummary(groups);
+    console.log('[Banner Report] Validation complete. Summary:', validationSummary);
+  }
+  const totalBanners = groups.length;
+  const failedBanners = groups.filter((group) => {
+    const hasErrors = group.items.some((item) => item.error);
+    return hasErrors || isValidationFailure(group.validation);
+  }).length;
+  const successBanners = totalBanners - failedBanners;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -109,16 +115,16 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
 
     <div class="summary">
       <div class="summary-card">
-        <h3>Total Captures</h3>
-        <div class="value total">${validatedResults.length}</div>
+        <h3>Total Banners</h3>
+        <div class="value total">${totalBanners}</div>
       </div>
       <div class="summary-card">
         <h3>Successful</h3>
-        <div class="value success">${successCount}</div>
+        <div class="value success">${successBanners}</div>
       </div>
       <div class="summary-card">
         <h3>Failed</h3>
-        <div class="value error">${errorCount}</div>
+        <div class="value error">${failedBanners}</div>
       </div>
       <div class="summary-card">
         <h3>Duration</h3>
@@ -146,7 +152,7 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
 
     ${groups.map((group, groupIdx) => {
     const allErrors = group.items.every(i => i.error);
-    const hasErrors = group.items.some(i => i.error);
+    const hasErrors = group.items.some(i => i.error) || isValidationFailure(group.validation);
     const statusClass = allErrors ? 'error' : hasErrors ? 'partial' : 'success';
     const statusText = allErrors ? 'Failed' : hasErrors ? 'Partial' : 'Success';
     const targetText = group.target && group.target.toLowerCase() === '_blank' ? 'New Tab' : 'Same Tab';
@@ -283,7 +289,7 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
 </body>
 </html>`;
 
-  return { html, successCount, name: (sorted[0]?.mainCategory || 'report') };
+  return { html, successCount: successBanners, name: (sorted[0]?.mainCategory || 'report') };
 }
 
 function escapeHtml(str) {
@@ -305,4 +311,39 @@ function stripDomain(value) {
     link = link.replace(/\/$/, '');
   }
   return link;
+}
+
+function isValidationFailure(validation) {
+  if (!validation) return false;
+  return validation.status === 'fail' || validation.status === 'not-found';
+}
+
+function buildGroupValidationSummary(groups) {
+  if (!Array.isArray(groups) || groups.length === 0) return null;
+  let total = 0;
+  let passed = 0;
+  let failed = 0;
+  let notFound = 0;
+
+  groups.forEach((group) => {
+    if (!group.validation) return;
+    total += 1;
+    if (group.validation.status === 'pass') {
+      passed += 1;
+    } else if (group.validation.status === 'not-found') {
+      notFound += 1;
+    } else {
+      failed += 1;
+    }
+  });
+
+  const passRate = total > 0 ? ((passed / total) * 100).toFixed(1) : '0.0';
+
+  return {
+    total,
+    passed,
+    failed,
+    notFound,
+    passRate
+  };
 }

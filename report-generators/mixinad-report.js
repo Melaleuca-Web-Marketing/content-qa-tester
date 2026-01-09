@@ -1,7 +1,7 @@
 // mixinad-report.js - Generate HTML report for Mix-In Ad test results
 
 import { config } from '../config.js';
-import { validateResults, generateValidationSummary } from '../utils/excel-validation.js';
+import { validateResults } from '../utils/excel-validation.js';
 
 export function generateMixInAdReport(results, captureDuration, theme = 'dark', excelValidation = null) {
   if (!results || !results.length) {
@@ -15,14 +15,10 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
 
   if (excelValidation && excelValidation.enabled && excelValidation.data) {
     validatedResults = validateResults(results, excelValidation.data, 'mix-in-ad');
-    validationSummary = generateValidationSummary(validatedResults);
     excelFilename = excelValidation.filename || 'Unknown';
   }
 
   const timestamp = new Date().toISOString();
-  const successCount = validatedResults.filter(r => !r.error && !r.noAdsFound).length;
-  const errorCount = validatedResults.filter(r => r.error).length;
-  const noAdsCount = validatedResults.filter(r => r.noAdsFound).length;
   const environment = validatedResults[0]?.environment || 'Unknown';
   const durationText = captureDuration ? (captureDuration / 1000).toFixed(1) + 's' : 'N/A';
   const isDark = theme === 'dark';
@@ -83,6 +79,17 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
   });
 
   const groups = Object.values(groupedItems);
+  if (excelValidation && excelValidation.enabled && excelValidation.data) {
+    validationSummary = buildGroupValidationSummary(groups);
+  }
+  const totalAds = groups.length;
+  const noAdsCount = groups.filter((group) => group.noAdsFound).length;
+  const failedAds = groups.filter((group) => {
+    if (group.noAdsFound) return true;
+    const hasErrors = group.items.some((item) => item.error);
+    return hasErrors || isValidationFailure(group.validation);
+  }).length;
+  const successAds = totalAds - failedAds;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -106,16 +113,16 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
 
     <div class="summary">
       <div class="summary-card">
-        <h3>Total Captures</h3>
-        <div class="value total">${validatedResults.length}</div>
+        <h3>Total Mix-In Ads</h3>
+        <div class="value total">${totalAds}</div>
       </div>
       <div class="summary-card">
         <h3>Successful</h3>
-        <div class="value success">${successCount}</div>
+        <div class="value success">${successAds}</div>
       </div>
       <div class="summary-card">
         <h3>Failed</h3>
-        <div class="value error">${errorCount}</div>
+        <div class="value error">${failedAds}</div>
       </div>
       <div class="summary-card">
         <h3>No Ads Found</h3>
@@ -147,7 +154,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
 
     ${groups.map((group, groupIdx) => {
     const allErrors = group.items.every(i => i.error);
-    const hasErrors = group.items.some(i => i.error);
+    const hasErrors = group.items.some(i => i.error) || isValidationFailure(group.validation);
     const isNoAds = group.noAdsFound;
     const statusClass = allErrors ? 'error' : isNoAds ? 'none-found' : hasErrors ? 'partial' : 'success';
     const statusText = allErrors ? 'Failed' : isNoAds ? 'No Ads' : hasErrors ? 'Partial' : 'Success';
@@ -304,7 +311,42 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
 </body>
 </html>`;
 
-  return { html, successCount };
+  return { html, successCount: successAds };
+}
+
+function isValidationFailure(validation) {
+  if (!validation) return false;
+  return validation.status === 'fail' || validation.status === 'not-found';
+}
+
+function buildGroupValidationSummary(groups) {
+  if (!Array.isArray(groups) || groups.length === 0) return null;
+  let total = 0;
+  let passed = 0;
+  let failed = 0;
+  let notFound = 0;
+
+  groups.forEach((group) => {
+    if (!group.validation) return;
+    total += 1;
+    if (group.validation.status === 'pass') {
+      passed += 1;
+    } else if (group.validation.status === 'not-found') {
+      notFound += 1;
+    } else {
+      failed += 1;
+    }
+  });
+
+  const passRate = total > 0 ? ((passed / total) * 100).toFixed(1) : '0.0';
+
+  return {
+    total,
+    passed,
+    failed,
+    notFound,
+    passRate
+  };
 }
 
 function escapeHtml(str) {

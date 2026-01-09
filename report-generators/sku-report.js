@@ -2,8 +2,16 @@
 
 export function generateSkuReport(results, duration, theme = 'dark') {
   const timestamp = new Date().toISOString();
-  const successCount = results.filter(r => r.success).length;
-  const errorCount = results.filter(r => !r.success).length;
+  const skuSummaries = results.map((result) => {
+    const issues = getSkuIssues(result);
+    return {
+      result,
+      issues,
+      failed: issues.length > 0
+    };
+  });
+  const successCount = skuSummaries.filter(r => !r.failed).length;
+  const errorCount = skuSummaries.filter(r => r.failed).length;
 
   const environment = results[0]?.environment || 'Unknown';
   const region = results[0]?.region || 'Unknown';
@@ -52,14 +60,14 @@ export function generateSkuReport(results, duration, theme = 'dark') {
       </div>
     </div>
 
-    ${results.map((r, idx) => `
+    ${skuSummaries.map(({ result: r, failed }, idx) => `
     <div class="sku-card">
       <div class="sku-header">
         <h2>${escapeHtml(r.data?.name || 'Unknown Product')} <span class="sku-number">(SKU: ${r.sku})</span></h2>
         <div class="sku-header-meta">
           <span class="culture-badge">${escapeHtml((r.culture || 'N/A').toUpperCase())}</span>
-          <span class="status-badge ${r.success ? 'success' : 'error'}">
-            ${r.success ? 'Success' : 'Failed'}
+          <span class="status-badge ${failed ? 'error' : 'success'}">
+            ${failed ? 'Failed' : 'Success'}
           </span>
         </div>
       </div>
@@ -149,6 +157,30 @@ export function generateSkuReport(results, duration, theme = 'dark') {
 </html>`;
 
   return { html, name: 'sku-report' };
+}
+
+function getSkuIssues(result) {
+  const issues = [];
+  if (!result || !result.success) {
+    issues.push(result?.error || 'Failed');
+    return issues;
+  }
+
+  const data = result.data || {};
+  if (result.addToCartResult && result.addToCartResult.success === false) {
+    issues.push('Add to cart failed');
+  }
+  if (!data.description) {
+    issues.push('Missing description');
+  }
+  if (data.aboutHasContent === false) {
+    issues.push('Missing About content');
+  }
+  if (data.ingredientsHasContent === false) {
+    issues.push('Missing Ingredients');
+  }
+
+  return issues;
 }
 
 function formatImages(images) {

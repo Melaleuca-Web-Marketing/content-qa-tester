@@ -25,10 +25,12 @@ export function generatePslpReport(results, duration, theme = 'dark', excelValid
 
   const componentSummaries = componentReports.map((report) => {
     const itemCount = getItemCount(report.data);
+    const validation = getComponentValidation(report.name, validationContext);
+    const hasIssues = hasValidationIssues(validation);
     return {
       name: report.name,
       itemCount,
-      passed: itemCount > 0
+      passed: itemCount > 0 && !hasIssues
     };
   });
   const passedCount = componentSummaries.filter((r) => r.passed).length;
@@ -144,12 +146,36 @@ function getItemCount(data) {
   return 1;
 }
 
+function getComponentValidation(name, validationContext) {
+  if (!validationContext || !name) return null;
+  const map = {
+    heroCarousel: validationContext.heroCarousel,
+    variableWindows: validationContext.variableWindows,
+    fullWidthBanner: validationContext.fullWidthBanner,
+    monthlySpecials: validationContext.monthlySpecials,
+    seasonalCarousel: validationContext.seasonalCarousel,
+    brandCTAWindows: validationContext.brandCTAWindows
+  };
+  return map[name] || null;
+}
+
+function hasValidationIssues(validation) {
+  if (!validation) return false;
+  const failed = Number(validation.failed || 0);
+  const missing = Number(validation.missing || 0);
+  const extras = (validation.extraPositions || validation.extraSlides || []).length;
+  return failed > 0 || missing > 0 || extras > 0;
+}
+
 function renderComponentSection(report, isDark, validation) {
   const name = report?.name || 'Unknown Component';
   const data = report?.data;
   const itemCount = getItemCount(data);
-  const statusClass = itemCount > 0 ? 'passed' : 'failed';
-  const statusLabel = itemCount > 0 ? 'Passed' : 'Failed';
+  const validationEntry = getComponentValidation(name, validation);
+  const hasIssues = hasValidationIssues(validationEntry);
+  const isPassing = itemCount > 0 && !hasIssues;
+  const statusClass = isPassing ? 'passed' : 'failed';
+  const statusLabel = isPassing ? 'Passed' : 'Failed';
 
   return `
 <div class="component-card">
@@ -493,22 +519,24 @@ function renderValidationDetails(entry) {
 
 function buildPslpValidationSummary(validationContext) {
   if (!validationContext) return null;
-  const validations = Object.values(validationContext).filter(Boolean);
-  if (validations.length === 0) return null;
+  const entries = Object.entries(validationContext).filter(([_, validation]) => Boolean(validation));
+  if (entries.length === 0) return null;
 
   let total = 0;
   let passed = 0;
   let failed = 0;
   let notFound = 0;
 
-  validations.forEach((validation) => {
-    total += Number(validation.total || 0);
-    passed += Number(validation.passed || 0);
-    failed += Number(validation.failed || 0);
-
-    const extras = validation.extraPositions || validation.extraSlides || [];
-    if (Array.isArray(extras)) {
-      notFound += extras.length;
+  entries.forEach(([_, validation]) => {
+    total += 1;
+    if (hasValidationIssues(validation)) {
+      failed += 1;
+      const extras = validation.extraPositions || validation.extraSlides || [];
+      if (Array.isArray(extras) && extras.length > 0) {
+        notFound += 1;
+      }
+    } else {
+      passed += 1;
     }
   });
 
