@@ -307,11 +307,8 @@ export class MixInAdProcessor extends BaseProcessor {
                 });
                 await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
 
-                const isMicrosoftLogin = this.page.url().includes('login.microsoftonline.com') ||
-                    this.page.url().includes('login.windows.net');
-                if (isMicrosoftLogin) {
-                    log('info', 'Detected Microsoft login page, waiting for user to sign in...');
-                    await this.waitForManualAuth(options.environment.toUpperCase());
+                const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment);
+                if (msAuthHandled) {
                     hasAuthenticated = true;
                 }
             }
