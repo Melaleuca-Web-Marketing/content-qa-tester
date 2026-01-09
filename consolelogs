@@ -1,0 +1,43 @@
+api/banner/status:1  Failed to load resource: the server responded with a status of 404 (Not Found)Understand this error
+api/pslp/status:1  Failed to load resource: the server responded with a status of 404 (Not Found)Understand this error
+api/mixinad/status:1  Failed to load resource: the server responded with a status of 404 (Not Found)Understand this error
+api/banner/status:1  Failed to load resource: the server responded with a status of 404 (Not Found)Understand this error
+api/pslp/status:1  Failed to load resource: the server responded with a status of 404 (Not Found)Understand this error
+api/mixinad/status:1  Failed to load resource: the server responded with a status of 404 (Not Found)Understand this error
+index.html:637  GET http://localhost:3000/api/banner/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/pslp/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/mixinad/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/banner/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/pslp/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/mixinad/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/banner/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/pslp/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/mixinad/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/banner/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/pslp/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/mixinad/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/banner/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/pslp/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/mixinad/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/banner/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/pslp/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/mixinad/status 404 (Not Found)
+updateAllStatuses @ index.html:637Understand this error
+index.html:637  GET http://localhost:3000/api/banner/status 404 (Not Found)

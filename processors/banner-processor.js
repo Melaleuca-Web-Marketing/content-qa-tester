@@ -242,15 +242,17 @@ export class BannerProcessor extends BaseProcessor {
     const jobs = this.buildJobList(options);
     const selectedWidths = options.widths || config.banner.defaults.widths;
     const totalCaptures = jobs.length * selectedWidths.length;
+    const totalBanners = jobs.length;
 
-    log('info', `Total jobs: ${jobs.length}, Widths: ${selectedWidths.length}, Total captures: ${totalCaptures}`);
+    log('info', `Total banners: ${totalBanners}, Widths: ${selectedWidths.length}, Total captures: ${totalCaptures}`);
 
     this.emit('status', {
       type: 'started',
       jobCount: jobs.length,
       widthCount: selectedWidths.length,
       widths: selectedWidths,
-      totalCaptures
+      totalCaptures,
+      totalBanners
     });
 
     let completedCaptures = 0;
@@ -272,16 +274,20 @@ export class BannerProcessor extends BaseProcessor {
       // Note: Authentication is handled within captureAtWidth() for each job
       // This ensures auth works correctly even if session expires mid-process
 
-      // Process each job
-      for (const job of jobs) {
+      // Process each job (banner)
+      let completedBanners = 0;
+      for (let jobIndex = 0; jobIndex < jobs.length; jobIndex++) {
+        const job = jobs[jobIndex];
         if (this.shouldStop) break;
 
-        for (const width of selectedWidths) {
+        for (let widthIndex = 0; widthIndex < selectedWidths.length; widthIndex++) {
+          const width = selectedWidths[widthIndex];
           if (this.shouldStop) break;
 
+          const isLastWidthForBanner = widthIndex === selectedWidths.length - 1;
           const remaining = totalCaptures - completedCaptures;
 
-          this.emit('progress', {
+          this.emitProgress({
             type: 'capture-progress',
             width,
             state: 'working',
@@ -290,7 +296,12 @@ export class BannerProcessor extends BaseProcessor {
             mainCategory: job.mainCategory,
             remaining,
             total: totalCaptures,
-            completed: completedCaptures
+            completed: completedCaptures,
+            // Banner-level progress
+            totalBanners,
+            completedBanners,
+            currentBanner: jobIndex + 1,
+            isLastWidthForBanner
           });
 
           try {
@@ -318,7 +329,12 @@ export class BannerProcessor extends BaseProcessor {
               log('debug', `Excel validation for ${job.category}: ${validation.status}`, validation.failures || []);
             }
 
-            this.emit('progress', {
+            // Update completedBanners when we finish the last width for a banner
+            if (isLastWidthForBanner) {
+              completedBanners++;
+            }
+
+            this.emitProgress({
               type: 'capture-progress',
               width,
               state: result.error ? 'error' : 'done',
@@ -328,6 +344,11 @@ export class BannerProcessor extends BaseProcessor {
               remaining: totalCaptures - completedCaptures,
               total: totalCaptures,
               completed: completedCaptures,
+              // Banner-level progress
+              totalBanners,
+              completedBanners,
+              currentBanner: jobIndex + 1,
+              isLastWidthForBanner,
               // Include result data for validation display
               result: {
                 href: result.href,

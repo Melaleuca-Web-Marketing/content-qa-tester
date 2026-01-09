@@ -350,6 +350,22 @@ export class PSLPProcessor extends BaseProcessor {
           await this.dismissModalIfPresent();
           const data = await extractor(this.page, config.pslp.selectors);
           componentReports.push({ name: componentName, data });
+
+          // Emit result for activity feed
+          this.emit('result', {
+            component: componentName,
+            componentName: config.pslp.componentNames[componentName] || componentName,
+            data,
+            success: true
+          });
+        } else {
+          // Emit result for missing component
+          this.emit('result', {
+            component: componentName,
+            componentName: config.pslp.componentNames[componentName] || componentName,
+            success: false,
+            error: 'Component extractor not found'
+          });
         }
 
         await this.page.waitForTimeout(config.pslp.timeouts.betweenComponents);

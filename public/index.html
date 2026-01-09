@@ -570,8 +570,15 @@
     }
 
     @keyframes pulse-glow {
-      0%, 100% { box-shadow: 0 2px 4px rgba(255, 68, 68, 0.3); }
-      50% { box-shadow: 0 2px 8px rgba(255, 68, 68, 0.6); }
+
+      0%,
+      100% {
+        box-shadow: 0 2px 4px rgba(255, 68, 68, 0.3);
+      }
+
+      50% {
+        box-shadow: 0 2px 8px rgba(255, 68, 68, 0.6);
+      }
     }
 
     /* Excel Validation Section */
@@ -683,7 +690,8 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      min-width: 0; /* Allow flex item to shrink below content size */
+      min-width: 0;
+      /* Allow flex item to shrink below content size */
       overflow: hidden;
     }
 
@@ -1191,11 +1199,18 @@
         } else {
           // Extract overall progress from status.progress
           if (status.progress) {
-            const { completed, total, current, culture, category, width, sku, step, component } = status.progress;
-            const progCurrent = completed ?? current;
-            if (progCurrent !== undefined && total !== undefined && total > 0) {
-              progressPercent = Math.round((progCurrent / total) * 100);
-              progressText = `${progCurrent} of ${total}`;
+            const { completed, total, current, culture, category, width, sku, step, component, completedBanners, totalBanners } = status.progress;
+
+            // For banner and mixinad jobs, use banner-level progress if available
+            const isBannerJob = tool === 'banner' || tool === 'mixinad';
+            const useBannerProgress = isBannerJob && totalBanners !== undefined && totalBanners > 0;
+
+            const progCurrent = useBannerProgress ? completedBanners : (completed ?? current);
+            const progTotal = useBannerProgress ? totalBanners : total;
+
+            if (progCurrent !== undefined && progTotal !== undefined && progTotal > 0) {
+              progressPercent = Math.round((progCurrent / progTotal) * 100);
+              progressText = `${progCurrent} of ${progTotal}`;
             }
 
             // Build detail text based on job type

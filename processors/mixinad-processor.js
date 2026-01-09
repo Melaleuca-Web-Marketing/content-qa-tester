@@ -271,15 +271,17 @@ export class MixInAdProcessor extends BaseProcessor {
 
         // Note: totalCaptures is estimated - actual count depends on how many ads per page
         const estimatedCaptures = jobs.length * selectedWidths.length;
+        const totalCategories = jobs.length;
 
-        log('info', `Total jobs: ${jobs.length}, Widths: ${selectedWidths.length}, Estimated captures: ${estimatedCaptures}`);
+        log('info', `Total categories: ${totalCategories}, Widths: ${selectedWidths.length}, Estimated captures: ${estimatedCaptures}`);
 
         this.emit('status', {
             type: 'started',
             jobCount: jobs.length,
             widthCount: selectedWidths.length,
             widths: selectedWidths,
-            estimatedCaptures
+            estimatedCaptures,
+            totalBanners: totalCategories  // Use totalBanners for frontend compatibility
         });
 
         let completedCaptures = 0;
@@ -318,20 +320,30 @@ export class MixInAdProcessor extends BaseProcessor {
                 }
             }
 
-            // Process each job
-            for (const job of jobs) {
+            // Process each job (category)
+            let completedCategories = 0;
+            for (let jobIndex = 0; jobIndex < jobs.length; jobIndex++) {
+                const job = jobs[jobIndex];
                 if (this.shouldStop) break;
 
-                for (const width of selectedWidths) {
+                for (let widthIndex = 0; widthIndex < selectedWidths.length; widthIndex++) {
+                    const width = selectedWidths[widthIndex];
                     if (this.shouldStop) break;
 
-                    this.emit('progress', {
+                    const isLastWidthForCategory = widthIndex === selectedWidths.length - 1;
+
+                    this.emitProgress({
                         type: 'capture-progress',
                         width,
                         state: 'working',
                         category: job.category,
                         culture: job.culture,
-                        mainCategory: job.mainCategory
+                        mainCategory: job.mainCategory,
+                        // Category-level progress
+                        totalBanners: totalCategories,
+                        completedBanners: completedCategories,
+                        currentBanner: jobIndex + 1,
+                        isLastWidthForBanner: isLastWidthForCategory
                     });
 
                     try {
@@ -378,7 +390,12 @@ export class MixInAdProcessor extends BaseProcessor {
                             }
                         }
 
-                        this.emit('progress', {
+                        // Update completedCategories when we finish the last width for a category
+                        if (isLastWidthForCategory) {
+                            completedCategories++;
+                        }
+
+                        this.emitProgress({
                             type: 'capture-progress',
                             width,
                             state: hasError ? 'error' : 'done',
@@ -388,6 +405,11 @@ export class MixInAdProcessor extends BaseProcessor {
                             remaining: estimatedCaptures - completedCaptures,
                             total: estimatedCaptures,
                             completed: completedCaptures,
+                            // Category-level progress
+                            totalBanners: totalCategories,
+                            completedBanners: completedCategories,
+                            currentBanner: jobIndex + 1,
+                            isLastWidthForBanner: isLastWidthForCategory,
                             // Include result data for activity feed
                             result: {
                                 adsFound,

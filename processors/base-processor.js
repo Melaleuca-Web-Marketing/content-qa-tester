@@ -34,6 +34,7 @@ export class BaseProcessor extends EventEmitter {
     this.currentOptions = null;
     this.currentStatusType = null;
     this.currentStatusMessage = null;
+    this.currentProgress = null; // Track current progress for status API
     log('info', `${name} processor initialized`);
   }
 
@@ -113,8 +114,8 @@ export class BaseProcessor extends EventEmitter {
     const passwordInput = page.locator(passwordSelector);
     const clickPrimaryButton = async () => {
       const primaryButton = page.locator(primaryButtonSelector).first();
-      await primaryButton.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-      await primaryButton.click({ timeout: 10000 }).catch(() => {});
+      await primaryButton.waitFor({ state: 'visible', timeout: 10000 }).catch(() => { });
+      await primaryButton.click({ timeout: 10000 }).catch(() => { });
     };
     const readAuthError = async () => {
       const selectors = ['#usernameError', '#passwordError', '#errorText', 'div[role="alert"]'];
@@ -137,7 +138,7 @@ export class BaseProcessor extends EventEmitter {
     }
 
     if ((await emailInput.count()) === 0 && (await passwordInput.count()) === 0) {
-      await page.waitForSelector(emailSelector, { timeout: 10000 }).catch(() => {});
+      await page.waitForSelector(emailSelector, { timeout: 10000 }).catch(() => { });
     }
 
     if (emitProgress) {
@@ -156,7 +157,7 @@ export class BaseProcessor extends EventEmitter {
     }
 
     if ((await passwordInput.count()) === 0) {
-      await page.waitForSelector(passwordSelector, { timeout: 20000 }).catch(() => {});
+      await page.waitForSelector(passwordSelector, { timeout: 20000 }).catch(() => { });
     }
 
     if ((await passwordInput.count()) > 0) {
@@ -169,7 +170,7 @@ export class BaseProcessor extends EventEmitter {
 
       const passwordStillVisible = await passwordInput.first().isVisible().catch(() => false);
       if (passwordStillVisible) {
-        await passwordInput.press('Enter').catch(() => {});
+        await passwordInput.press('Enter').catch(() => { });
         await page.waitForTimeout(800);
       }
 
@@ -191,7 +192,7 @@ export class BaseProcessor extends EventEmitter {
       } else {
         const noButton = await page.$(staySignedInNoSelector);
         if (noButton) {
-          await noButton.click().catch(() => {});
+          await noButton.click().catch(() => { });
           await page.waitForTimeout(800);
         }
       }
@@ -229,6 +230,7 @@ export class BaseProcessor extends EventEmitter {
         // Clear status type and message on cleanup
         this.currentStatusType = null;
         this.currentStatusMessage = null;
+        this.currentProgress = null; // Clear progress on cleanup
         log('info', 'Browser cleanup complete');
       }
     }
@@ -367,7 +369,8 @@ export class BaseProcessor extends EventEmitter {
       resultsCount: this.results.length,
       options: this.currentOptions,
       statusType: this.currentStatusType,
-      message: this.currentStatusMessage
+      message: this.currentStatusMessage,
+      progress: this.currentProgress // Include current progress for dashboard polling
     };
   }
 
@@ -388,6 +391,8 @@ export class BaseProcessor extends EventEmitter {
 
   // Helper to emit progress
   emitProgress(data) {
+    // Store progress for status API polling
+    this.currentProgress = data;
     this.emit('progress', data);
   }
 

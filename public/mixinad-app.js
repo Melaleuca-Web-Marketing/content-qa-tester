@@ -86,9 +86,9 @@ async function init() {
     renderCategoryTree();
     loadPreferences();
     connectWebSocket();
+    loadActivityFromStorage(); // Load cached activity first (may have old per-capture data)
     setStatusRunning('Checking status...', 'Loading job state');
-    await checkStatus(); // Check if a job is already running
-    loadActivityFromStorage(); // Restore activity feed from session
+    await checkStatus(); // Check status and restore from server (authoritative, grouped by category)
   } catch (err) {
     console.error('Initialization error:', err);
     setStatusError('Initialization failed', err.message);
@@ -113,11 +113,154 @@ async function checkStatus() {
         startCaptureBtn.disabled = false;
         setStatusRunning('Waiting for manual sign-in', status.message || 'Please sign in and click Resume');
       }
+
+      // Restore activity feed from server-side results (catches items processed while away)
+      await restoreActivityFromServer();
+    } else if (status.resultsCount > 0) {
+      // Job completed but we may have missed some results - restore from server
+      await restoreActivityFromServer();
+      // Set status to idle since job is no longer running
+      setStatusIdle('Ready to capture', `Previous job completed with ${status.resultsCount} results`);
     } else {
       setStatusIdle('Ready to capture', '');
     }
   } catch (err) {
     console.error('Failed to check status:', err);
+    // Even on error, set status to idle so user isn't stuck
+    setStatusIdle('Ready to capture', '');
+  }
+}
+
+// Restore activity feed from server-side Mix-In Ad results
+async function restoreActivityFromServer() {
+  try {
+    const response = await fetch(api('/api/mixinad/results'), {
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
+    const serverResults = await response.json();
+
+    if (!Array.isArray(serverResults) || serverResults.length === 0) {
+      return;
+    }
+
+    // Clear existing activity items - server data is authoritative and properly grouped
+    activityItems.length = 0;
+
+
+    // GROUP results by category (culture-mainCategory-category), not per capture
+    const categoryGroups = {};
+    for (const result of serverResults) {
+      const categoryPath = result.mainCategory
+        ? `${result.mainCategory} › ${result.category}`
+        : result.category;
+      const key = `${result.culture}-${categoryPath}`;
+
+      if (!categoryGroups[key]) {
+        categoryGroups[key] = {
+          culture: result.culture,
+          categoryPath: categoryPath,
+          mainCategory: result.mainCategory,
+          category: result.category,
+          widths: [],
+          hasError: false,
+          errorMessages: [],
+          issues: [],
+          timestamp: result.timestamp || Date.now()
+        };
+      }
+
+      // Track this width result
+      categoryGroups[key].widths.push(result.width);
+
+      // Check if this is an error result (error: true is set, not a boolean check on success)
+      const isError = result.error === true;
+      if (isError) {
+        categoryGroups[key].hasError = true;
+        // Error message is in result.message, not result.error
+        const errorMsg = result.message || 'Capture failed';
+        categoryGroups[key].errorMessages.push(`${result.width}px: ${errorMsg}`);
+      }
+
+      // Collect validation issues (only for successful captures)
+      if (!isError) {
+        const validation = result.validation || {};
+        if (validation.status === 'fail' && validation.failures) {
+          validation.failures.forEach(f => {
+            if (f === 'link' && !categoryGroups[key].issues.includes('Link mismatch')) {
+              categoryGroups[key].issues.push('Link mismatch');
+            }
+            if (f === 'target' && !categoryGroups[key].issues.includes('Target mismatch')) {
+              categoryGroups[key].issues.push('Target mismatch');
+            }
+            if (f === 'imageLocale' && !categoryGroups[key].issues.includes('Image locale mismatch')) {
+              categoryGroups[key].issues.push('Image locale mismatch');
+            }
+          });
+        } else if (validation.status === 'not-found' && !categoryGroups[key].issues.includes('Not in Excel')) {
+          categoryGroups[key].issues.push('Not in Excel');
+        } else {
+          // Fallback checks for missing data on successful captures
+          if (!result.href && !categoryGroups[key].issues.includes('Missing link')) {
+            categoryGroups[key].issues.push('Missing link');
+          }
+          if (!result.target && !categoryGroups[key].issues.includes('Missing target')) {
+            categoryGroups[key].issues.push('Missing target');
+          }
+          if (!result.imageLocale && !categoryGroups[key].issues.includes('Missing image locale')) {
+            categoryGroups[key].issues.push('Missing image locale');
+          }
+        }
+      }
+    }
+
+    // Now create ONE activity item per category group
+    let addedCount = 0;
+    for (const key of Object.keys(categoryGroups)) {
+      const group = categoryGroups[key];
+      const uniqueWidths = [...new Set(group.widths)].length;
+
+      let type = 'success';
+      let detail = `${uniqueWidths} widths captured`;
+
+      if (group.hasError) {
+        type = 'error';
+        detail = group.errorMessages.length > 0 ? group.errorMessages.join(', ') : 'Capture failed';
+      } else if (group.issues.length > 0) {
+        type = 'warning';
+      }
+
+      const item = {
+        type,
+        culture: group.culture,
+        categoryPath: group.categoryPath,
+        detail: detail,
+        issues: group.issues.length > 0 ? group.issues : undefined,
+        error: group.hasError ? (group.errorMessages[0] || 'Capture failed') : undefined,
+        timestamp: new Date(group.timestamp)
+      };
+
+      // Add item - errors/warnings at start, success at end
+      if (type === 'error' || type === 'warning') {
+        activityItems.unshift(item);
+      } else {
+        const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
+        if (firstSuccessIndex === -1) {
+          activityItems.push(item);
+        } else {
+          activityItems.splice(firstSuccessIndex, 0, item);
+        }
+      }
+      addedCount++;
+    }
+
+    if (addedCount > 0) {
+      console.log(`[Activity] Restored ${addedCount} categories from server`);
+      saveActivityToStorage();
+      renderActivityFeed();
+      activityFeed.style.display = 'block';
+    }
+  } catch (err) {
+    console.error('Failed to restore activity from server:', err);
   }
 }
 
@@ -386,7 +529,10 @@ function handleProgress(data) {
   if (progress.state === 'working') {
     setStatusRunning('Capturing...', `${progress.culture} - ${progress.category} at ${progress.width}px`);
   } else if (progress.state === 'done' || progress.state === 'error') {
-    updateProgressBar(progress.completed, progress.total);
+    // Use category-level progress for display (if available), fall back to capture-level
+    const displayCompleted = progress.completedBanners ?? progress.completed;
+    const displayTotal = progress.totalBanners ?? progress.total;
+    updateProgressBar(displayCompleted, displayTotal);
 
     // Track progress by culture-mainCategory-category key
     const categoryKey = `${progress.culture}|${progress.mainCategory || ''}|${progress.category}`;
@@ -493,7 +639,8 @@ function handleStatusUpdate(data) {
       isCapturing = true;
       captureStartTime = Date.now();
       setUICapturing();
-      setStatusRunning('Starting capture...', `${data.estimatedCaptures || data.totalCaptures} captures to process`);
+      // Use category count (jobCount) for status message, not estimatedCaptures
+      setStatusRunning('Starting capture...', `${data.jobCount || data.totalBanners} categories to process`);
       // Reset tracking
       mixinProgress = {};
       expectedWidths = data.widths || [];
@@ -551,14 +698,14 @@ function handleError(data) {
 }
 
 function updateProgressBar(current, total) {
-  const percentage = (current / total) * 100;
+  const percentage = total > 0 ? (current / total) * 100 : 0;
   progressBarInner.style.width = `${percentage}%`;
   progressCount.textContent = `${current} / ${total}`;
 
   if (captureStartTime && current > 0) {
     const elapsed = Date.now() - captureStartTime;
-    const avgPerItem = elapsed / current;
-    const remaining = (total - current) * avgPerItem;
+    const avgPerCategory = elapsed / current;
+    const remaining = (total - current) * avgPerCategory;
     progressEta.textContent = `ETR: ${formatTime(remaining)}`;
   }
 }

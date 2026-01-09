@@ -130,13 +130,150 @@ async function checkStatus() {
         stopCaptureBtn.disabled = false;
         usernameInput.disabled = false;
         passwordInput.disabled = false;
-        loginSection.classList.add('credential-error');
+        const loginSection = document.getElementById('login-section');
+        if (loginSection) {
+          loginSection.classList.add('credential-error');
+        }
       }
+
+      // Restore activity feed from server-side results (catches components processed while away)
+      await restoreActivityFromServer();
+    } else if (status.resultsCount > 0) {
+      // Job completed but we may have missed some results - restore from server
+      await restoreActivityFromServer();
     } else {
       setStatusIdle('Ready to capture', '');
     }
   } catch (err) {
     console.error('Failed to check status:', err);
+  }
+}
+
+// Restore activity feed from server-side PSLP results
+async function restoreActivityFromServer() {
+  try {
+    const response = await fetch(api('/api/pslp/results'), {
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
+    const serverResults = await response.json();
+
+    if (!Array.isArray(serverResults) || serverResults.length === 0) {
+      return;
+    }
+
+    // Get existing components in activity feed to avoid duplicates
+    const existingKeys = new Set(activityItems.map(item => `${item.component}-${item.width || ''}`));
+
+    // Add any missing results from server
+    let addedCount = 0;
+    for (const result of serverResults) {
+      const key = `${result.componentName || result.component}-${result.width || ''}`;
+      if (existingKeys.has(key)) {
+        continue; // Already have this result
+      }
+
+      // For failed results
+      if (!result.success) {
+        const item = {
+          type: 'error',
+          component: result.componentName || result.component,
+          error: result.error || 'Failed to extract component',
+          timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
+        };
+        activityItems.unshift(item);
+        addedCount++;
+        continue;
+      }
+
+      // For successful results - compute validation issues (same as handleResult)
+      const componentData = result.data || {};
+      const issues = [];
+      const warnings = [];
+
+      // Check for links
+      if (componentData.links && Array.isArray(componentData.links)) {
+        componentData.links.forEach((link, index) => {
+          if (!link.href || link.href === '#' || link.href === '') {
+            issues.push(`Link ${index + 1}: Missing or invalid URL`);
+          }
+          if (!link.text || link.text.trim() === '') {
+            warnings.push(`Link ${index + 1}: No link text`);
+          }
+        });
+      }
+
+      // Check for slides
+      if (componentData.slides && Array.isArray(componentData.slides)) {
+        componentData.slides.forEach((slide, index) => {
+          if (!slide.image || slide.image === '') {
+            issues.push(`Slide ${index + 1}: Missing image`);
+          }
+          if (slide.link && (!slide.link.href || slide.link.href === '#')) {
+            issues.push(`Slide ${index + 1}: Invalid link`);
+          }
+        });
+      }
+
+      // Check for images
+      if (componentData.images && Array.isArray(componentData.images)) {
+        componentData.images.forEach((image, index) => {
+          if (!image.src || image.src === '') {
+            issues.push(`Image ${index + 1}: Missing source`);
+          }
+          if (!image.alt || image.alt === '') {
+            warnings.push(`Image ${index + 1}: Missing alt text`);
+          }
+        });
+      }
+
+      // Check for CTA buttons
+      if (componentData.ctas && Array.isArray(componentData.ctas)) {
+        componentData.ctas.forEach((cta, index) => {
+          if (!cta.href || cta.href === '#') {
+            issues.push(`CTA ${index + 1}: Invalid link`);
+          }
+          if (!cta.text || cta.text.trim() === '') {
+            warnings.push(`CTA ${index + 1}: No button text`);
+          }
+        });
+      }
+
+      // Determine item type
+      const hasErrors = issues.length > 0;
+      const hasWarnings = warnings.length > 0;
+      const type = hasErrors ? 'error' : (hasWarnings ? 'warning' : 'success');
+
+      const item = {
+        type,
+        component: result.componentName || result.component,
+        componentData: componentData,
+        issues: hasErrors ? issues : undefined,
+        warnings: hasWarnings ? warnings : undefined,
+        timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
+      };
+
+      // Add item - errors/warnings at start, success at end
+      if (type === 'error' || type === 'warning') {
+        activityItems.unshift(item);
+      } else {
+        const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
+        if (firstSuccessIndex === -1) {
+          activityItems.push(item);
+        } else {
+          activityItems.splice(firstSuccessIndex, 0, item);
+        }
+      }
+      addedCount++;
+    }
+
+    if (addedCount > 0) {
+      console.log(`[Activity] Restored ${addedCount} results from server`);
+      saveActivityToStorage();
+      renderActivityFeed();
+      activityFeed.style.display = 'block';
+    }
+  } catch (err) {
+    console.error('Failed to restore activity from server:', err);
   }
 }
 
@@ -427,6 +564,8 @@ function handleWebSocketMessage(message) {
     handleStatusUpdate(message.data);
   } else if (message.type === 'pslp-error') {
     handleError(message.data);
+  } else if (message.type === 'pslp-result') {
+    handleResult(message.data);
   }
 }
 
@@ -499,6 +638,83 @@ function handleProgress(data) {
       setStatusRunning(progress.step, progress.status);
       break;
   }
+}
+
+function handleResult(data) {
+  if (!data.success) {
+    // Component failed to extract
+    addActivityItem({
+      type: 'error',
+      component: data.componentName || data.component,
+      error: data.error || 'Failed to extract component'
+    });
+    return;
+  }
+
+  // Analyze component data for issues
+  const issues = [];
+  const warnings = [];
+  const componentData = data.data;
+
+  // Check for links
+  if (componentData.links && Array.isArray(componentData.links)) {
+    componentData.links.forEach((link, index) => {
+      if (!link.href || link.href === '#' || link.href === '') {
+        issues.push(`Link ${index + 1}: Missing or invalid URL`);
+      }
+      if (!link.text || link.text.trim() === '') {
+        warnings.push(`Link ${index + 1}: No link text`);
+      }
+    });
+  }
+
+  // Check for slides (carousels, monthly specials, etc.)
+  if (componentData.slides && Array.isArray(componentData.slides)) {
+    componentData.slides.forEach((slide, index) => {
+      if (!slide.image || slide.image === '') {
+        issues.push(`Slide ${index + 1}: Missing image`);
+      }
+      if (slide.link && (!slide.link.href || slide.link.href === '#')) {
+        issues.push(`Slide ${index + 1}: Invalid link`);
+      }
+    });
+  }
+
+  // Check for images
+  if (componentData.images && Array.isArray(componentData.images)) {
+    componentData.images.forEach((image, index) => {
+      if (!image.src || image.src === '') {
+        issues.push(`Image ${index + 1}: Missing source`);
+      }
+      if (!image.alt || image.alt === '') {
+        warnings.push(`Image ${index + 1}: Missing alt text`);
+      }
+    });
+  }
+
+  // Check for CTA buttons
+  if (componentData.ctas && Array.isArray(componentData.ctas)) {
+    componentData.ctas.forEach((cta, index) => {
+      if (!cta.href || cta.href === '#') {
+        issues.push(`CTA ${index + 1}: Invalid link`);
+      }
+      if (!cta.text || cta.text.trim() === '') {
+        warnings.push(`CTA ${index + 1}: No button text`);
+      }
+    });
+  }
+
+  // Determine item type
+  const hasErrors = issues.length > 0;
+  const hasWarnings = warnings.length > 0;
+
+  addActivityItem({
+    type: hasErrors ? 'error' : (hasWarnings ? 'warning' : 'success'),
+    component: data.componentName || data.component,
+    componentData: componentData,
+    issues: hasErrors ? issues : undefined,
+    warnings: hasWarnings ? warnings : undefined
+  });
 }
 
 function handleStatusUpdate(data) {
@@ -920,9 +1136,11 @@ function saveActivityToStorage() {
 function addActivityItem(item) {
   item.timestamp = new Date();
 
-  if (item.type === 'error') {
+  // Errors and warnings go to the top, success items go after warnings
+  if (item.type === 'error' || item.type === 'warning') {
     activityItems.unshift(item);
   } else {
+    // Find the first success item and insert before it, or add to end
     const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
     if (firstSuccessIndex === -1) {
       activityItems.push(item);
@@ -943,7 +1161,7 @@ function clearActivityFeed() {
 
 function renderActivityFeed() {
   const passed = activityItems.filter(i => i.type === 'success').length;
-  const failed = activityItems.filter(i => i.type === 'error').length;
+  const failed = activityItems.filter(i => i.type === 'error' || i.type === 'warning').length;
 
   passedCountEl.textContent = passed;
   failedCountEl.textContent = failed;
@@ -954,35 +1172,65 @@ function renderActivityFeed() {
   }
 
   activityList.innerHTML = activityItems.map(item => {
-    const icon = item.type === 'error' ? '❌' : '✅';
+    let icon;
+    let cssClass;
+
+    if (item.type === 'error') {
+      icon = '❌';
+      cssClass = 'error';
+    } else if (item.type === 'warning') {
+      icon = '⚠️';
+      cssClass = 'warning';
+    } else {
+      icon = '✅';
+      cssClass = 'success';
+    }
+
     const timeStr = formatActivityTime(item.timestamp);
     const main = item.width ? `${item.component} @ ${item.width}px` : item.component;
 
-    if (item.type === 'error') {
-      return `
-        <div class="activity-item error">
-          <span class="activity-item-icon">${icon}</span>
-          <div class="activity-item-content">
-            <div class="activity-item-main">${main}</div>
-            <div class="activity-item-detail">${item.error}</div>
-          </div>
-          <span class="activity-item-time">${timeStr}</span>
+    // Build details section
+    let detailsHTML = '';
+
+    if (item.error) {
+      detailsHTML = `<div class="activity-item-detail">${item.error}</div>`;
+    } else if (item.issues && item.issues.length > 0) {
+      detailsHTML = `
+        <div class="activity-item-detail">
+          <strong>Issues:</strong>
+          <ul style="margin: 4px 0 0 20px; font-size: 12px;">
+            ${item.issues.map(issue => `<li>${issue}</li>`).join('')}
+          </ul>
         </div>
       `;
+    } else if (item.warnings && item.warnings.length > 0) {
+      detailsHTML = `
+        <div class="activity-item-detail">
+          <strong>Warnings:</strong>
+          <ul style="margin: 4px 0 0 20px; font-size: 12px;">
+            ${item.warnings.map(warning => `<li>${warning}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    } else if (item.detail) {
+      detailsHTML = `<div class="activity-item-detail">${item.detail}</div>`;
     } else {
-      return `
-        <div class="activity-item success">
-          <span class="activity-item-icon">${icon}</span>
-          <div class="activity-item-content">
-            <div class="activity-item-main">${main}</div>
-            <div class="activity-item-detail">${item.detail || 'Complete'}</div>
-          </div>
-          <span class="activity-item-time">${timeStr}</span>
-        </div>
-      `;
+      detailsHTML = `<div class="activity-item-detail">Captured successfully</div>`;
     }
+
+    return `
+      <div class="activity-item ${cssClass}">
+        <span class="activity-item-icon">${icon}</span>
+        <div class="activity-item-content">
+          <div class="activity-item-main">${main}</div>
+          ${detailsHTML}
+        </div>
+        <span class="activity-item-time">${timeStr}</span>
+      </div>
+    `;
   }).join('');
 
+  // Scroll to top if there are errors or warnings
   if (failed > 0) {
     activityList.scrollTop = 0;
   }

@@ -621,6 +621,24 @@ export class SkuProcessor extends BaseProcessor {
       log('info', `Waiting ${config.sku.timeouts.screenshotDelay}ms for page to settle...`);
       await this.page.waitForTimeout(config.sku.timeouts.screenshotDelay);
 
+      // First SKU needs extra time for image gallery to fully initialize
+      // (subsequent SKUs benefit from betweenSkus delay which allows the browser/page to warm up)
+      if (currentIndex === 1) {
+        log('info', 'First SKU - waiting extra time for image gallery to initialize...');
+        await this.page.waitForTimeout(1500);
+
+        // Also wait for the main product image to be fully loaded
+        try {
+          await this.page.waitForFunction(() => {
+            const mainImg = document.querySelector('.m-prodMedia__image');
+            return mainImg && mainImg.complete && mainImg.naturalWidth > 0;
+          }, { timeout: 5000 });
+          log('info', 'Main product image confirmed loaded');
+        } catch (e) {
+          log('warn', 'Main product image load check timed out, continuing anyway');
+        }
+      }
+
       if (this.shouldStop) {
         log('info', 'Capture cancelled by user');
         result.error = 'Capture cancelled';

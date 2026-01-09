@@ -129,13 +129,117 @@ async function checkStatus() {
         stopCaptureBtn.disabled = false;
         usernameInput.disabled = false;
         passwordInput.disabled = false;
-        loginSection.classList.add('credential-error');
+        const loginSection = document.getElementById('login-section');
+        if (loginSection) {
+          loginSection.classList.add('credential-error');
+        }
       }
+
+      // Restore activity feed from server-side results (catches SKUs processed while away)
+      await restoreActivityFromServer();
+    } else if (status.resultsCount > 0) {
+      // Job completed but we may have missed some results - restore from server
+      await restoreActivityFromServer();
     } else {
       setStatusIdle('Ready to capture', '');
     }
   } catch (err) {
     console.error('Failed to check status:', err);
+  }
+}
+
+// Restore activity feed from server-side SKU results
+async function restoreActivityFromServer() {
+  try {
+    const response = await fetch(api('/api/sku/results'), {
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
+    const serverResults = await response.json();
+
+    if (!Array.isArray(serverResults) || serverResults.length === 0) {
+      return;
+    }
+
+    // Get existing SKUs in activity feed to avoid duplicates
+    const existingSkus = new Set(activityItems.map(item => `${item.sku}-${item.culture}`));
+
+    // Add any missing results from server
+    let addedCount = 0;
+    for (const result of serverResults) {
+      const key = `${result.sku}-${result.culture}`;
+      if (existingSkus.has(key)) {
+        continue; // Already have this result
+      }
+
+      // For failed results
+      if (!result.success) {
+        const item = {
+          type: 'error',
+          sku: result.sku,
+          culture: result.culture,
+          error: result.error || 'Failed',
+          timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
+        };
+        activityItems.unshift(item);
+        addedCount++;
+        continue;
+      }
+
+      // For successful results - compute validation issues (same as handleProgress)
+      const data = result.data || {};
+      const issues = [];
+
+      if (result.addToCartResult && result.addToCartResult.success === false) {
+        issues.push('Add to cart failed');
+      }
+      if (!data.description) {
+        issues.push('Missing description');
+      }
+      if (data.aboutHasContent === false) {
+        issues.push('Missing About content');
+      }
+      if (data.ingredientsHasContent === false) {
+        issues.push('Missing Ingredients');
+      }
+
+      // Determine item type based on issues
+      const hasErrors = result.addToCartResult && result.addToCartResult.success === false;
+      const hasWarnings = issues.length > 0;
+      const type = hasErrors ? 'error' : (hasWarnings ? 'warning' : 'success');
+
+      const item = {
+        type,
+        sku: result.sku,
+        culture: result.culture,
+        name: data.name || `SKU ${result.sku}`,
+        price: data.price,
+        addToCart: result.addToCartResult,
+        issues: issues,
+        timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
+      };
+
+      // Add item - errors/warnings at start, success at end
+      if (type === 'error' || type === 'warning') {
+        activityItems.unshift(item);
+      } else {
+        const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
+        if (firstSuccessIndex === -1) {
+          activityItems.push(item);
+        } else {
+          activityItems.splice(firstSuccessIndex, 0, item);
+        }
+      }
+      addedCount++;
+    }
+
+    if (addedCount > 0) {
+      console.log(`[Activity] Restored ${addedCount} results from server`);
+      saveActivityToStorage();
+      renderActivityFeed();
+      activityFeed.style.display = 'block';
+    }
+  } catch (err) {
+    console.error('Failed to restore activity from server:', err);
   }
 }
 
@@ -328,6 +432,9 @@ function loadPreferences() {
         if (prefs.topScreenshot) fullScreenshotCheck.checked = false;
       }
       if (typeof prefs.addToCart === 'boolean') addToCartCheck.checked = prefs.addToCart;
+      // Restore saved credentials
+      if (prefs.username) usernameInput.value = prefs.username;
+      if (prefs.password) passwordInput.value = prefs.password;
       updateSkuCount();
     }
   } catch (e) {
