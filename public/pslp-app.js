@@ -116,6 +116,15 @@ async function checkStatus() {
       setUICapturing();
       setStatusRunning('Job in progress', 'Reconnected to running job');
 
+      if (status.options) {
+        if (status.options.environment) {
+          progressEnv.textContent = `Env: ${status.options.environment}`;
+        }
+        if (status.options.culture) {
+          progressCulture.textContent = `Culture: ${status.options.culture}`;
+        }
+      }
+
       if (status.statusType === 'waiting-for-auth') {
         isWaitingForResume = true;
         startCaptureBtn.textContent = 'Resume Capture';
@@ -134,6 +143,8 @@ async function checkStatus() {
         if (loginSection) {
           loginSection.classList.add('credential-error');
         }
+      } else if (status.progress) {
+        applyProgressSnapshot(status.progress);
       }
 
       // Restore activity feed from server-side results (catches components processed while away)
@@ -146,6 +157,59 @@ async function checkStatus() {
     }
   } catch (err) {
     console.error('Failed to check status:', err);
+  }
+}
+
+function applyProgressSnapshot(progress) {
+  if (!progress) return;
+
+  switch (progress.type) {
+    case 'browser':
+      setStatusRunning('Starting...', progress.status || 'Launching browser');
+      break;
+    case 'login':
+      setStatusRunning('Logging in...', progress.status || '');
+      currentStepInfo.style.display = 'block';
+      currentStepName.textContent = 'Login';
+      currentStepStatus.textContent = progress.status || '';
+      break;
+    case 'navigation':
+      setStatusRunning('Navigating...', progress.status || '');
+      currentStepInfo.style.display = 'block';
+      currentStepName.textContent = 'Navigation';
+      currentStepStatus.textContent = progress.status || '';
+      break;
+    case 'screenshot':
+      progressStep.textContent = `Step: ${progress.status || 'Capturing screenshots'}`;
+      currentStepInfo.style.display = 'block';
+      currentStepName.textContent = 'Screenshot Capture';
+      currentStepStatus.textContent = progress.status || '';
+      setStatusRunning('Capturing screenshots...', progress.status || '');
+      break;
+    case 'component':
+      progressStep.textContent = `Component: ${progress.component || ''}`;
+      currentStepInfo.style.display = 'block';
+      currentStepName.textContent = `Extracting: ${progress.componentName || progress.component || ''}`;
+      currentStepStatus.textContent = progress.status || '';
+      setStatusRunning('Extracting component data...', `${progress.componentName || progress.component || ''}: ${progress.status || ''}`.trim());
+      break;
+    case 'step':
+      currentStepInfo.style.display = 'block';
+      currentStepName.textContent = progress.step || '';
+      currentStepStatus.textContent = progress.status || '';
+      setStatusRunning(progress.step || 'Processing...', progress.status || '');
+      break;
+    default: {
+      const progressStatus = progress.status || progress.message;
+      if (progressStatus) {
+        setStatusRunning('Job in progress', progressStatus);
+      }
+      break;
+    }
+  }
+
+  if (progress.current !== undefined && progress.total !== undefined) {
+    updateProgressBar(progress.current, progress.total);
   }
 }
 

@@ -115,6 +115,20 @@ async function checkStatus() {
       setUICapturing();
       setStatusRunning('Job in progress', 'Reconnected to running job');
 
+      if (status.options) {
+        if (status.options.environment) {
+          progressEnv.textContent = `Env: ${status.options.environment}`;
+        }
+        if (Array.isArray(status.options.cultures) && status.options.cultures.length > 0) {
+          progressCulture.textContent = `Culture: ${formatCultureList(status.options.cultures)}`;
+        }
+        if (Array.isArray(status.options.skus) && status.options.skus.length > 0) {
+          const cultureCount = Array.isArray(status.options.cultures) ? status.options.cultures.length : 0;
+          const cultureSuffix = cultureCount > 0 ? ` (${cultureCount} cultures)` : '';
+          progressSku.textContent = `SKUs: ${status.options.skus.length}${cultureSuffix}`;
+        }
+      }
+
       if (status.statusType === 'waiting-for-auth') {
         isWaitingForResume = true;
         startCaptureBtn.textContent = 'Resume Capture';
@@ -133,6 +147,8 @@ async function checkStatus() {
         if (loginSection) {
           loginSection.classList.add('credential-error');
         }
+      } else if (status.progress) {
+        applyProgressSnapshot(status.progress);
       }
 
       // Restore activity feed from server-side results (catches SKUs processed while away)
@@ -972,6 +988,60 @@ function loadActivityFromStorage() {
     console.error('Failed to load activity feed:', e);
     renderActivityFeed();
     activityFeed.style.display = 'block';
+  }
+}
+
+function applyProgressSnapshot(progress) {
+  if (!progress) return;
+
+  if (progress.culture) {
+    progressCulture.textContent = `Culture: ${progress.culture}`;
+  }
+
+  switch (progress.type) {
+    case 'browser':
+      setStatusRunning('Starting...', progress.status || 'Launching browser');
+      break;
+    case 'login':
+      setStatusRunning('Logging in...', progress.status || '');
+      break;
+    case 'sku-start':
+      if (progress.sku) {
+        progressSku.textContent = `SKU: ${progress.sku}`;
+      }
+      currentSkuInfo.style.display = 'block';
+      currentSkuName.textContent = progress.culture ? `SKU ${progress.sku} (${progress.culture})` : `SKU ${progress.sku}`;
+      currentSkuPrice.textContent = '-';
+      currentSkuStatus.textContent = progress.status || 'Starting';
+      setStatusRunning('Capturing...', `SKU ${progress.sku}: ${progress.status || 'Starting'}`);
+      break;
+    case 'sku-status':
+      currentSkuStatus.textContent = progress.status || '';
+      setStatusRunning('Capturing...', `SKU ${progress.sku}: ${progress.status || 'In progress'}`);
+      break;
+    case 'sku-complete':
+      if (progress.data) {
+        currentSkuName.textContent = progress.data.name || `SKU ${progress.sku}`;
+        currentSkuPrice.textContent = progress.data.price || '-';
+      }
+      currentSkuStatus.textContent = 'Complete';
+      setStatusRunning('Capturing...', `SKU ${progress.sku}: Complete`);
+      break;
+    case 'sku-error':
+      currentSkuStatus.textContent = `Error: ${progress.error || 'Unknown error'}`;
+      setStatusRunning('Capturing...', `SKU ${progress.sku}: Error`);
+      break;
+    default: {
+      const progressStatus = progress.status || progress.message;
+      if (progressStatus) {
+        setStatusRunning('Job in progress', progressStatus);
+      }
+      break;
+    }
+  }
+
+  if (progress.current !== undefined && progress.total !== undefined) {
+    updateProgressBar(progress.current, progress.total);
   }
 }
 

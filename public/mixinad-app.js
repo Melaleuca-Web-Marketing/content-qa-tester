@@ -116,6 +116,8 @@ async function checkStatus() {
         startCaptureBtn.textContent = 'Resume Capture';
         startCaptureBtn.disabled = false;
         setStatusRunning('Waiting for manual sign-in', status.message || 'Please sign in and click Resume');
+      } else if (status.progress) {
+        applyProgressSnapshot(status.progress);
       }
 
       // Restore activity feed from server-side results (catches items processed while away)
@@ -323,6 +325,41 @@ async function restoreActivityFromServer() {
     }
   } catch (err) {
     console.error('Failed to restore activity from server:', err);
+  }
+}
+
+function applyProgressSnapshot(progress) {
+  if (!progress) return;
+
+  if (progress.culture) {
+    progressCulture.textContent = `Culture: ${progress.culture}`;
+  }
+  if (progress.category) {
+    progressCategory.textContent = `Category: ${progress.mainCategory ? `${progress.mainCategory} › ${progress.category}` : progress.category}`;
+  }
+  if (progress.width) {
+    progressWidth.textContent = `Width: ${progress.width}px`;
+  }
+
+  const displayCompleted = progress.completedBanners ?? progress.completed;
+  const displayTotal = progress.totalBanners ?? progress.total;
+  if (displayCompleted !== undefined && displayTotal !== undefined) {
+    updateProgressBar(displayCompleted, displayTotal);
+  }
+
+  const progressStatus = progress.status || progress.message;
+  if (progressStatus) {
+    setStatusRunning(progressStatus, '');
+    return;
+  }
+
+  if (progress.state) {
+    const detailParts = [];
+    if (progress.culture) detailParts.push(progress.culture);
+    if (progress.category) detailParts.push(progress.category);
+    if (progress.width) detailParts.push(`${progress.width}px`);
+    const detail = detailParts.length > 0 ? detailParts.join(' - ') : '';
+    setStatusRunning('Capturing...', detail);
   }
 }
 
