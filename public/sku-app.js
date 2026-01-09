@@ -94,9 +94,9 @@ async function init() {
     renderCultureOptions();
     loadPreferences();
     connectWebSocket();
+    loadActivityFromStorage(); // Restore activity feed from session
     setStatusRunning('Checking status...', 'Loading job state');
     await checkStatus(); // Check if a job is already running
-    loadActivityFromStorage(); // Restore activity feed from session
   } catch (err) {
     console.error('Initialization error:', err);
     setStatusError('Initialization failed', err.message);
@@ -157,6 +157,8 @@ async function restoreActivityFromServer() {
     const serverResults = await response.json();
 
     if (!Array.isArray(serverResults) || serverResults.length === 0) {
+      renderActivityFeed();
+      activityFeed.style.display = 'block';
       return;
     }
 
@@ -234,10 +236,11 @@ async function restoreActivityFromServer() {
 
     if (addedCount > 0) {
       console.log(`[Activity] Restored ${addedCount} results from server`);
-      saveActivityToStorage();
-      renderActivityFeed();
-      activityFeed.style.display = 'block';
     }
+
+    saveActivityToStorage();
+    renderActivityFeed();
+    activityFeed.style.display = 'block';
   } catch (err) {
     console.error('Failed to restore activity from server:', err);
   }
@@ -962,13 +965,13 @@ function loadActivityFromStorage() {
       activityItems.forEach(item => {
         if (item.timestamp) item.timestamp = new Date(item.timestamp);
       });
-      renderActivityFeed();
-      if (activityItems.length > 0) {
-        activityFeed.style.display = 'block';
-      }
     }
+    renderActivityFeed();
+    activityFeed.style.display = 'block';
   } catch (e) {
     console.error('Failed to load activity feed:', e);
+    renderActivityFeed();
+    activityFeed.style.display = 'block';
   }
 }
 

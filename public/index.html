@@ -1200,6 +1200,7 @@
           // Extract overall progress from status.progress
           if (status.progress) {
             const { completed, total, current, culture, category, width, sku, step, component, completedBanners, totalBanners } = status.progress;
+            let hasCounts = false;
 
             // For banner and mixinad jobs, use banner-level progress if available
             const isBannerJob = tool === 'banner' || tool === 'mixinad';
@@ -1211,6 +1212,7 @@
             if (progCurrent !== undefined && progTotal !== undefined && progTotal > 0) {
               progressPercent = Math.round((progCurrent / progTotal) * 100);
               progressText = `${progCurrent} of ${progTotal}`;
+              hasCounts = true;
             }
 
             // Build detail text based on job type
@@ -1224,6 +1226,16 @@
 
             if (parts.length > 0) {
               detailText = parts.join(' - ');
+            }
+
+            const progressStatus = status.progress.status || status.progress.message;
+            if (progressStatus) {
+              if (!detailText) {
+                detailText = progressStatus;
+              }
+              if (!hasCounts) {
+                progressText = progressStatus;
+              }
             }
           }
 
@@ -1283,6 +1295,14 @@
             <span>${elapsedStr}</span>
           </div>
         `;
+
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', (event) => {
+          if (event.target.closest('button') || event.target.closest('a')) {
+            return;
+          }
+          window.location.href = config.page;
+        });
 
         return card;
       }

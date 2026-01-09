@@ -35,6 +35,12 @@ export class BaseProcessor extends EventEmitter {
     this.currentStatusType = null;
     this.currentStatusMessage = null;
     this.currentProgress = null; // Track current progress for status API
+    this.on('progress', (data) => {
+      this.currentProgress = data;
+      if (data && (data.status || data.message)) {
+        this.currentStatusMessage = data.status || data.message;
+      }
+    });
     log('info', `${name} processor initialized`);
   }
 
