@@ -59,8 +59,20 @@
             <input type="text" id="username-input" placeholder="Username" autocomplete="username">
             <div class="password-input-wrapper">
               <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
-              <button type="button" class="password-toggle-btn" aria-label="Toggle password visibility">
-                <span class="eye-icon">👁️</span>
+              <button type="button" class="password-toggle-btn" aria-label="Show password">
+                <span class="eye-icon eye-show" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </span>
+                <span class="eye-icon eye-hide" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M4 4l16 16"></path>
+                  </svg>
+                </span>
               </button>
             </div>
           </div>

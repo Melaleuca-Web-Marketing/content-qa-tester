@@ -83,6 +83,53 @@ export class MixInAdProcessor extends BaseProcessor {
         return results;
     }
 
+    async ensureLoggedIn(job, options, loggedInHosts) {
+        if (!options?.loginEnabled) return;
+        if (!options.username || !options.password) {
+            throw new Error('Username and password required for login');
+        }
+
+        let baseUrl = buildBannerUrl(options.environment, job.culture, '/');
+        if (!baseUrl && job.url) {
+            try {
+                baseUrl = new URL(job.url).origin;
+            } catch {
+                baseUrl = null;
+            }
+        }
+
+        if (!baseUrl) {
+            throw new Error('Could not build login URL');
+        }
+
+        let loginOrigin = baseUrl;
+        try {
+            loginOrigin = new URL(baseUrl).origin;
+        } catch {
+            // Use raw base URL string as fallback key
+        }
+
+        if (loggedInHosts.has(loginOrigin)) {
+            return;
+        }
+
+        const loginResult = await this.loginToMelaleuca({
+            baseUrl,
+            environment: options.environment,
+            username: options.username,
+            password: options.password,
+            selectors: config.sku.selectors,
+            timeouts: config.sku.timeouts
+        });
+
+        if (!loginResult.success) {
+            throw new Error(`Login failed: ${loginResult.error}`);
+        }
+
+        loggedInHosts.add(loginOrigin);
+        await this.page.waitForTimeout(2000);
+    }
+
     // Capture all mix-in ads at a specific width
     async captureAtWidth(url, width, meta = {}) {
         log('info', `Capturing mix-in ads at ${width}px`, { url });
@@ -107,7 +154,7 @@ export class MixInAdProcessor extends BaseProcessor {
             // Handle Microsoft authentication for stage/UAT environments
             // Skip if we've already authenticated at the start of the process
             if (!meta.skipAuthCheck) {
-                const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(meta.environment, null, null, page);
+                const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(meta.environment, meta.username, meta.password, page);
                 if (msAuthHandled) {
                     // Navigate back to the original URL after auth
                     await page.goto(url, {
@@ -309,17 +356,21 @@ export class MixInAdProcessor extends BaseProcessor {
                 });
                 await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
 
-                const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment);
+                const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password);
                 if (msAuthHandled) {
                     hasAuthenticated = true;
                 }
             }
+
+            const loggedInHosts = new Set();
 
             // Process each job (category)
             let completedCategories = 0;
             for (let jobIndex = 0; jobIndex < jobs.length; jobIndex++) {
                 const job = jobs[jobIndex];
                 if (this.shouldStop) break;
+
+                await this.ensureLoggedIn(job, options, loggedInHosts);
 
                 for (let widthIndex = 0; widthIndex < selectedWidths.length; widthIndex++) {
                     const width = selectedWidths[widthIndex];
@@ -349,7 +400,9 @@ export class MixInAdProcessor extends BaseProcessor {
                             order: job.order,
                             mainCategory: job.mainCategory,
                             environment: options.environment,
-                            skipAuthCheck: hasAuthenticated
+                            skipAuthCheck: hasAuthenticated,
+                            username: options.username,
+                            password: options.password
                         });
 
                         // pageResults is an array (one result per ad found, or one error/noAdsFound result)

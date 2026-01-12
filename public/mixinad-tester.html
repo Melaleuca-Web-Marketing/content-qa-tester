@@ -50,6 +50,39 @@
                     </div>
                 </div>
 
+                <div class="section" id="login-section">
+                    <div class="label">Login Credentials (optional)</div>
+                    <label class="toggle-row">
+                        <span class="toggle-label">Sign in before capture</span>
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="login-toggle">
+                            <span class="toggle-slider" aria-hidden="true"></span>
+                        </span>
+                    </label>
+                    <div class="login-fields" id="login-fields" style="display: none;">
+                        <input type="text" id="username-input" placeholder="Username" autocomplete="username">
+                        <div class="password-input-wrapper">
+                            <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
+                            <button type="button" class="password-toggle-btn" aria-label="Show password">
+                              <span class="eye-icon eye-show" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                  <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"></path>
+                                  <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                              </span>
+                              <span class="eye-icon eye-hide" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                  <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"></path>
+                                  <circle cx="12" cy="12" r="3"></circle>
+                                  <path d="M4 4l16 16"></path>
+                                </svg>
+                              </span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="meta">When enabled, the capture will sign in on the main Melaleuca page before visiting categories.</div>
+                </div>
+
                 <div class="section">
                     <div class="label">Viewport Widths</div>
                     <div class="toggle-buttons">

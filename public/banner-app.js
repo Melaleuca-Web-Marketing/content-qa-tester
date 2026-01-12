@@ -33,6 +33,7 @@ let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
 let isWaitingForResume = false;
+let isWaitingForCredentials = false;
 let activityItems = []; // Activity feed items
 let bannerProgress = {}; // Track progress per banner (culture-mainCategory-category)
 let expectedWidths = []; // Widths selected for current job
@@ -53,6 +54,11 @@ if (userId) {
 const envSelect = document.getElementById('env-select');
 const regionSelect = document.getElementById('region-select');
 const cultureOptions = document.getElementById('culture-options');
+const loginToggle = document.getElementById('login-toggle');
+const loginSection = document.getElementById('login-section');
+const loginFields = document.getElementById('login-fields');
+const usernameInput = document.getElementById('username-input');
+const passwordInput = document.getElementById('password-input');
 const widthOptions = document.getElementById('width-options');
 const categoryTree = document.getElementById('category-tree');
 const startCaptureBtn = document.getElementById('start-capture');
@@ -116,6 +122,18 @@ async function checkStatus() {
         startCaptureBtn.textContent = 'Resume Capture';
         startCaptureBtn.disabled = false;
         setStatusRunning('Waiting for manual sign-in', status.message || 'Please sign in and click Resume');
+      } else if (status.statusType === 'waiting-for-credentials') {
+        isWaitingForCredentials = true;
+        setStatusError('Authentication Failed', status.message);
+        showCredentialErrorAlert(status.error || 'Invalid username or password');
+        startCaptureBtn.textContent = 'Update & Resume';
+        startCaptureBtn.disabled = false;
+        stopCaptureBtn.disabled = false;
+        if (loginToggle) loginToggle.checked = true;
+        setLoginEnabled(true);
+        if (loginSection) {
+          loginSection.classList.add('credential-error');
+        }
       } else if (status.progress) {
         applyProgressSnapshot(status.progress);
       }
@@ -316,6 +334,11 @@ async function restoreActivityFromServer() {
 function applyProgressSnapshot(progress) {
   if (!progress) return;
 
+  if (progress.type === 'login') {
+    setStatusRunning('Logging in...', progress.status || '');
+    return;
+  }
+
   if (progress.culture) {
     progressCulture.textContent = `Culture: ${progress.culture}`;
   }
@@ -366,6 +389,23 @@ function setupEventListeners() {
     savePreferences();
   });
 
+  if (loginToggle) {
+    loginToggle.addEventListener('change', () => {
+      setLoginEnabled(loginToggle.checked);
+      if (loginToggle.checked) {
+        applySavedCredentials();
+      }
+      savePreferences();
+    });
+  }
+
+  if (usernameInput) {
+    usernameInput.addEventListener('input', savePreferences);
+  }
+  if (passwordInput) {
+    passwordInput.addEventListener('input', savePreferences);
+  }
+
   document.getElementById('select-all-cultures').addEventListener('click', () => toggleAllCheckboxes('culture-options', true));
   document.getElementById('deselect-all-cultures').addEventListener('click', () => toggleAllCheckboxes('culture-options', false));
   document.getElementById('select-all-widths').addEventListener('click', () => toggleAllCheckboxes('width-options', true));
@@ -374,7 +414,9 @@ function setupEventListeners() {
   document.getElementById('deselect-all-categories').addEventListener('click', () => toggleAllCheckboxes('category-tree', false));
 
   startCaptureBtn.addEventListener('click', () => {
-    if (isWaitingForResume) {
+    if (isWaitingForCredentials) {
+      updateCredentialsAndResume();
+    } else if (isWaitingForResume) {
       resumeCapture();
     } else {
       startCapture();
@@ -385,6 +427,22 @@ function setupEventListeners() {
   // Activity feed clear button
   if (clearActivityBtn) {
     clearActivityBtn.addEventListener('click', clearActivityFeed);
+  }
+
+  const passwordToggleBtn = document.querySelector('.password-toggle-btn');
+  if (passwordToggleBtn && passwordInput) {
+    const updatePasswordToggle = () => {
+      const isVisible = passwordInput.type === 'text';
+      passwordToggleBtn.classList.toggle('is-visible', isVisible);
+      passwordToggleBtn.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+    };
+  
+    updatePasswordToggle();
+    passwordToggleBtn.addEventListener('click', () => {
+      const isPassword = passwordInput.type === 'password';
+      passwordInput.type = isPassword ? 'text' : 'password';
+      updatePasswordToggle();
+    });
   }
 }
 
@@ -494,9 +552,37 @@ function getSelectedCultures() {
   return Array.from(cultureOptions.querySelectorAll('input:checked')).map(cb => cb.value);
 }
 
+function setLoginEnabled(enabled) {
+  if (!loginFields) return;
+  loginFields.style.display = enabled ? 'grid' : 'none';
+  if (usernameInput) usernameInput.disabled = !enabled;
+  if (passwordInput) passwordInput.disabled = !enabled;
+}
+
 function applySavedCredentials() {
-  // Environment credentials are no longer stored for security reasons
-  // Users must manually sign in to Stage/UAT when prompted
+  if (!window.CredentialStore) return;
+  if (!loginToggle || !loginToggle.checked) return;
+  const env = envSelect.value;
+  const cultures = getSelectedCultures();
+  if (!env || cultures.length === 0) return;
+
+  const cultureMap = configData?.banner?.cultureLangMap || {};
+  let entry = null;
+
+  for (const culture of cultures) {
+    const lookupCulture = cultureMap[culture] || culture;
+    entry = window.CredentialStore.getEntry(env, lookupCulture);
+    if (entry) break;
+  }
+
+  if (!entry) return;
+
+  if (entry.username !== null && entry.username !== undefined) {
+    usernameInput.value = entry.username || '';
+  }
+  if (entry.password !== null && entry.password !== undefined) {
+    passwordInput.value = entry.password || '';
+  }
 }
 
 function getSelectedWidths() {
@@ -513,7 +599,10 @@ function savePreferences() {
     region: regionSelect.value,
     cultures: getSelectedCultures(),
     widths: getSelectedWidths(),
-    categories: getSelectedCategories()
+    categories: getSelectedCategories(),
+    loginEnabled: loginToggle ? loginToggle.checked : false,
+    username: usernameInput ? usernameInput.value.trim() || null : null,
+    password: passwordInput ? passwordInput.value || null : null
   };
   localStorage.setItem('bannerTesterPrefs', JSON.stringify(prefs));
 }
@@ -551,10 +640,18 @@ function loadPreferences() {
           cb.checked = prefs.categories.includes(cb.value);
         });
       }
+
+      if (loginToggle && typeof prefs.loginEnabled === 'boolean') {
+        loginToggle.checked = prefs.loginEnabled;
+      }
+      setLoginEnabled(loginToggle ? loginToggle.checked : false);
+      if (prefs.username && usernameInput) usernameInput.value = prefs.username;
+      if (prefs.password && passwordInput) passwordInput.value = prefs.password;
     }
   } catch (e) {
     console.debug('Could not load preferences:', e);
   }
+  setLoginEnabled(loginToggle ? loginToggle.checked : false);
   applySavedCredentials();
 }
 
@@ -606,6 +703,10 @@ function handleWebSocketMessage(message) {
 
 function handleProgress(data) {
   const progress = data.progress;
+  if (progress.type === 'login') {
+    setStatusRunning('Logging in...', progress.status || '');
+    return;
+  }
   progressCulture.textContent = `Culture: ${progress.culture || '-'}`;
   progressCategory.textContent = `Category: ${progress.mainCategory ? `${progress.mainCategory} › ${progress.category}` : progress.category || '-'}`;
   progressWidth.textContent = `Width: ${progress.width}px`;
@@ -732,6 +833,7 @@ function handleStatusUpdate(data) {
       setUICapturing();
       // Use banner count (jobCount) for status message, not totalCaptures
       setStatusRunning('Starting capture...', `${data.jobCount || data.totalBanners} banners to process`);
+      resetCredentialPromptState();
       // Reset banner tracking
       bannerProgress = {};
       expectedWidths = data.widths || [];
@@ -773,9 +875,24 @@ function handleStatusUpdate(data) {
       stopCaptureBtn.disabled = false;
       break;
 
+    case 'waiting-for-credentials':
+      setStatusError('Authentication Failed', data.message || 'Invalid username or password. Update credentials and click Resume.');
+      showCredentialErrorAlert(data.error || 'Invalid username or password');
+      isWaitingForCredentials = true;
+      startCaptureBtn.textContent = 'Update & Resume';
+      startCaptureBtn.disabled = false;
+      stopCaptureBtn.disabled = false;
+      if (loginToggle) loginToggle.checked = true;
+      setLoginEnabled(true);
+      if (loginSection) {
+        loginSection.classList.add('credential-error');
+      }
+      break;
+
     case 'resuming':
       setStatusRunning('Resuming capture...', 'Continuing with banner processing');
       isWaitingForResume = false;
+      isWaitingForCredentials = false;
       startCaptureBtn.disabled = true;
       startCaptureBtn.textContent = 'Start Capture';
       break;
@@ -786,6 +903,99 @@ function handleError(data) {
   isCapturing = false;
   setUIIdle();
   setStatusError('Error', data.message);
+}
+
+function showCredentialErrorAlert(errorMessage) {
+  let alertBanner = document.getElementById('credential-error-alert');
+
+  if (!alertBanner) {
+    alertBanner = document.createElement('div');
+    alertBanner.id = 'credential-error-alert';
+    alertBanner.className = 'credential-error-alert';
+    document.querySelector('.container').prepend(alertBanner);
+  }
+
+  alertBanner.innerHTML = `
+    <div class="alert-icon">&#9888;</div>
+    <div class="alert-content">
+      <div class="alert-title">Authentication Failed</div>
+      <div class="alert-message">${errorMessage}</div>
+      <div class="alert-instructions">Update your username and password, then click "Update & Resume"</div>
+    </div>
+  `;
+
+  alertBanner.style.display = 'flex';
+}
+
+function hideCredentialErrorAlert() {
+  const alertBanner = document.getElementById('credential-error-alert');
+  if (alertBanner) {
+    alertBanner.style.display = 'none';
+  }
+  if (loginSection) {
+    loginSection.classList.remove('credential-error');
+  }
+}
+
+function resetCredentialPromptState() {
+  isWaitingForCredentials = false;
+  isWaitingForResume = false;
+  startCaptureBtn.textContent = 'Start Capture';
+  hideCredentialErrorAlert();
+}
+
+async function updateCredentialsAndResume() {
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+
+  if (!username || !password) {
+    setStatusError('Credentials Required', 'Enter username and password to retry');
+    return;
+  }
+
+  try {
+    setStatusRunning('Updating credentials...', 'Sending new credentials to server');
+    startCaptureBtn.disabled = true;
+
+    const updateResponse = await fetch(api('/api/banner/update-credentials'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(userId ? { 'X-User-Id': userId } : {})
+      },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!updateResponse.ok) {
+      const error = await updateResponse.json();
+      setStatusError('Update Failed', error.error || 'Failed to update credentials');
+      startCaptureBtn.disabled = false;
+      return;
+    }
+
+    const resumeResponse = await fetch(api('/api/banner/resume'), {
+      method: 'POST',
+      headers: userId ? { 'X-User-Id': userId } : {}
+    });
+    const result = await resumeResponse.json();
+
+    if (!result.ok) {
+      setStatusError('Failed to resume', result.message || 'Unknown error');
+      startCaptureBtn.disabled = false;
+      return;
+    }
+
+    hideCredentialErrorAlert();
+    usernameInput.disabled = true;
+    passwordInput.disabled = true;
+    setStatusRunning('Retrying authentication...', 'Logging in with updated credentials');
+    isWaitingForCredentials = false;
+    startCaptureBtn.textContent = 'Start Capture';
+  } catch (err) {
+    console.error('Error updating credentials:', err);
+    setStatusError('Connection error', err.message);
+    startCaptureBtn.disabled = false;
+  }
 }
 
 function updateProgressBar(current, total) {
@@ -822,6 +1032,9 @@ async function startCapture() {
   const widths = getSelectedWidths();
   const categories = getSelectedCategories();
   const environment = envSelect.value;
+  const loginEnabled = loginToggle ? loginToggle.checked : false;
+  const username = usernameInput ? usernameInput.value.trim() : '';
+  const password = passwordInput ? passwordInput.value : '';
 
   if (cultures.length === 0) {
     setStatusError('No cultures selected', 'Select at least one culture');
@@ -838,13 +1051,24 @@ async function startCapture() {
     return;
   }
 
+  if (loginEnabled && (!username || !password)) {
+    setStatusError('Credentials required', 'Enter username and password to sign in');
+    return;
+  }
+
   const options = {
     environment,
     region: regionSelect.value,
     cultures,
     widths,
-    categories
+    categories,
+    loginEnabled
   };
+
+  if (loginEnabled) {
+    options.username = username || null;
+    options.password = password || null;
+  }
 
   // Check if Excel validation is enabled and include data
   const excelEnabled = localStorage.getItem('excelValidationEnabled') === 'true';
@@ -942,6 +1166,7 @@ function setUIIdle() {
   startCaptureBtn.disabled = false;
   stopCaptureBtn.disabled = true;
   progressContainer.style.display = 'none';
+  resetCredentialPromptState();
 }
 
 function setStatusIdle(main, detail) {

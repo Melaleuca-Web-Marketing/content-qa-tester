@@ -83,6 +83,53 @@ export class BannerProcessor extends BaseProcessor {
     return await this._detectBannerElement(true);
   }
 
+  async ensureLoggedIn(job, options, loggedInHosts) {
+    if (!options?.loginEnabled) return;
+    if (!options.username || !options.password) {
+      throw new Error('Username and password required for login');
+    }
+
+    let baseUrl = buildBannerUrl(options.environment, job.culture, '/');
+    if (!baseUrl && job.url) {
+      try {
+        baseUrl = new URL(job.url).origin;
+      } catch {
+        baseUrl = null;
+      }
+    }
+
+    if (!baseUrl) {
+      throw new Error('Could not build login URL');
+    }
+
+    let loginOrigin = baseUrl;
+    try {
+      loginOrigin = new URL(baseUrl).origin;
+    } catch {
+      // Use raw base URL string as fallback key
+    }
+
+    if (loggedInHosts.has(loginOrigin)) {
+      return;
+    }
+
+    const loginResult = await this.loginToMelaleuca({
+      baseUrl,
+      environment: options.environment,
+      username: options.username,
+      password: options.password,
+      selectors: config.sku.selectors,
+      timeouts: config.sku.timeouts
+    });
+
+    if (!loginResult.success) {
+      throw new Error(`Login failed: ${loginResult.error}`);
+    }
+
+    loggedInHosts.add(loginOrigin);
+    await this.page.waitForTimeout(2000);
+  }
+
   /**
    * Optimized method: Capture banner at all widths with single navigation
    * Navigates once, then resizes viewport for each width (60% faster)
@@ -115,7 +162,7 @@ export class BannerProcessor extends BaseProcessor {
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
 
       // Handle Microsoft authentication once (if needed)
-      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, null, null, page);
+      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password, page);
       if (msAuthHandled) {
         authHandledOnce = true;
         // Navigate back to the original URL after auth
@@ -254,7 +301,7 @@ export class BannerProcessor extends BaseProcessor {
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
 
       // Handle Microsoft authentication for stage/UAT environments
-      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(meta.environment, null, null, page);
+      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(meta.environment, meta.username, meta.password, page);
       if (msAuthHandled) {
         // Navigate back to the original URL after auth
         await page.goto(url, {
@@ -391,11 +438,15 @@ export class BannerProcessor extends BaseProcessor {
 
       // Note: Using optimized capture - navigates once per banner, resizes viewport for each width
 
+      const loggedInHosts = new Set();
+
       // Process each job (banner) - optimized approach
       let completedBanners = 0;
       for (let jobIndex = 0; jobIndex < jobs.length; jobIndex++) {
         const job = jobs[jobIndex];
         if (this.shouldStop) break;
+
+        await this.ensureLoggedIn(job, options, loggedInHosts);
 
         // Emit initial progress for first width
         this.emitProgress({

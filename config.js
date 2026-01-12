@@ -516,6 +516,10 @@ export function validateBannerConfig(options) {
     errors.push('At least one viewport width must be selected');
   }
 
+  if (options.loginEnabled && (!options.username || !options.password)) {
+    errors.push('Username and password are required when login is enabled');
+  }
+
   return errors;
 }
 
@@ -572,6 +576,10 @@ export function validateMixInAdConfig(options) {
 
   if (!options.widths || options.widths.length === 0) {
     errors.push('At least one viewport width must be selected');
+  }
+
+  if (options.loginEnabled && (!options.username || !options.password)) {
+    errors.push('Username and password are required when login is enabled');
   }
 
   return errors;

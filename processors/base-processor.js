@@ -268,6 +268,189 @@ export class BaseProcessor extends EventEmitter {
     return true;
   }
 
+  async loginToMelaleuca({ baseUrl, environment, username, password, selectors = {}, timeouts = {} }) {
+    if (!this.page) {
+      return { success: false, error: 'Login page not initialized' };
+    }
+
+    if (!baseUrl) {
+      return { success: false, error: 'Invalid base URL' };
+    }
+
+    const loginSelectors = {
+      homePageSignInButton: selectors.homePageSignInButton,
+      loginUsernameField: selectors.loginUsernameField || selectors.username,
+      loginPasswordField: selectors.loginPasswordField || selectors.password,
+      loginSubmitButton: selectors.loginSubmitButton || selectors.loginButton,
+      loginErrorMessage: selectors.loginErrorMessage || selectors.errorMessage
+    };
+
+    if (!loginSelectors.homePageSignInButton || !loginSelectors.loginUsernameField
+      || !loginSelectors.loginPasswordField || !loginSelectors.loginSubmitButton) {
+      return { success: false, error: 'Login selectors not configured' };
+    }
+
+    const pageLoadTimeout = timeouts.pageLoad || 30000;
+    const loginWait = timeouts.loginWait || 10000;
+
+    log('info', 'Starting login process...');
+    log('info', 'Step 1: Navigating to home page...', { url: baseUrl });
+
+    this.emit('progress', {
+      type: 'login',
+      status: 'Navigating to home page'
+    });
+
+    try {
+      await this.page.goto(baseUrl, {
+        waitUntil: 'load',
+        timeout: pageLoadTimeout
+      });
+
+      await this.page.waitForTimeout(2000);
+
+      await this.handleMicrosoftAuthIfNeeded(environment, username, password);
+
+      log('info', 'Step 2: Looking for Sign In button on home page...');
+      this.emit('progress', {
+        type: 'login',
+        status: 'Clicking Sign In button'
+      });
+
+      const signInBtn = await this.page.$(loginSelectors.homePageSignInButton);
+      if (!signInBtn) {
+        log('error', 'Sign In button not found on home page');
+        return { success: false, error: 'Sign In button not found on home page' };
+      }
+
+      await signInBtn.click();
+      log('info', 'Clicked Sign In button');
+
+      log('info', 'Step 3: Waiting for login form to load...');
+      this.emit('progress', {
+        type: 'login',
+        status: 'Waiting for login form'
+      });
+
+      await this.page.waitForSelector(loginSelectors.loginUsernameField, { timeout: Math.max(loginWait, 15000) });
+      await this.page.waitForTimeout(1000);
+
+      log('info', 'Step 4: Entering credentials...');
+      this.emit('progress', {
+        type: 'login',
+        status: 'Entering credentials'
+      });
+
+      await this.page.fill(loginSelectors.loginUsernameField, username);
+      await this.page.fill(loginSelectors.loginPasswordField, password);
+
+      log('info', 'Step 5: Submitting login form...');
+      this.emit('progress', {
+        type: 'login',
+        status: 'Submitting login'
+      });
+
+      await this.page.click(loginSelectors.loginSubmitButton);
+
+      log('info', 'Step 6: Waiting for login to complete...');
+      this.emit('progress', {
+        type: 'login',
+        status: 'Loading profile...'
+      });
+
+      try {
+        await this.page.waitForURL((url) => !url.href.includes('singlesignon'), {
+          timeout: 20000,
+          waitUntil: 'load'
+        });
+
+        let checkUrl = this.page.url();
+        if (checkUrl.includes('LoadProfile')) {
+          this.emit('progress', {
+            type: 'login',
+            status: 'Loading profile, please wait...'
+          });
+
+          await this.page.waitForURL((url) => !url.href.includes('LoadProfile'), {
+            timeout: 30000,
+            waitUntil: 'load'
+          });
+        }
+
+        await this.page.waitForTimeout(2000);
+      } catch (e) {
+        log('debug', 'URL wait completed or timed out, checking current state...', { error: e.message });
+        await this.page.waitForTimeout(3000);
+      }
+
+      const currentUrl = this.page.url();
+      log('info', 'Current URL after login attempt:', { url: currentUrl });
+
+      if (loginSelectors.loginErrorMessage) {
+        const errorEl = await this.page.$(loginSelectors.loginErrorMessage);
+        if (errorEl) {
+          const isVisible = await errorEl.isVisible();
+          if (isVisible) {
+            const errorText = await errorEl.textContent();
+            const errorMessage = errorText.trim() || 'Invalid username or password';
+            log('error', 'Login failed - error message displayed', { error: errorMessage });
+
+            await this.waitForCredentialUpdate(errorMessage, environment);
+
+            log('info', 'Retrying login with updated credentials');
+            return await this.loginToMelaleuca({
+              baseUrl,
+              environment,
+              username: this.currentOptions.username,
+              password: this.currentOptions.password,
+              selectors,
+              timeouts
+            });
+          }
+        }
+      }
+
+      if (!currentUrl.includes('login') && !currentUrl.includes('Login') && !currentUrl.includes('singlesignon')) {
+        log('info', 'Login successful! Redirected to:', { url: currentUrl });
+        return { success: true };
+      }
+
+      log('warn', 'Still on login page, login may have failed');
+      const errorMessage = 'Invalid username or password';
+
+      await this.waitForCredentialUpdate(errorMessage, environment);
+
+      log('info', 'Retrying login with updated credentials');
+      return await this.loginToMelaleuca({
+        baseUrl,
+        environment,
+        username: this.currentOptions.username,
+        password: this.currentOptions.password,
+        selectors,
+        timeouts
+      });
+
+    } catch (err) {
+      log('error', 'Login failed with error', { error: err.message });
+
+      const errorMsg = err.message.toLowerCase();
+      if (errorMsg.includes('invalid') || errorMsg.includes('password') || errorMsg.includes('credentials') || errorMsg.includes('authentication')) {
+        await this.waitForCredentialUpdate(err.message, environment);
+        log('info', 'Retrying login with updated credentials after error');
+        return await this.loginToMelaleuca({
+          baseUrl,
+          environment,
+          username: this.currentOptions.username,
+          password: this.currentOptions.password,
+          selectors,
+          timeouts
+        });
+      }
+
+      return { success: false, error: err.message };
+    }
+  }
+
   // Close browser and cleanup
   async closeBrowser() {
     log('info', 'Closing browser...');

@@ -338,7 +338,7 @@ router.get('/api/banner/status', (req, res) => {
 
 router.post('/api/banner/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  const { environment, region, cultures, widths, categories, excelValidation } = req.body;
+  const { environment, region, cultures, widths, categories, excelValidation, loginEnabled, username, password } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
     return res.status(400).json({ error: 'No cultures selected' });
@@ -357,7 +357,21 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     return res.status(409).json({ error: 'Banner capture already in progress' });
   }
 
-  const options = { environment, region, cultures, widths, categories };
+  const options = {
+    environment,
+    region,
+    cultures,
+    widths,
+    categories,
+    loginEnabled: loginEnabled === true,
+    username: loginEnabled ? (username || null) : null,
+    password: loginEnabled ? (password || null) : null
+  };
+
+  const errors = validateBannerConfig(options);
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join(', ') });
+  }
 
   // Include Excel validation data if provided
   if (excelValidation && excelValidation.enabled) {
@@ -384,6 +398,19 @@ router.post('/api/banner/resume', (req, res) => {
   const bannerProcessor = getProcessor(userId, 'banner');
   bannerProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
+});
+
+router.post('/api/banner/update-credentials', (req, res) => {
+  const userId = getUserId(req);
+  const bannerProcessor = getProcessor(userId, 'banner');
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  bannerProcessor.updateCredentials(username, password);
+  res.json({ ok: true, message: 'Credentials updated' });
 });
 
 router.get('/api/banner/results', (req, res) => {
@@ -474,7 +501,7 @@ router.get('/api/mixinad/status', (req, res) => {
 
 router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  const { environment, region, cultures, widths, categories, excelValidation } = req.body;
+  const { environment, region, cultures, widths, categories, excelValidation, loginEnabled, username, password } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
     return res.status(400).json({ error: 'No cultures selected' });
@@ -493,7 +520,21 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     return res.status(409).json({ error: 'Mix-In Ad capture already in progress' });
   }
 
-  const options = { environment, region, cultures, widths, categories };
+  const options = {
+    environment,
+    region,
+    cultures,
+    widths,
+    categories,
+    loginEnabled: loginEnabled === true,
+    username: loginEnabled ? (username || null) : null,
+    password: loginEnabled ? (password || null) : null
+  };
+
+  const errors = validateMixInAdConfig(options);
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join(', ') });
+  }
 
   // Include Excel validation data if provided
   if (excelValidation && excelValidation.enabled) {
@@ -520,6 +561,19 @@ router.post('/api/mixinad/resume', (req, res) => {
   const mixinAdProcessor = getProcessor(userId, 'mixinad');
   mixinAdProcessor.resume();
   res.json({ ok: true, message: 'Resume requested' });
+});
+
+router.post('/api/mixinad/update-credentials', (req, res) => {
+  const userId = getUserId(req);
+  const mixinAdProcessor = getProcessor(userId, 'mixinad');
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  mixinAdProcessor.updateCredentials(username, password);
+  res.json({ ok: true, message: 'Credentials updated' });
 });
 
 router.get('/api/mixinad/results', (req, res) => {

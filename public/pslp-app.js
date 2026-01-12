@@ -425,10 +425,17 @@ function setupEventListeners() {
   const passwordToggleBtn = document.querySelector('.password-toggle-btn');
 
   if (passwordToggleBtn && passwordInput) {
+    const updatePasswordToggle = () => {
+      const isVisible = passwordInput.type === 'text';
+      passwordToggleBtn.classList.toggle('is-visible', isVisible);
+      passwordToggleBtn.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+    };
+
+    updatePasswordToggle();
     passwordToggleBtn.addEventListener('click', () => {
       const isPassword = passwordInput.type === 'password';
       passwordInput.type = isPassword ? 'text' : 'password';
-      passwordToggleBtn.querySelector('.eye-icon').textContent = isPassword ? '🙈' : '👁️';
+      updatePasswordToggle();
     });
   }
 }
