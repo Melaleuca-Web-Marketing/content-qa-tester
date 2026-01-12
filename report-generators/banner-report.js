@@ -285,7 +285,136 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
     </div>
   </div>
 
-  <script>async function copyText(t,b){try{await navigator.clipboard.writeText(decodeURIComponent(t));showCopied(b)}catch(e){showError(b)}}async function copyImage(d,b){try{const dataUrl=decodeURIComponent(d);const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=dataUrl});const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);canvas.toBlob(async(blob)=>{try{await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);showCopied(b)}catch(e){console.error('Clipboard write failed:',e);showError(b)}},'image/png')}catch(e){console.error('Copy failed:',e);showError(b)}}function showCopied(b){const o=b.textContent;b.textContent='Copied!';b.classList.add('copied');setTimeout(()=>{b.textContent=o;b.classList.remove('copied')},1500)}function showError(b){const o=b.textContent;b.textContent='Failed';setTimeout(()=>{b.textContent=o},1500)}</script>
+  <script>
+    function canUseClipboardImage() {
+      return window.isSecureContext && navigator.clipboard && typeof ClipboardItem !== 'undefined';
+    }
+
+    function showCopied(button) {
+      const original = button.textContent;
+      button.textContent = 'Copied!';
+      button.classList.add('copied');
+      setTimeout(() => {
+        button.textContent = original;
+        button.classList.remove('copied');
+      }, 1500);
+    }
+
+    function showError(button) {
+      const original = button.textContent;
+      button.textContent = 'Failed';
+      setTimeout(() => {
+        button.textContent = original;
+      }, 1500);
+    }
+
+    function fallbackCopyText(text) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      let success = false;
+      try {
+        success = document.execCommand('copy');
+      } catch {
+        success = false;
+      }
+      document.body.removeChild(textarea);
+      return success;
+    }
+
+    function fallbackCopyImage(dataUrl) {
+      return new Promise((resolve) => {
+        const wrapper = document.createElement('div');
+        wrapper.contentEditable = 'true';
+        wrapper.style.position = 'fixed';
+        wrapper.style.left = '-9999px';
+        wrapper.style.opacity = '0';
+        const img = new Image();
+        img.onload = () => {
+          wrapper.appendChild(img);
+          document.body.appendChild(wrapper);
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(wrapper);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          let success = false;
+          try {
+            success = document.execCommand('copy');
+          } catch {
+            success = false;
+          }
+          selection.removeAllRanges();
+          document.body.removeChild(wrapper);
+          resolve(success);
+        };
+        img.onerror = () => resolve(false);
+        img.src = dataUrl;
+      });
+    }
+
+    async function copyText(t, button) {
+      const text = decodeURIComponent(t);
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          showCopied(button);
+          return;
+        }
+      } catch {
+        // fall through to execCommand fallback
+      }
+
+      const success = fallbackCopyText(text);
+      if (success) {
+        showCopied(button);
+      } else {
+        showError(button);
+      }
+    }
+
+    async function copyImage(data, button) {
+      const dataUrl = decodeURIComponent(data);
+      if (canUseClipboardImage()) {
+        try {
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = dataUrl;
+          });
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob(async (blob) => {
+            try {
+              await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+              showCopied(button);
+            } catch (err) {
+              console.error('Clipboard write failed:', err);
+              showError(button);
+            }
+          }, 'image/png');
+          return;
+        } catch (err) {
+          console.error('Copy failed:', err);
+        }
+      }
+
+      const success = await fallbackCopyImage(dataUrl);
+      if (success) {
+        showCopied(button);
+      } else {
+        showError(button);
+      }
+    }
+  </script>
 </body>
 </html>`;
 
