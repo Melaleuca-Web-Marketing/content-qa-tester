@@ -317,13 +317,61 @@ export class BaseProcessor extends EventEmitter {
         status: 'Clicking Sign In button'
       });
 
-      const signInBtn = await this.page.$(loginSelectors.homePageSignInButton);
-      if (!signInBtn) {
+      const tryClickSignIn = async () => {
+        try {
+          const signInLocator = this.page.locator(loginSelectors.homePageSignInButton).first();
+          await signInLocator.waitFor({ state: 'visible', timeout: Math.min(pageLoadTimeout, 10000) });
+          await signInLocator.click();
+          return true;
+        } catch (err) {
+          log('warn', 'Primary Sign In button click failed', { error: err.message });
+          return false;
+        }
+      };
+
+      const tryClickSignInByRole = async (role) => {
+        try {
+          const locator = this.page.getByRole(role, { name: /sign in/i }).first();
+          const count = await locator.count();
+          if (!count) return false;
+          await locator.waitFor({ state: 'visible', timeout: Math.min(pageLoadTimeout, 10000) });
+          await locator.click();
+          return true;
+        } catch (err) {
+          log('warn', `Fallback Sign In click failed (${role})`, { error: err.message });
+          return false;
+        }
+      };
+
+      let signInClicked = await tryClickSignIn();
+      if (!signInClicked) {
+        const originalViewport = this.page.viewportSize();
+        const fallbackViewport = {
+          width: Math.max(originalViewport?.width || 0, 1200),
+          height: Math.max(originalViewport?.height || 0, 900)
+        };
+        log('info', 'Retrying Sign In click with desktop viewport', {
+          from: originalViewport || null,
+          to: fallbackViewport
+        });
+        await this.page.setViewportSize(fallbackViewport);
+        await this.page.waitForTimeout(500);
+        signInClicked = await tryClickSignIn();
+      }
+
+      if (!signInClicked) {
+        signInClicked = await tryClickSignInByRole('link');
+      }
+
+      if (!signInClicked) {
+        signInClicked = await tryClickSignInByRole('button');
+      }
+
+      if (!signInClicked) {
         log('error', 'Sign In button not found on home page');
         return { success: false, error: 'Sign In button not found on home page' };
       }
 
-      await signInBtn.click();
       log('info', 'Clicked Sign In button');
 
       log('info', 'Step 3: Waiting for login form to load...');
