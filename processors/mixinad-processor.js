@@ -30,6 +30,11 @@ export class MixInAdProcessor extends BaseProcessor {
                 const rect = ad.getBoundingClientRect();
                 const bgDiv = ad.querySelector('.m-mixinAd__bg');
                 let imageUrl = '';
+                const selectButton = ad.querySelector('.m-mixinAd__row.-ctaButton button')
+                  || ad.querySelector('button[aria-label*="Select"]');
+                const selectLabel = selectButton
+                  ? (selectButton.getAttribute('aria-label') || selectButton.textContent || '').trim()
+                  : '';
 
                 if (bgDiv) {
                     const bgImage = window.getComputedStyle(bgDiv).backgroundImage;
@@ -73,7 +78,9 @@ export class MixInAdProcessor extends BaseProcessor {
                     href: anchor?.href || '',
                     target: anchor?.target || '',
                     imageSrc: imageUrl,
-                    imageAlt: anchor?.getAttribute('aria-label') || ''
+                    imageAlt: anchor?.getAttribute('aria-label') || '',
+                    hasSelectButton: Boolean(selectButton),
+                    selectLabel
                 });
             });
 
@@ -143,6 +150,232 @@ export class MixInAdProcessor extends BaseProcessor {
             await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
             await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password);
             loggedInHosts.set(loginOrigin, job.culture);
+        }
+    }
+
+    async expandConfiguratorAccordions() {
+        const toggles = await this.page.$$(config.sku.selectors.configuratorAccordionToggle);
+        if (toggles.length === 0) {
+            return 0;
+        }
+
+        let opened = 0;
+        for (const toggle of toggles) {
+            const expanded = await toggle.getAttribute('aria-expanded');
+            if (expanded === 'true') {
+                continue;
+            }
+
+            try {
+                await toggle.scrollIntoViewIfNeeded();
+            } catch {
+                // Ignore scroll failures
+            }
+
+            try {
+                await toggle.click();
+                opened += 1;
+                await this.page.waitForTimeout(150);
+            } catch {
+                // Ignore toggles that are not clickable
+            }
+        }
+
+        return opened;
+    }
+
+    async selectConfiguratorOptions() {
+        const lists = await this.page.$$(config.sku.selectors.configuratorList);
+        if (lists.length === 0) {
+            return 0;
+        }
+
+        let selections = 0;
+        for (const list of lists) {
+            const hasSelection = await list.$(config.sku.selectors.configuratorSelectedOption);
+            if (hasSelection) {
+                continue;
+            }
+
+            const optionButtons = await list.$$(config.sku.selectors.configuratorOptionButton);
+            for (const option of optionButtons) {
+                const disabledAttr = await option.getAttribute('disabled');
+                const ariaDisabled = await option.getAttribute('aria-disabled');
+                if (disabledAttr !== null || ariaDisabled === 'true') {
+                    continue;
+                }
+
+                try {
+                    await option.scrollIntoViewIfNeeded();
+                } catch {
+                    // Ignore scroll failures
+                }
+
+                try {
+                    await option.click({ force: true });
+                    selections += 1;
+                    break;
+                } catch {
+                    // Try the next option
+                }
+            }
+        }
+
+        return selections;
+    }
+
+    async getVisibleShelf() {
+        const shelves = await this.page.$$(config.sku.selectors.cartShelf);
+        for (const shelf of shelves) {
+            try {
+                if (await shelf.isVisible()) {
+                    return shelf;
+                }
+            } catch {
+                // Ignore detached elements
+            }
+        }
+        return null;
+    }
+
+    async readAddedToCartMessage(shelf) {
+        const headerEl = (shelf ? await shelf.$(config.sku.selectors.addedToCartMessage) : null)
+            || await this.page.$(config.sku.selectors.addedToCartMessage);
+        const message = headerEl ? await headerEl.textContent() : '';
+        return message ? message.trim() : '';
+    }
+
+    async readAddToCartError() {
+        const errorEl = await this.page.$(config.sku.selectors.errorMessage);
+        if (!errorEl) return '';
+        const errorText = await errorEl.textContent();
+        return errorText ? errorText.trim() : '';
+    }
+
+    async closeShelf() {
+        const closeBtn = await this.page.$(config.sku.selectors.closeShelfButton);
+        if (!closeBtn) return;
+        try {
+            await closeBtn.click();
+            await this.page.waitForTimeout(500);
+        } catch {
+            // Ignore close errors
+        }
+    }
+
+    async addToCartFromShelf() {
+        try {
+            await Promise.race([
+                this.page.waitForSelector(config.sku.selectors.cartShelf, {
+                    state: 'visible',
+                    timeout: config.sku.timeouts.shelfAppear
+                }),
+                this.page.waitForSelector(config.sku.selectors.errorMessage, {
+                    state: 'visible',
+                    timeout: config.sku.timeouts.shelfAppear
+                })
+            ]);
+        } catch (e) {
+            log('warn', 'Timeout waiting for cart shelf', { error: e.message });
+        }
+
+        const shelf = await this.getVisibleShelf();
+        if (!shelf) {
+            const errorText = await this.readAddToCartError();
+            if (errorText) {
+                return { attempted: true, success: false, error: errorText };
+            }
+            return { attempted: true, success: false, error: 'Cart shelf did not appear within timeout' };
+        }
+
+        const addedMessage = await this.readAddedToCartMessage(shelf);
+        if (addedMessage) {
+            await this.closeShelf();
+            return { attempted: true, success: true, message: addedMessage };
+        }
+
+        const opened = await this.expandConfiguratorAccordions();
+        const selections = await this.selectConfiguratorOptions();
+        if (opened > 0 || selections > 0) {
+            await this.page.waitForTimeout(300);
+        }
+
+        const addToCartBtn = await shelf.$(config.sku.selectors.addToCartButton)
+            || await this.page.$(config.sku.selectors.addToCartButton);
+        if (!addToCartBtn) {
+            await this.closeShelf();
+            return { attempted: true, success: false, error: 'Add To Cart button not found' };
+        }
+
+        await addToCartBtn.click();
+
+        try {
+            await Promise.race([
+                this.page.waitForSelector(config.sku.selectors.addedToCartMessage, {
+                    state: 'visible',
+                    timeout: config.sku.timeouts.shelfAppear
+                }),
+                this.page.waitForSelector(config.sku.selectors.errorMessage, {
+                    state: 'visible',
+                    timeout: config.sku.timeouts.shelfAppear
+                })
+            ]);
+        } catch (e) {
+            log('warn', 'Timeout waiting for cart confirmation', { error: e.message });
+        }
+
+        const confirmMessage = await this.readAddedToCartMessage(shelf);
+        if (confirmMessage) {
+            await this.closeShelf();
+            return { attempted: true, success: true, message: confirmMessage };
+        }
+
+        const errorText = await this.readAddToCartError();
+        if (errorText) {
+            await this.closeShelf();
+            return { attempted: true, success: false, error: errorText };
+        }
+
+        await this.closeShelf();
+        return { attempted: true, success: false, error: 'Cart shelf did not confirm add to cart' };
+    }
+
+    async findMixInSelectButton(adIndex) {
+        const adLocator = this.page.locator(config.mixinad.selector).nth(adIndex);
+        let selectBtn = adLocator.locator('.m-mixinAd__row.-ctaButton button').first();
+        if (await selectBtn.count()) {
+            return selectBtn;
+        }
+        selectBtn = adLocator.locator('button', { hasText: /select/i }).first();
+        if (await selectBtn.count()) {
+            return selectBtn;
+        }
+        selectBtn = adLocator.locator('button[aria-label*="Select"]').first();
+        if (await selectBtn.count()) {
+            return selectBtn;
+        }
+        return null;
+    }
+
+    async attemptAddToCartForAd(adIndex) {
+        try {
+            const selectBtn = await this.findMixInSelectButton(adIndex);
+            if (!selectBtn) {
+                return { attempted: true, success: false, error: 'Select button not found' };
+            }
+
+            try {
+                await selectBtn.scrollIntoViewIfNeeded();
+            } catch {
+                // Ignore scroll errors
+            }
+
+            await selectBtn.click({ timeout: 5000 });
+            return await this.addToCartFromShelf();
+        } catch (err) {
+            log('warn', 'Mix-in ad add to cart failed', { error: err.message });
+            await this.closeShelf();
+            return { attempted: true, success: false, error: err.message };
         }
     }
 
@@ -268,6 +501,25 @@ export class MixInAdProcessor extends BaseProcessor {
                 });
 
                 const imageBase64 = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
+                const addToCartKey = String(adInfo.domPosition ?? i);
+                let addToCartResult = null;
+
+                if (meta.addToCartResults && adInfo.hasSelectButton) {
+                    if (!meta.addToCartResults.has(addToCartKey) && meta.attemptAddToCart) {
+                        if (meta.enableAddToCart) {
+                            addToCartResult = await this.attemptAddToCartForAd(i);
+                        } else {
+                            addToCartResult = {
+                                attempted: false,
+                                success: false,
+                                reason: 'Login disabled'
+                            };
+                        }
+                        meta.addToCartResults.set(addToCartKey, addToCartResult);
+                    }
+
+                    addToCartResult = meta.addToCartResults.get(addToCartKey) || addToCartResult;
+                }
 
                 results.push({
                     width,
@@ -283,6 +535,7 @@ export class MixInAdProcessor extends BaseProcessor {
                     imageLocale: detectImageLocale(adInfo.imageSrc),
                     imageSrc: adInfo.imageSrc,
                     imageAlt: adInfo.imageAlt || '',
+                    addToCartResult,
                     mainCategory: meta.mainCategory || '',
                     environment: meta.environment || 'stage',
                     url
@@ -389,6 +642,7 @@ export class MixInAdProcessor extends BaseProcessor {
                 if (this.shouldStop) break;
 
                 const currentBanner = jobIndex + 1;
+                const addToCartResults = new Map();
 
                 await this.ensureLoggedIn(job, options, loggedInHosts);
 
@@ -422,7 +676,10 @@ export class MixInAdProcessor extends BaseProcessor {
                             environment: options.environment,
                             skipAuthCheck: hasAuthenticated,
                             username: options.username,
-                            password: options.password
+                            password: options.password,
+                            addToCartResults,
+                            attemptAddToCart: widthIndex === 0,
+                            enableAddToCart: options.loginEnabled === true
                         });
 
                         // pageResults is an array (one result per ad found, or one error/noAdsFound result)

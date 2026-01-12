@@ -65,7 +65,8 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
         url: item.url,
         hasError: false,
         noAdsFound: item.noAdsFound || false,
-        validation: item.validation
+        validation: item.validation,
+        addToCartResult: item.addToCartResult || null
       };
     }
     groupedItems[groupKey].items.push(item);
@@ -75,6 +76,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
       if (item.imageLocale) groupedItems[groupKey].imageLocale = item.imageLocale;
       if (item.imageAlt) groupedItems[groupKey].imageAlt = item.imageAlt;
       if (item.validation) groupedItems[groupKey].validation = item.validation;
+      if (item.addToCartResult) groupedItems[groupKey].addToCartResult = item.addToCartResult;
     }
   });
 
@@ -159,6 +161,13 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
     const statusClass = allErrors ? 'error' : isNoAds ? 'none-found' : hasErrors ? 'partial' : 'success';
     const statusText = allErrors ? 'Failed' : isNoAds ? 'No Ads' : hasErrors ? 'Partial' : 'Success';
     const targetText = group.target && group.target.toLowerCase() === '_blank' ? 'New Tab' : 'Same Tab';
+    const addToCart = group.addToCartResult;
+    const addToCartStatus = addToCart
+      ? (addToCart.success ? 'Success' : addToCart.attempted === false ? 'Skipped' : 'Failed')
+      : null;
+    const addToCartMessage = addToCart
+      ? (addToCart.message || addToCart.error || addToCart.reason || '')
+      : '';
     const adLabel = group.adIndex !== null ? ` - Mix-In Ad #${group.adIndex + 1}` : '';
     const linkDisplay = stripDomain(group.href);
 
@@ -227,6 +236,15 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
                 ` : ''}
               </td>
             </tr>
+            ${addToCartStatus ? `
+            <tr>
+              <th>Add To Cart</th>
+              <td>
+                <span class="mono">${escapeHtml(addToCartStatus)}</span>
+                ${addToCartMessage ? `<div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">${escapeHtml(addToCartMessage)}</div>` : ''}
+              </td>
+            </tr>
+            ` : ''}
             ${group.domPosition ? `
             <tr>
               <th>Position</th>
