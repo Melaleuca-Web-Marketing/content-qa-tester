@@ -83,9 +83,30 @@ const passedCountEl = document.getElementById('passed-count');
 const failedCountEl = document.getElementById('failed-count');
 const clearActivityBtn = document.getElementById('clear-activity');
 
+const skuRegionToBannerRegion = {
+  us: 'usca',
+  ca: 'usca',
+  mx: 'mx',
+  uk: 'ukeu',
+  ie: 'ukeu',
+  de: 'ukeu',
+  lt: 'ukeu',
+  nl: 'ukeu',
+  pl: 'ukeu'
+};
+const bannerRegionToSkuRegion = {
+  usca: 'us',
+  mx: 'mx',
+  ukeu: 'uk'
+};
+let skuToBannerCultureMap = {};
+let bannerToSkuCultureMap = {};
+
 async function init() {
   try {
     await loadConfig();
+    initCultureMaps();
+    renderRegionOptions(loginToggle ? loginToggle.checked : false);
     setupEventListeners();
     renderCultureOptions();
     renderWidthOptions();
@@ -398,6 +419,89 @@ async function loadConfig() {
   configData = await response.json();
 }
 
+function initCultureMaps() {
+  bannerToSkuCultureMap = { ...(configData?.mixinad?.cultureLangMap || {}) };
+  skuToBannerCultureMap = {};
+  Object.entries(bannerToSkuCultureMap).forEach(([bannerCode, skuCulture]) => {
+    if (!skuToBannerCultureMap[skuCulture]) {
+      skuToBannerCultureMap[skuCulture] = bannerCode;
+    }
+  });
+}
+
+function isLoginMode() {
+  return Boolean(loginToggle && loginToggle.checked);
+}
+
+function renderRegionOptions(useSkuRegions, selectedRegion = null) {
+  const regionSource = useSkuRegions ? configData?.regions : configData?.mixinad?.regions;
+  if (!regionSelect || !regionSource) return;
+
+  regionSelect.innerHTML = Object.entries(regionSource).map(([key, region]) => (
+    `<option value="${key}">${region.name}</option>`
+  )).join('');
+
+  const fallbackRegion = Object.keys(regionSource)[0];
+  const resolvedRegion = selectedRegion && regionSource[selectedRegion] ? selectedRegion : fallbackRegion;
+  if (resolvedRegion) {
+    regionSelect.value = resolvedRegion;
+  }
+}
+
+function normalizeRegionForMode(region, loginMode) {
+  if (!region) return region;
+  return loginMode
+    ? (bannerRegionToSkuRegion[region] || region)
+    : (skuRegionToBannerRegion[region] || region);
+}
+
+function mapBannerToSkuCultures(cultures) {
+  if (!Array.isArray(cultures)) return [];
+  return cultures.map(culture => bannerToSkuCultureMap[culture] || culture);
+}
+
+function mapSkuToBannerCultures(cultures) {
+  if (!Array.isArray(cultures)) return [];
+  const mapped = cultures.map(culture => skuToBannerCultureMap[culture] || culture);
+  return Array.from(new Set(mapped));
+}
+
+function getBannerRegionValue() {
+  const region = regionSelect.value;
+  return isLoginMode() ? (skuRegionToBannerRegion[region] || region) : region;
+}
+
+function applyRegionMode(loginMode, { previousRegion, previousCultures, skipSave = false } = {}) {
+  const targetRegion = normalizeRegionForMode(previousRegion || regionSelect.value, loginMode);
+  renderRegionOptions(loginMode, targetRegion);
+  renderCultureOptions();
+
+  if (Array.isArray(previousCultures) && previousCultures.length > 0) {
+    const mappedCultures = loginMode
+      ? mapBannerToSkuCultures(previousCultures)
+      : mapSkuToBannerCultures(previousCultures);
+    cultureOptions.querySelectorAll('input').forEach(cb => {
+      cb.checked = mappedCultures.includes(cb.value);
+    });
+  }
+
+  renderCategoryTree();
+  applySavedCredentials();
+  if (!skipSave) {
+    savePreferences();
+  }
+}
+
+function getRequestCultures() {
+  const cultures = getSelectedCultures();
+  return isLoginMode() ? mapSkuToBannerCultures(cultures) : cultures;
+}
+
+function getRequestRegion() {
+  const region = regionSelect.value;
+  return isLoginMode() ? (skuRegionToBannerRegion[region] || region) : region;
+}
+
 function setupEventListeners() {
   regionSelect.addEventListener('change', () => {
     renderCultureOptions();
@@ -413,10 +517,10 @@ function setupEventListeners() {
 
   if (loginToggle) {
     loginToggle.addEventListener('change', () => {
+      const previousRegion = regionSelect.value;
+      const previousCultures = getSelectedCultures();
       setLoginEnabled(loginToggle.checked);
-      if (loginToggle.checked) {
-        applySavedCredentials();
-      }
+      applyRegionMode(loginToggle.checked, { previousRegion, previousCultures, skipSave: true });
       savePreferences();
     });
   }
@@ -485,19 +589,30 @@ function toggleAllCheckboxes(containerId, checked) {
 
 function renderCultureOptions() {
   const region = regionSelect.value;
-  const regionConfig = configData?.mixinad?.regions?.[region];
+  const regionConfig = isLoginMode()
+    ? configData?.regions?.[region]
+    : configData?.mixinad?.regions?.[region];
 
   if (!regionConfig) {
     cultureOptions.innerHTML = '<div class="meta">No cultures available</div>';
     return;
   }
 
-  cultureOptions.innerHTML = regionConfig.cultures.map(culture => `
-    <label class="checkbox-row">
-      <input type="checkbox" name="culture" value="${culture.code}" checked>
-      <span>${culture.label}</span>
-    </label>
-  `).join('');
+  if (isLoginMode()) {
+    cultureOptions.innerHTML = regionConfig.cultures.map(culture => `
+      <label class="checkbox-row">
+        <input type="checkbox" name="culture" value="${culture}" checked>
+        <span>${configData.cultureNames?.[culture] || culture}</span>
+      </label>
+    `).join('');
+  } else {
+    cultureOptions.innerHTML = regionConfig.cultures.map(culture => `
+      <label class="checkbox-row">
+        <input type="checkbox" name="culture" value="${culture.code}" checked>
+        <span>${culture.label}</span>
+      </label>
+    `).join('');
+  }
 
   // Add change listeners
   cultureOptions.querySelectorAll('input').forEach(cb => {
@@ -529,7 +644,7 @@ function renderWidthOptions() {
 }
 
 function renderCategoryTree() {
-  const region = regionSelect.value;
+  const region = getBannerRegionValue();
   const regionConfig = configData?.mixinad?.regions?.[region];
 
   if (!regionConfig || !regionConfig.categories) {
@@ -587,13 +702,13 @@ function applySavedCredentials() {
   const env = envSelect.value;
   const cultures = getSelectedCultures();
   if (!env || cultures.length === 0) return;
-
-  const cultureMap = configData?.mixinad?.cultureLangMap || {};
+  const lookupCultures = isLoginMode()
+    ? cultures
+    : cultures.map(culture => bannerToSkuCultureMap[culture] || culture);
   let entry = null;
 
-  for (const culture of cultures) {
-    const lookupCulture = cultureMap[culture] || culture;
-    entry = window.CredentialStore.getEntry(env, lookupCulture);
+  for (const culture of lookupCultures) {
+    entry = window.CredentialStore.getEntry(env, culture);
     if (entry) break;
   }
 
@@ -634,18 +749,15 @@ function loadPreferences() {
     const prefs = JSON.parse(localStorage.getItem('mixinadTesterPrefs'));
     if (prefs) {
       if (prefs.environment) envSelect.value = prefs.environment;
-      if (prefs.region) {
-        regionSelect.value = prefs.region;
-        renderCultureOptions();
-        renderCategoryTree();
+      if (loginToggle && typeof prefs.loginEnabled === 'boolean') {
+        loginToggle.checked = prefs.loginEnabled;
       }
-
-      // Restore culture selections
-      if (prefs.cultures) {
-        cultureOptions.querySelectorAll('input').forEach(cb => {
-          cb.checked = prefs.cultures.includes(cb.value);
-        });
-      }
+      setLoginEnabled(loginToggle ? loginToggle.checked : false);
+      applyRegionMode(loginToggle ? loginToggle.checked : false, {
+        previousRegion: prefs.region,
+        previousCultures: prefs.cultures,
+        skipSave: true
+      });
 
       // Restore width selections
       if (prefs.widths) {
@@ -662,11 +774,6 @@ function loadPreferences() {
           cb.checked = prefs.categories.includes(cb.value);
         });
       }
-
-      if (loginToggle && typeof prefs.loginEnabled === 'boolean') {
-        loginToggle.checked = prefs.loginEnabled;
-      }
-      setLoginEnabled(loginToggle ? loginToggle.checked : false);
       if (prefs.username && usernameInput) usernameInput.value = prefs.username;
       if (prefs.password && passwordInput) passwordInput.value = prefs.password;
     }
@@ -1083,8 +1190,8 @@ async function startCapture() {
 
   const options = {
     environment,
-    region: regionSelect.value,
-    cultures,
+    region: getRequestRegion(),
+    cultures: getRequestCultures(),
     widths,
     categories,
     loginEnabled
