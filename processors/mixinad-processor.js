@@ -252,15 +252,55 @@ export class MixInAdProcessor extends BaseProcessor {
         return errorText ? errorText.trim() : '';
     }
 
-    async closeShelf() {
-        const closeBtn = await this.page.$(config.sku.selectors.closeShelfButton);
-        if (!closeBtn) return;
+    async isShelfVisible() {
         try {
-            await closeBtn.click();
-            await this.page.waitForTimeout(500);
+            const shelf = await this.getVisibleShelf();
+            return Boolean(shelf);
         } catch {
-            // Ignore close errors
+            return false;
         }
+    }
+
+    async closeShelf() {
+        const isVisible = await this.isShelfVisible();
+        if (!isVisible) return;
+
+        const closeSelectors = [
+            config.sku.selectors.closeShelfButton,
+            'button:has-text("Keep Shopping")',
+            'button:has-text("Continue Shopping")',
+            'button[aria-label="Close"]'
+        ];
+
+        for (const selector of closeSelectors) {
+            if (!selector) continue;
+            const btn = this.page.locator(selector).first();
+            const canClick = await btn.isVisible().catch(() => false);
+            if (!canClick) continue;
+            try {
+                await btn.click({ timeout: 2000 });
+                break;
+            } catch {
+                // Try next fallback
+            }
+        }
+
+        try {
+            await this.page.keyboard.press('Escape');
+        } catch {
+            // Ignore escape errors
+        }
+
+        try {
+            await this.page.waitForSelector(config.sku.selectors.cartShelf, {
+                state: 'hidden',
+                timeout: 5000
+            });
+        } catch {
+            // Ignore if shelf stays open
+        }
+
+        await this.page.waitForTimeout(200);
     }
 
     async addToCartFromShelf() {
@@ -359,6 +399,11 @@ export class MixInAdProcessor extends BaseProcessor {
 
     async attemptAddToCartForAd(adIndex) {
         try {
+            await this.closeShelf();
+            if (await this.isShelfVisible()) {
+                return { attempted: true, success: false, error: 'Shelf is still visible' };
+            }
+
             const selectBtn = await this.findMixInSelectButton(adIndex);
             if (!selectBtn) {
                 return { attempted: true, success: false, error: 'Select button not found' };
