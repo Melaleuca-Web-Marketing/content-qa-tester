@@ -238,6 +238,74 @@ export class MixInAdProcessor extends BaseProcessor {
         return null;
     }
 
+    extractSkuFromImageUrl(url) {
+        if (!url) return '';
+        const cleanUrl = url.split('?')[0];
+        const match = cleanUrl.match(/\/(\d{4,})h[-_]/i)
+            || cleanUrl.match(/\/(\d{4,})h/i)
+            || cleanUrl.match(/\/(\d{4,})\.(png|jpg|jpeg|gif)$/i);
+        return match ? match[1] : '';
+    }
+
+    extractSkuFromHref(href) {
+        if (!href) return '';
+        const match = href.match(/\/Product\/(\d+)/i);
+        return match ? match[1] : '';
+    }
+
+    async getImageSource(element) {
+        if (!element) return '';
+        const attrs = ['src', 'data-src', 'data-lazy', 'data-original', 'srcset', 'data-srcset'];
+        for (const attr of attrs) {
+            const value = await element.getAttribute(attr);
+            if (!value) continue;
+            if (attr.includes('srcset')) {
+                return value.split(',')[0].trim().split(' ')[0];
+            }
+            return value;
+        }
+        return '';
+    }
+
+    async readSkuFromShelf(shelf) {
+        const selectors = [
+            '[data-sku]',
+            '.m-shelfConfirm__img',
+            '.m-shelfConfirm__summary img',
+            '.m-productInfo img',
+            '.o-shelfCart img'
+        ];
+
+        for (const selector of selectors) {
+            const el = shelf ? await shelf.$(selector) : await this.page.$(selector);
+            if (!el) continue;
+            const dataSku = await el.getAttribute('data-sku');
+            if (dataSku && dataSku.trim()) {
+                return dataSku.trim();
+            }
+            if (selector !== '[data-sku]') {
+                const src = await this.getImageSource(el);
+                const sku = this.extractSkuFromImageUrl(src);
+                if (sku) return sku;
+            }
+        }
+
+        const linkSelectors = [
+            '.m-shelfConfirm__product',
+            'a[href*="/Product/"]'
+        ];
+
+        for (const selector of linkSelectors) {
+            const link = shelf ? await shelf.$(selector) : await this.page.$(selector);
+            if (!link) continue;
+            const href = await link.getAttribute('href');
+            const sku = this.extractSkuFromHref(href);
+            if (sku) return sku;
+        }
+
+        return '';
+    }
+
     getAddedToCartSelector() {
         const base = config.sku.selectors.addedToCartMessage;
         const extra = '.m-shelfConfirm__heading';
@@ -379,8 +447,9 @@ export class MixInAdProcessor extends BaseProcessor {
 
         const addedMessage = await this.readAddedToCartMessage(shelf);
         if (addedMessage) {
+            const sku = await this.readSkuFromShelf(shelf);
             await this.closeShelf();
-            return { attempted: true, success: true, message: addedMessage };
+            return { attempted: true, success: true, message: addedMessage, sku };
         }
 
         const opened = await this.expandConfiguratorAccordions();
@@ -398,8 +467,9 @@ export class MixInAdProcessor extends BaseProcessor {
         if (!addToCartBtn) {
             const confirmMessage = await this.readAddedToCartMessage(shelf);
             if (confirmMessage) {
+                const sku = await this.readSkuFromShelf(shelf);
                 await this.closeShelf();
-                return { attempted: true, success: true, message: confirmMessage };
+                return { attempted: true, success: true, message: confirmMessage, sku };
             }
             log('warn', 'Add To Cart button not found on shelf');
             await this.closeShelf();
@@ -425,8 +495,9 @@ export class MixInAdProcessor extends BaseProcessor {
 
         const confirmMessage = await this.readAddedToCartMessage(shelf);
         if (confirmMessage) {
+            const sku = await this.readSkuFromShelf(shelf);
             await this.closeShelf();
-            return { attempted: true, success: true, message: confirmMessage };
+            return { attempted: true, success: true, message: confirmMessage, sku };
         }
 
         const errorText = await this.readAddToCartError();
