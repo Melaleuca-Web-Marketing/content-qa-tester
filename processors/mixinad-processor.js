@@ -238,9 +238,56 @@ export class MixInAdProcessor extends BaseProcessor {
         return null;
     }
 
+    getAddedToCartSelector() {
+        const base = config.sku.selectors.addedToCartMessage;
+        const extra = '.m-shelfConfirm__heading';
+        if (base && base.includes(extra)) {
+            return base;
+        }
+        return base ? `${base}, ${extra}` : extra;
+    }
+
+    async waitForShelfContent() {
+        const timeout = Math.min(config.sku.timeouts.shelfAppear || 5000, 5000);
+        const addedSelector = this.getAddedToCartSelector();
+        const addToCartSelectors = [
+            config.sku.selectors.addToCartButton,
+            '.m-cartAddConfig__btn button'
+        ].filter(Boolean);
+
+        const waiters = [];
+        if (addedSelector) {
+            waiters.push(this.page.waitForSelector(addedSelector, {
+                state: 'visible',
+                timeout
+            }));
+        }
+        for (const selector of addToCartSelectors) {
+            waiters.push(this.page.waitForSelector(selector, {
+                state: 'visible',
+                timeout
+            }));
+        }
+        if (config.sku.selectors.errorMessage) {
+            waiters.push(this.page.waitForSelector(config.sku.selectors.errorMessage, {
+                state: 'visible',
+                timeout
+            }));
+        }
+
+        if (waiters.length === 0) return;
+
+        try {
+            await Promise.race(waiters);
+        } catch {
+            // Continue if shelf content takes longer to render
+        }
+    }
+
     async readAddedToCartMessage(shelf) {
-        const headerEl = (shelf ? await shelf.$(config.sku.selectors.addedToCartMessage) : null)
-            || await this.page.$(config.sku.selectors.addedToCartMessage);
+        const headerSelector = this.getAddedToCartSelector();
+        const headerEl = (shelf ? await shelf.$(headerSelector) : null)
+            || await this.page.$(headerSelector);
         const message = headerEl ? await headerEl.textContent() : '';
         return message ? message.trim() : '';
     }
@@ -328,6 +375,8 @@ export class MixInAdProcessor extends BaseProcessor {
             return { attempted: true, success: false, error: 'Cart shelf did not appear within timeout' };
         }
 
+        await this.waitForShelfContent();
+
         const addedMessage = await this.readAddedToCartMessage(shelf);
         if (addedMessage) {
             await this.closeShelf();
@@ -340,9 +389,19 @@ export class MixInAdProcessor extends BaseProcessor {
             await this.page.waitForTimeout(300);
         }
 
+        await this.waitForShelfContent();
+
         const addToCartBtn = await shelf.$(config.sku.selectors.addToCartButton)
-            || await this.page.$(config.sku.selectors.addToCartButton);
+            || await shelf.$('.m-cartAddConfig__btn button')
+            || await this.page.$(config.sku.selectors.addToCartButton)
+            || await this.page.$('.m-cartAddConfig__btn button');
         if (!addToCartBtn) {
+            const confirmMessage = await this.readAddedToCartMessage(shelf);
+            if (confirmMessage) {
+                await this.closeShelf();
+                return { attempted: true, success: true, message: confirmMessage };
+            }
+            log('warn', 'Add To Cart button not found on shelf');
             await this.closeShelf();
             return { attempted: true, success: false, error: 'Add To Cart button not found' };
         }
