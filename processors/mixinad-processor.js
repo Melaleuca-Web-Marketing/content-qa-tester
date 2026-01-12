@@ -502,23 +502,12 @@ export class MixInAdProcessor extends BaseProcessor {
 
                 const imageBase64 = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
                 const addToCartKey = String(adInfo.domPosition ?? i);
-                let addToCartResult = null;
 
-                if (meta.addToCartResults && adInfo.hasSelectButton) {
-                    if (!meta.addToCartResults.has(addToCartKey) && meta.attemptAddToCart) {
-                        if (meta.enableAddToCart) {
-                            addToCartResult = await this.attemptAddToCartForAd(i);
-                        } else {
-                            addToCartResult = {
-                                attempted: false,
-                                success: false,
-                                reason: 'Login disabled'
-                            };
-                        }
-                        meta.addToCartResults.set(addToCartKey, addToCartResult);
-                    }
-
-                    addToCartResult = meta.addToCartResults.get(addToCartKey) || addToCartResult;
+                if (meta.selectableAds && adInfo.hasSelectButton && !meta.selectableAds.has(addToCartKey)) {
+                    meta.selectableAds.set(addToCartKey, {
+                        index: i,
+                        domPosition: adInfo.domPosition ?? null
+                    });
                 }
 
                 results.push({
@@ -535,7 +524,7 @@ export class MixInAdProcessor extends BaseProcessor {
                     imageLocale: detectImageLocale(adInfo.imageSrc),
                     imageSrc: adInfo.imageSrc,
                     imageAlt: adInfo.imageAlt || '',
-                    addToCartResult,
+                    addToCartKey,
                     mainCategory: meta.mainCategory || '',
                     environment: meta.environment || 'stage',
                     url
@@ -643,6 +632,7 @@ export class MixInAdProcessor extends BaseProcessor {
 
                 const currentBanner = jobIndex + 1;
                 const addToCartResults = new Map();
+                const selectableAds = new Map();
 
                 await this.ensureLoggedIn(job, options, loggedInHosts);
 
@@ -677,9 +667,7 @@ export class MixInAdProcessor extends BaseProcessor {
                             skipAuthCheck: hasAuthenticated,
                             username: options.username,
                             password: options.password,
-                            addToCartResults,
-                            attemptAddToCart: widthIndex === 0,
-                            enableAddToCart: options.loginEnabled === true
+                            selectableAds
                         });
 
                         // pageResults is an array (one result per ad found, or one error/noAdsFound result)
@@ -771,6 +759,69 @@ export class MixInAdProcessor extends BaseProcessor {
                     // Wait between captures
                     if (!this.shouldStop) {
                         await new Promise(r => setTimeout(r, config.mixinad.timeouts.betweenCaptures));
+                    }
+                }
+
+                if (selectableAds.size > 0) {
+                    if (!options.loginEnabled) {
+                        for (const key of selectableAds.keys()) {
+                            addToCartResults.set(key, {
+                                attempted: false,
+                                success: false,
+                                reason: 'Login disabled'
+                            });
+                        }
+                    } else {
+                        await this.page.goto(job.url, {
+                            waitUntil: 'load',
+                            timeout: config.mixinad.timeouts.singleCapture
+                        });
+                        await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
+
+                        if (!hasAuthenticated) {
+                            const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(
+                                options.environment,
+                                options.username,
+                                options.password
+                            );
+                            if (msAuthHandled) {
+                                await this.page.goto(job.url, {
+                                    waitUntil: 'load',
+                                    timeout: config.mixinad.timeouts.singleCapture
+                                });
+                                await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
+                            }
+                        }
+
+                        const orderedAds = Array.from(selectableAds.entries())
+                            .map(([key, value]) => ({ key, ...value }))
+                            .sort((a, b) => {
+                                const aPos = Number.isFinite(a.domPosition) ? a.domPosition : a.index;
+                                const bPos = Number.isFinite(b.domPosition) ? b.domPosition : b.index;
+                                return aPos - bPos;
+                            });
+
+                        for (const ad of orderedAds) {
+                            if (this.shouldStop) break;
+                            await this.closeShelf();
+                            const result = await this.attemptAddToCartForAd(ad.index);
+                            addToCartResults.set(ad.key, result);
+                        }
+                    }
+
+                    if (addToCartResults.size > 0) {
+                        for (const result of this.results) {
+                            if (result.culture !== job.culture
+                                || result.category !== job.category
+                                || (result.mainCategory || '') !== (job.mainCategory || '')) {
+                                continue;
+                            }
+
+                            const key = result.addToCartKey;
+                            if (key && addToCartResults.has(key)) {
+                                result.addToCartResult = addToCartResults.get(key);
+                            }
+                        }
                     }
                 }
             }
