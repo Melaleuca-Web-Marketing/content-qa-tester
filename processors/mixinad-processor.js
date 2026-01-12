@@ -352,221 +352,170 @@ export class MixInAdProcessor extends BaseProcessor {
             await this.launchBrowser();
             const initialWidth = selectedWidths[0] || config.mixinad.widths[0] || 320;
             let completedCategories = 0;
-            const cultureGroups = new Map();
-            const cultureOrder = [];
-            for (const job of jobs) {
-                if (!cultureGroups.has(job.culture)) {
-                    cultureGroups.set(job.culture, []);
-                    cultureOrder.push(job.culture);
+
+            // Create single context without locale settings (like banner processor)
+            // This ensures sc_lang URL parameter is used instead of browser locale
+            await this.createContext({
+                viewport: { width: initialWidth, height: config.mixinad.browser.captureHeight },
+                userAgent: config.mixinad.browser.userAgent,
+                isMobile: config.mixinad.browser.isMobile,
+                hasTouch: config.mixinad.browser.hasTouch,
+                deviceScaleFactor: config.mixinad.browser.deviceScaleFactor
+            });
+            await this.createPage();
+
+            const loggedInHosts = new Map();
+            let hasAuthenticated = false;
+
+            // Perform initial auth check for stage/UAT
+            if ((options.environment === 'stage' || options.environment === 'uat') && jobs.length > 0) {
+                log('info', 'Performing initial authentication check...');
+                const firstJob = jobs[0];
+                await this.page.goto(firstJob.url, {
+                    waitUntil: 'load',
+                    timeout: config.mixinad.timeouts.singleCapture
+                });
+                await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
+
+                const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password);
+                if (msAuthHandled) {
+                    hasAuthenticated = true;
                 }
-                cultureGroups.get(job.culture).push(job);
             }
 
-            const useCultureContexts = options.loginEnabled && cultureOrder.length > 1;
-            let jobIndex = 0;
+            // Process each job
+            for (let jobIndex = 0; jobIndex < jobs.length; jobIndex++) {
+                const job = jobs[jobIndex];
+                if (this.shouldStop) break;
 
-            const createContextForCulture = async (culture) => {
-                const locale = config.mixinad.cultureLangMap?.[culture] || culture;
-                if (this.context) {
-                    await this.context.close().catch(() => { });
-                    this.context = null;
-                    this.page = null;
-                }
-                log('info', 'Initializing culture context', { culture, locale });
-                await this.createContext({
-                    viewport: { width: initialWidth, height: config.mixinad.browser.captureHeight },
-                    userAgent: config.mixinad.browser.userAgent,
-                    isMobile: config.mixinad.browser.isMobile,
-                    hasTouch: config.mixinad.browser.hasTouch,
-                    deviceScaleFactor: config.mixinad.browser.deviceScaleFactor,
-                    locale,
-                    extraHTTPHeaders: { 'Accept-Language': locale }
-                });
-                await this.createPage();
-            };
+                const currentBanner = jobIndex + 1;
 
-            const runAuthCheck = async (jobList) => {
-                let hasAuthenticated = false;
-                if ((options.environment === 'stage' || options.environment === 'uat') && jobList.length > 0) {
-                    log('info', 'Performing initial authentication check...');
-                    const firstJob = jobList[0];
-                    await this.page.goto(firstJob.url, {
-                        waitUntil: 'load',
-                        timeout: config.mixinad.timeouts.singleCapture
+                await this.ensureLoggedIn(job, options, loggedInHosts);
+
+                for (let widthIndex = 0; widthIndex < selectedWidths.length; widthIndex++) {
+                    const width = selectedWidths[widthIndex];
+                    if (this.shouldStop) break;
+
+                    const isLastWidthForCategory = widthIndex === selectedWidths.length - 1;
+
+                    this.emitProgress({
+                        type: 'capture-progress',
+                        width,
+                        state: 'working',
+                        category: job.category,
+                        culture: job.culture,
+                        mainCategory: job.mainCategory,
+                        // Category-level progress
+                        totalBanners: totalCategories,
+                        completedBanners: completedCategories,
+                        currentBanner: currentBanner,
+                        isLastWidthForBanner: isLastWidthForCategory
                     });
-                    await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
 
-                    const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password);
-                    if (msAuthHandled) {
-                        hasAuthenticated = true;
-                    }
-                }
-                return hasAuthenticated;
-            };
+                    try {
+                        // Pass hasAuthenticated flag to skip auth checks during captures
+                        const pageResults = await this.captureAtWidth(job.url, width, {
+                            category: job.category,
+                            culture: job.culture,
+                            order: job.order,
+                            mainCategory: job.mainCategory,
+                            environment: options.environment,
+                            skipAuthCheck: hasAuthenticated,
+                            username: options.username,
+                            password: options.password
+                        });
 
-            const processJobList = async (jobList, loggedInHosts, hasAuthenticated) => {
-                for (const job of jobList) {
-                    if (this.shouldStop) return;
+                        // pageResults is an array (one result per ad found, or one error/noAdsFound result)
+                        for (const result of pageResults) {
+                            this.results.push(result);
+                        }
 
-                    const currentBanner = jobIndex + 1;
+                        // Enhanced memory warning with actual usage metrics
+                        if (this.results.length % MEMORY.SCREENSHOT_WARNING_INTERVAL === 0 && this.results.length > 0) {
+                            const memUsage = getMemoryUsageMB();
+                            log('warn', `${this.results.length} screenshots in memory. Heap: ${memUsage.heapUsed}MB / ${memUsage.heapTotal}MB. Consider reducing batch size for very large runs.`);
 
-                    await this.ensureLoggedIn(job, options, loggedInHosts);
+                            // Suggest generating report early if memory is high
+                            if (checkMemoryThreshold(1024)) {
+                                log('warn', 'Memory usage high (>1GB heap). Consider stopping and generating report to free memory.');
+                            }
+                        }
 
-                    for (let widthIndex = 0; widthIndex < selectedWidths.length; widthIndex++) {
-                        const width = selectedWidths[widthIndex];
-                        if (this.shouldStop) break;
+                        completedCaptures++;
 
-                        const isLastWidthForCategory = widthIndex === selectedWidths.length - 1;
+                        // Build result summary for progress event
+                        const adsFound = pageResults.filter(r => !r.error && !r.noAdsFound).length;
+                        const noAdsFound = pageResults.some(r => r.noAdsFound);
+                        const hasError = pageResults.some(r => r.error);
+
+                        // Validate each ad result against Excel if data available
+                        const excelData = options.excelValidation?.data;
+                        let validationResults = [];
+                        if (excelData && excelData.length > 0 && adsFound > 0) {
+                            for (const result of pageResults) {
+                                if (!result.error && !result.noAdsFound) {
+                                    const validation = validateSingleResult(result, excelData, 'mix-in-ad');
+                                    result.validation = validation;
+                                    validationResults.push({
+                                        adIndex: result.adIndex,
+                                        position: result.position,
+                                        validation
+                                    });
+                                }
+                            }
+                        }
+
+                        // Update completedCategories when we finish the last width for a category
+                        if (isLastWidthForCategory) {
+                            completedCategories++;
+                        }
 
                         this.emitProgress({
                             type: 'capture-progress',
                             width,
-                            state: 'working',
+                            state: hasError ? 'error' : 'done',
                             category: job.category,
                             culture: job.culture,
                             mainCategory: job.mainCategory,
+                            remaining: estimatedCaptures - completedCaptures,
+                            total: estimatedCaptures,
+                            completed: completedCaptures,
                             // Category-level progress
                             totalBanners: totalCategories,
                             completedBanners: completedCategories,
                             currentBanner: currentBanner,
-                            isLastWidthForBanner: isLastWidthForCategory
+                            isLastWidthForBanner: isLastWidthForCategory,
+                            // Include result data for activity feed
+                            result: {
+                                url: job.url,
+                                adsFound,
+                                noAdsFound,
+                                hasError,
+                                errorMessage: hasError ? pageResults.find(r => r.error)?.message : null,
+                                validations: validationResults
+                            }
                         });
 
-                        try {
-                            // Pass hasAuthenticated flag to skip auth checks during captures
-                            const pageResults = await this.captureAtWidth(job.url, width, {
-                                category: job.category,
-                                culture: job.culture,
-                                order: job.order,
-                                mainCategory: job.mainCategory,
-                                environment: options.environment,
-                                skipAuthCheck: hasAuthenticated,
-                                username: options.username,
-                                password: options.password
-                            });
-
-                            // pageResults is an array (one result per ad found, or one error/noAdsFound result)
-                            for (const result of pageResults) {
-                                this.results.push(result);
-                            }
-
-                            // Enhanced memory warning with actual usage metrics
-                            if (this.results.length % MEMORY.SCREENSHOT_WARNING_INTERVAL === 0 && this.results.length > 0) {
-                                const memUsage = getMemoryUsageMB();
-                                log('warn', `${this.results.length} screenshots in memory. Heap: ${memUsage.heapUsed}MB / ${memUsage.heapTotal}MB. Consider reducing batch size for very large runs.`);
-
-                                // Suggest generating report early if memory is high
-                                if (checkMemoryThreshold(1024)) {
-                                    log('warn', 'Memory usage high (>1GB heap). Consider stopping and generating report to free memory.');
-                                }
-                            }
-
-                            completedCaptures++;
-
-                            // Build result summary for progress event
-                            const adsFound = pageResults.filter(r => !r.error && !r.noAdsFound).length;
-                            const noAdsFound = pageResults.some(r => r.noAdsFound);
-                            const hasError = pageResults.some(r => r.error);
-
-                            // Validate each ad result against Excel if data available
-                            const excelData = options.excelValidation?.data;
-                            let validationResults = [];
-                            if (excelData && excelData.length > 0 && adsFound > 0) {
-                                for (const result of pageResults) {
-                                    if (!result.error && !result.noAdsFound) {
-                                        const validation = validateSingleResult(result, excelData, 'mix-in-ad');
-                                        result.validation = validation;
-                                        validationResults.push({
-                                            adIndex: result.adIndex,
-                                            position: result.position,
-                                            validation
-                                        });
-                                    }
-                                }
-                            }
-
-                            // Update completedCategories when we finish the last width for a category
-                            if (isLastWidthForCategory) {
-                                completedCategories++;
-                            }
-
-                            this.emitProgress({
-                                type: 'capture-progress',
-                                width,
-                                state: hasError ? 'error' : 'done',
-                                category: job.category,
-                                culture: job.culture,
-                                mainCategory: job.mainCategory,
-                                remaining: estimatedCaptures - completedCaptures,
-                                total: estimatedCaptures,
-                                completed: completedCaptures,
-                                // Category-level progress
-                                totalBanners: totalCategories,
-                                completedBanners: completedCategories,
-                                currentBanner: currentBanner,
-                                isLastWidthForBanner: isLastWidthForCategory,
-                                // Include result data for activity feed
-                                result: {
-                                    url: job.url,
-                                    adsFound,
-                                    noAdsFound,
-                                    hasError,
-                                    errorMessage: hasError ? pageResults.find(r => r.error)?.message : null,
-                                    validations: validationResults
-                                }
-                            });
-
-                        } catch (err) {
-                            log('error', 'Capture failed', { error: err.message });
-                            this.results.push({
-                                error: true,
-                                message: err.message,
-                                width,
-                                culture: job.culture,
-                                category: job.category,
-                                mainCategory: job.mainCategory,
-                                environment: options.environment,
-                                url: job.url
-                            });
-                            completedCaptures++;
-                        }
-
-                        // Wait between captures
-                        if (!this.shouldStop) {
-                            await new Promise(r => setTimeout(r, config.mixinad.timeouts.betweenCaptures));
-                        }
+                    } catch (err) {
+                        log('error', 'Capture failed', { error: err.message });
+                        this.results.push({
+                            error: true,
+                            message: err.message,
+                            width,
+                            culture: job.culture,
+                            category: job.category,
+                            mainCategory: job.mainCategory,
+                            environment: options.environment,
+                            url: job.url
+                        });
+                        completedCaptures++;
                     }
 
-                    jobIndex += 1;
+                    // Wait between captures
+                    if (!this.shouldStop) {
+                        await new Promise(r => setTimeout(r, config.mixinad.timeouts.betweenCaptures));
+                    }
                 }
-            };
-
-            if (useCultureContexts) {
-                for (const culture of cultureOrder) {
-                    if (this.shouldStop) break;
-                    const jobList = cultureGroups.get(culture);
-                    await createContextForCulture(culture);
-                    const hasAuthenticated = await runAuthCheck(jobList);
-                    const loggedInHosts = new Map();
-                    await processJobList(jobList, loggedInHosts, hasAuthenticated);
-                }
-            } else {
-                const locale = options.loginEnabled && jobs.length > 0
-                    ? (config.mixinad.cultureLangMap?.[jobs[0].culture] || jobs[0].culture)
-                    : null;
-                await this.createContext({
-                    viewport: { width: initialWidth, height: config.mixinad.browser.captureHeight },
-                    userAgent: config.mixinad.browser.userAgent,
-                    isMobile: config.mixinad.browser.isMobile,
-                    hasTouch: config.mixinad.browser.hasTouch,
-                    deviceScaleFactor: config.mixinad.browser.deviceScaleFactor,
-                    ...(locale ? { locale, extraHTTPHeaders: { 'Accept-Language': locale } } : {})
-                });
-                await this.createPage();
-
-                const hasAuthenticated = await runAuthCheck(jobs);
-                const loggedInHosts = new Map();
-                await processJobList(jobs, loggedInHosts, hasAuthenticated);
             }
 
         } catch (err) {
