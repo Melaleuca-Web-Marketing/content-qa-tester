@@ -109,25 +109,41 @@ export class MixInAdProcessor extends BaseProcessor {
             // Use raw base URL string as fallback key
         }
 
-        if (loggedInHosts.has(loginOrigin)) {
+        const lastCulture = loggedInHosts.get(loginOrigin) || null;
+
+        if (!lastCulture) {
+            const loginResult = await this.loginToMelaleuca({
+                baseUrl,
+                environment: options.environment,
+                username: options.username,
+                password: options.password,
+                selectors: config.sku.selectors,
+                timeouts: config.sku.timeouts
+            });
+
+            if (!loginResult.success) {
+                throw new Error(`Login failed: ${loginResult.error}`);
+            }
+
+            loggedInHosts.set(loginOrigin, job.culture);
+            await this.page.waitForTimeout(2000);
             return;
         }
 
-        const loginResult = await this.loginToMelaleuca({
-            baseUrl,
-            environment: options.environment,
-            username: options.username,
-            password: options.password,
-            selectors: config.sku.selectors,
-            timeouts: config.sku.timeouts
-        });
-
-        if (!loginResult.success) {
-            throw new Error(`Login failed: ${loginResult.error}`);
+        if (lastCulture !== job.culture) {
+            log('info', 'Switching culture for logged-in session', {
+                from: lastCulture,
+                to: job.culture,
+                url: baseUrl
+            });
+            await this.page.goto(baseUrl, {
+                waitUntil: 'load',
+                timeout: config.mixinad.timeouts.singleCapture
+            });
+            await this.page.waitForTimeout(config.mixinad.timeouts.pageLoad);
+            await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password);
+            loggedInHosts.set(loginOrigin, job.culture);
         }
-
-        loggedInHosts.add(loginOrigin);
-        await this.page.waitForTimeout(2000);
     }
 
     // Capture all mix-in ads at a specific width
@@ -362,7 +378,7 @@ export class MixInAdProcessor extends BaseProcessor {
                 }
             }
 
-            const loggedInHosts = new Set();
+            const loggedInHosts = new Map();
 
             // Process each job (category)
             let completedCategories = 0;
