@@ -1127,15 +1127,40 @@ export class MixInAdProcessor extends BaseProcessor {
 
                 if (selectedItems.length === 0) continue;
 
-                for (const item of selectedItems) {
-                    const url = buildBannerUrl(environment, culture, item.path);
-                    if (!url) {
-                        log('warn', 'Could not build URL', { environment, culture, path: item.path });
-                        continue;
-                    }
+                  for (const item of selectedItems) {
+                      let path = item.path;
+                      if (!path && item.paths) {
+                          const langCode = config.banner.cultureLangMap[culture] || culture;
+                          path = item.paths[langCode];
 
-                    jobs.push({
-                        url,
+                          if (!path && typeof langCode === 'string' && langCode.includes('-')) {
+                              const regionKey = langCode.split('-')[1];
+                              path = item.paths[regionKey] || item.paths[regionKey?.toUpperCase?.()];
+                          }
+
+                          if (!path) {
+                              path = item.paths[culture];
+                          }
+
+                          if (!path) {
+                              log('warn', 'No path found for culture in paths object', {
+                                  culture,
+                                  langCode,
+                                  availablePaths: Object.keys(item.paths),
+                                  item: item.label
+                              });
+                              continue;
+                          }
+                      }
+
+                      const url = buildBannerUrl(environment, culture, path);
+                      if (!url) {
+                          log('warn', 'Could not build URL', { environment, culture, path });
+                          continue;
+                      }
+
+                      jobs.push({
+                          url,
                         culture,
                         category: item.label,
                         mainCategory: mainCategory.name,

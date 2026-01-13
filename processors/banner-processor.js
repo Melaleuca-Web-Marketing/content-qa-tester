@@ -650,6 +650,15 @@ export class BannerProcessor extends BaseProcessor {
             const langCode = config.banner.cultureLangMap[culture] || culture;
             path = item.paths[langCode];
 
+            if (!path && typeof langCode === 'string' && langCode.includes('-')) {
+              const regionKey = langCode.split('-')[1];
+              path = item.paths[regionKey] || item.paths[regionKey?.toUpperCase?.()];
+            }
+
+            if (!path) {
+              path = item.paths[culture];
+            }
+
             if (!path) {
               log('warn', 'No path found for culture in paths object', {
                 culture,
