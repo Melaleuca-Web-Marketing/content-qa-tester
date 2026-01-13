@@ -29,6 +29,8 @@ function toggleTheme() {
 
 let configData = null;
 let isCapturing = false;
+let captureHadError = false;
+let captureErrorMessage = '';
 let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
@@ -877,11 +879,13 @@ function handleProgress(data) {
 }
 
 function handleStatusUpdate(data) {
-  switch (data.type) {
-    case 'started':
-      isCapturing = true;
-      captureStartTime = Date.now();
-      setUICapturing();
+    switch (data.type) {
+      case 'started':
+        isCapturing = true;
+        captureHadError = false;
+        captureErrorMessage = '';
+        captureStartTime = Date.now();
+        setUICapturing();
       // Use category count (jobCount) for status message, not estimatedCaptures
       setStatusRunning('Starting capture...', `${data.jobCount || data.totalBanners} categories to process`);
       resetCredentialPromptState();
@@ -904,19 +908,26 @@ function handleStatusUpdate(data) {
       if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
       break;
 
-    case 'completed':
-      isCapturing = false;
-      isWaitingForResume = false;
-      setUIIdle();
+      case 'completed':
+        isCapturing = false;
+        isWaitingForResume = false;
+        setUIIdle();
 
-      if (data.errorCount === 0) {
-        setStatusSuccess('Capture complete!', `${data.successCount} captures in ${formatDuration(data.duration)}`);
-      } else {
-        setStatusSuccess('Capture complete with errors', `${data.successCount} succeeded, ${data.errorCount} failed`);
-      }
+        const successCount = Number.isFinite(data.successCount) ? data.successCount : 0;
+        const errorCount = Number.isFinite(data.errorCount) ? data.errorCount : 0;
 
-      if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
-      break;
+        if (captureHadError || errorCount > 0 || successCount === 0) {
+          if (errorCount > 0) {
+            setStatusError('Capture complete with errors', `${successCount} succeeded, ${errorCount} failed`);
+          } else {
+            setStatusError('Capture failed', captureErrorMessage || 'Capture did not complete');
+          }
+        } else {
+          setStatusSuccess('Capture complete!', `${successCount} captures in ${formatDuration(data.duration)}`);
+        }
+
+        if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
+        break;
 
     case 'waiting-for-auth':
       setStatusRunning('Waiting for manual sign-in', data.message || 'Please sign in to the environment in the browser window, then click Resume Capture');
@@ -953,6 +964,8 @@ function handleStatusUpdate(data) {
 function handleError(data) {
   isCapturing = false;
   setUIIdle();
+  captureHadError = true;
+  captureErrorMessage = data.message || 'Capture failed';
   setStatusError('Error', data.message);
 }
 

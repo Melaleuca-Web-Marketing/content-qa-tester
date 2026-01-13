@@ -29,6 +29,8 @@ function toggleTheme() {
 
 let configData = null;
 let isCapturing = false;
+let captureHadError = false;
+let captureErrorMessage = '';
 let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
@@ -152,11 +154,13 @@ async function checkStatus() {
     } else if (status.resultsCount > 0) {
       // Job completed but we may have missed some results - restore from server
       await restoreActivityFromServer();
+      setStatusIdle('Ready to capture', `Previous job completed with ${status.resultsCount} results`);
     } else {
       setStatusIdle('Ready to capture', '');
     }
   } catch (err) {
     console.error('Failed to check status:', err);
+    setStatusIdle('Ready to capture', '');
   }
 }
 
@@ -789,11 +793,13 @@ function handleResult(data) {
 }
 
 function handleStatusUpdate(data) {
-  switch (data.type) {
-    case 'started':
-      isCapturing = true;
-      captureStartTime = Date.now();
-      setUICapturing();
+    switch (data.type) {
+      case 'started':
+        isCapturing = true;
+        captureHadError = false;
+        captureErrorMessage = '';
+        captureStartTime = Date.now();
+        setUICapturing();
       setStatusRunning('Starting PSLP capture...', `${data.componentsCount ?? data.componentCount ?? 0} components to extract`);
       // Clear and show activity feed
       clearActivityFeed();
@@ -811,24 +817,34 @@ function handleStatusUpdate(data) {
       if (saveReportBtn) saveReportBtn.disabled = true;
       break;
 
-    case 'completed':
-      isCapturing = false;
-      isWaitingForResume = false;
-      setUIIdle();
+      case 'completed':
+        isCapturing = false;
+        isWaitingForResume = false;
+        setUIIdle();
 
-      const screenshots = data.results?.screenshots?.length || 0;
-      const components = data.results?.componentReports?.length || 0;
+        const screenshots = data.results?.screenshots?.length || 0;
+        const components = data.results?.componentReports?.length || 0;
 
-      setStatusSuccess('Capture complete!', `${screenshots} screenshots, ${components} components extracted in ${formatDuration(data.duration)}`);
+        const hasResults = screenshots > 0 || components > 0;
+        if (captureHadError || !hasResults) {
+          setStatusError(
+            'Capture failed',
+            captureErrorMessage || (hasResults ? 'Capture did not complete' : 'No screenshots or components were captured')
+          );
+        } else {
+          setStatusSuccess('Capture complete!', `${screenshots} screenshots, ${components} components extracted in ${formatDuration(data.duration)}`);
+        }
 
-      if (saveReportBtn) saveReportBtn.disabled = !data.results;
-      break;
+        if (saveReportBtn) saveReportBtn.disabled = !data.results;
+        break;
 
-    case 'error':
-      isCapturing = false;
-      setUIIdle();
-      setStatusError('Error', data.message);
-      break;
+      case 'error':
+        isCapturing = false;
+        setUIIdle();
+        captureHadError = true;
+        captureErrorMessage = data.message || 'Capture failed';
+        setStatusError('Error', data.message);
+        break;
 
     case 'waiting-for-auth':
       setStatusRunning('Waiting for manual sign-in', data.message || 'Please sign in to the environment in the browser window, then click Resume Capture');
@@ -868,6 +884,8 @@ function handleStatusUpdate(data) {
 function handleError(data) {
   isCapturing = false;
   setUIIdle();
+  captureHadError = true;
+  captureErrorMessage = data.message || 'Capture failed';
   setStatusError('Error', data.message);
 }
 

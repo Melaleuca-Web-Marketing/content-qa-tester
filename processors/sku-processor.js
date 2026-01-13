@@ -671,46 +671,50 @@ export class SkuProcessor extends BaseProcessor {
       log('info', 'Product data extracted successfully', { name: productData.name });
 
       // Capture screenshot
-      if (wantsTopScreenshot || wantsFullScreenshot) {
-        log('info', 'Preparing page for screenshot...');
-        await this.prepareForScreenshot();
-      this.emit('progress', {
-        type: 'sku-status',
-        sku,
-        culture,
-        current: currentIndex,
-        total,
-        status: 'Capturing screenshot',
-        url
-      });
-
-        let screenshotBuffer = null;
-        if (wantsTopScreenshot) {
-          const topSection = await this.page.$(config.sku.selectors.pdpTopSection);
-          if (topSection) {
-            log('info', 'Capturing top PDP section screenshot...');
-            screenshotBuffer = await topSection.screenshot({ type: 'jpeg', quality: 80 });
-            result.screenshotType = 'top';
-          } else {
-            log('warn', 'Top PDP section not found, skipping screenshot');
+        if (wantsTopScreenshot || wantsFullScreenshot) {
+          log('info', 'Preparing page for screenshot...');
+          await this.prepareForScreenshot();
+          if (currentIndex === 1) {
+            log('info', 'First SKU - allowing extra time for images to settle before screenshot');
+            await this.page.waitForTimeout(750);
           }
-        }
-
-        if (!screenshotBuffer && wantsFullScreenshot) {
-          log('info', 'Capturing full page screenshot...');
-          screenshotBuffer = await this.page.screenshot({
-            fullPage: true,
-            type: 'jpeg',
-            quality: 80
+          this.emit('progress', {
+            type: 'sku-status',
+            sku,
+            culture,
+            current: currentIndex,
+            total,
+            status: 'Capturing screenshot',
+            url
           });
-          result.screenshotType = 'full';
-        }
 
-        if (screenshotBuffer) {
-          result.screenshot = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
-          log('info', 'Screenshot captured successfully');
+            let screenshotBuffer = null;
+            if (wantsTopScreenshot) {
+              const topSection = await this.page.$(config.sku.selectors.pdpTopSection);
+              if (topSection) {
+                log('info', 'Capturing top PDP section screenshot...');
+                screenshotBuffer = await topSection.screenshot({ type: 'jpeg', quality: 80 });
+                result.screenshotType = 'top';
+              } else {
+                log('warn', 'Top PDP section not found, skipping screenshot');
+              }
+            }
+
+            if (!screenshotBuffer && wantsFullScreenshot) {
+              log('info', 'Capturing full page screenshot...');
+              screenshotBuffer = await this.page.screenshot({
+                fullPage: true,
+                type: 'jpeg',
+                quality: 80
+              });
+              result.screenshotType = 'full';
+            }
+
+            if (screenshotBuffer) {
+              result.screenshot = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
+              log('info', 'Screenshot captured successfully');
+            }
         }
-      }
 
       if (this.shouldStop) {
         log('info', 'Capture cancelled by user');

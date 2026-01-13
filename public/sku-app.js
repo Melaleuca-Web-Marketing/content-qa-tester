@@ -29,6 +29,8 @@ function toggleTheme() {
 
 let configData = null;
 let isCapturing = false;
+let captureHadError = false;
+let captureErrorMessage = '';
 let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
@@ -156,11 +158,13 @@ async function checkStatus() {
     } else if (status.resultsCount > 0) {
       // Job completed but we may have missed some results - restore from server
       await restoreActivityFromServer();
+      setStatusIdle('Ready to capture', `Previous job completed with ${status.resultsCount} results`);
     } else {
       setStatusIdle('Ready to capture', '');
     }
   } catch (err) {
     console.error('Failed to check status:', err);
+    setStatusIdle('Ready to capture', '');
   }
 }
 
@@ -612,11 +616,13 @@ function handleProgress(data) {
 }
 
 function handleStatusUpdate(data) {
-  switch (data.type) {
-    case 'started':
-      isCapturing = true;
-      captureStartTime = Date.now();
-      setUICapturing();
+    switch (data.type) {
+      case 'started':
+        isCapturing = true;
+        captureHadError = false;
+        captureErrorMessage = '';
+        captureStartTime = Date.now();
+        setUICapturing();
       setStatusRunning('Starting capture...', `${data.skuCount} captures to process`);
       // Clear and show activity feed
       clearActivityFeed();
@@ -668,25 +674,34 @@ function handleStatusUpdate(data) {
       if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
       break;
 
-    case 'completed':
-      isCapturing = false;
-      isWaitingForResume = false;
-      setUIIdle();
+      case 'completed':
+        isCapturing = false;
+        isWaitingForResume = false;
+        setUIIdle();
 
-      if (data.errorCount === 0) {
-        setStatusSuccess('Capture complete!', `${data.successCount} captures completed in ${formatDuration(data.duration)}`);
-      } else {
-        setStatusSuccess('Capture complete with errors', `${data.successCount} captures succeeded, ${data.errorCount} failed`);
-      }
+        const successCount = Number.isFinite(data.successCount) ? data.successCount : 0;
+        const errorCount = Number.isFinite(data.errorCount) ? data.errorCount : 0;
 
-      if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
-      break;
+        if (captureHadError || errorCount > 0 || successCount === 0) {
+          if (errorCount > 0) {
+            setStatusError('Capture complete with errors', `${successCount} captures succeeded, ${errorCount} failed`);
+          } else {
+            setStatusError('Capture failed', captureErrorMessage || 'Capture did not complete');
+          }
+        } else {
+          setStatusSuccess('Capture complete!', `${successCount} captures completed in ${formatDuration(data.duration)}`);
+        }
+
+        if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
+        break;
   }
 }
 
 function handleError(data) {
   isCapturing = false;
   setUIIdle();
+  captureHadError = true;
+  captureErrorMessage = data.message || 'Capture failed';
   setStatusError('Error', data.message);
 }
 
