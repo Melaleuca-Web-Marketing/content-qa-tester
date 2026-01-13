@@ -999,6 +999,54 @@ export class MixInAdProcessor extends BaseProcessor {
                         }
                     }
                 }
+
+                const categoryResults = this.results.filter(result =>
+                    result.culture === job.culture
+                    && result.category === job.category
+                    && (result.mainCategory || '') === (job.mainCategory || '')
+                );
+
+                const excelData = options.excelValidation?.data;
+                if (excelData && excelData.length > 0) {
+                    for (const result of categoryResults) {
+                        if (!result.error && !result.noAdsFound) {
+                            const validation = validateSingleResult(result, excelData, 'mix-in-ad');
+                            result.validation = validation;
+                        }
+                    }
+                }
+
+                if (categoryResults.length > 0) {
+                    const activityResults = categoryResults.map(result => ({
+                        culture: result.culture,
+                        category: result.category,
+                        mainCategory: result.mainCategory,
+                        adIndex: result.adIndex,
+                        position: result.position,
+                        width: result.width,
+                        error: result.error,
+                        message: result.message,
+                        noAdsFound: result.noAdsFound,
+                        validation: result.validation,
+                        addToCartResult: result.addToCartResult,
+                        href: result.href,
+                        target: result.target,
+                        imageLocale: result.imageLocale,
+                        url: result.url,
+                        timestamp: result.timestamp
+                    }));
+
+                    this.emitProgress({
+                        type: 'add-to-cart-complete',
+                        culture: job.culture,
+                        category: job.category,
+                        mainCategory: job.mainCategory,
+                        result: {
+                            url: job.url,
+                            results: activityResults
+                        }
+                    });
+                }
             }
 
         } catch (err) {

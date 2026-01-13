@@ -286,7 +286,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
           <strong>Add to Cart:</strong>
           <span>${escapeHtml(addToCartMessage)}</span>
           ${addToCartSku ? `<span class="cart-sku">${escapeHtml(addToCartSku)}</span>` : ''}
-          ${addToCartExpected ? `<div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Expected: ${escapeHtml(addToCartExpected)}</div>` : ''}
+          ${addToCartExpected ? `<div style="margin-top: 6px; font-size: 14px; color: var(--text-secondary);">Expected: ${escapeHtml(addToCartExpected)}</div>` : ''}
         </div>
         ` : ''}
 

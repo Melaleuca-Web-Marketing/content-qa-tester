@@ -176,6 +176,151 @@ async function checkStatus() {
   }
 }
 
+function buildMixInAdActivityItems(results, options = {}) {
+  const expectedWidthCount = options.expectedWidthCount || 0;
+  const filterIncomplete = options.filterIncomplete && expectedWidthCount > 0;
+  const groups = {};
+
+  results.forEach((result) => {
+    const culture = result.culture || '';
+    const mainCategory = result.mainCategory || '';
+    const category = result.category || '';
+    const adIndex = result.noAdsFound ? null : (Number.isFinite(result.adIndex) ? result.adIndex : null);
+    const key = `${culture}|${mainCategory}|${category}|${adIndex ?? 'none'}`;
+
+    if (!groups[key]) {
+      groups[key] = {
+        culture,
+        mainCategory,
+        category,
+        adIndex,
+        widths: new Set(),
+        errors: [],
+        validations: [],
+        addToCartResult: null,
+        noAdsFound: false,
+        url: result.url || '',
+        missing: {
+          href: false,
+          target: false,
+          imageLocale: false
+        },
+        timestamp: result.timestamp || Date.now()
+      };
+    }
+
+    const group = groups[key];
+    if (result.width !== undefined) {
+      group.widths.add(result.width);
+    }
+
+    if (result.error) {
+      const errorMsg = result.message || 'Capture failed';
+      group.errors.push(`${result.width}px: ${errorMsg}`);
+    }
+
+    if (result.noAdsFound) {
+      group.noAdsFound = true;
+    }
+
+    if (result.validation) {
+      group.validations.push(result.validation);
+    } else if (!result.error && !result.noAdsFound) {
+      if (!result.href) group.missing.href = true;
+      if (!result.target) group.missing.target = true;
+      if (!result.imageLocale) group.missing.imageLocale = true;
+    }
+
+    if (result.addToCartResult && !group.addToCartResult) {
+      group.addToCartResult = result.addToCartResult;
+    }
+
+    if (result.url && !group.url) {
+      group.url = result.url;
+    }
+  });
+
+  const items = [];
+  Object.values(groups).forEach((group) => {
+    const widthCount = group.widths.size;
+    if (filterIncomplete && widthCount < expectedWidthCount) {
+      return;
+    }
+
+    const issues = new Set();
+    group.validations.forEach((validation) => {
+      if (validation.status === 'fail' && Array.isArray(validation.failures)) {
+        validation.failures.forEach((failure) => {
+          if (failure === 'link') issues.add('Link mismatch');
+          if (failure === 'target') issues.add('Target mismatch');
+          if (failure === 'position') issues.add('Position mismatch');
+          if (failure === 'imageLocale') issues.add('Image locale mismatch');
+          if (failure === 'sku') issues.add('SKU mismatch');
+        });
+      } else if (validation.status === 'not-found') {
+        issues.add('Not in Excel');
+      }
+    });
+
+    if (group.noAdsFound) {
+      issues.add('No mix-in ads found');
+    }
+
+    if (group.addToCartResult && group.addToCartResult.attempted !== false && group.addToCartResult.success === false) {
+      issues.add('Add to cart failed');
+    }
+
+    if (group.validations.length === 0) {
+      if (group.missing.href) issues.add('Missing link');
+      if (group.missing.target) issues.add('Missing target');
+      if (group.missing.imageLocale) issues.add('Missing image locale');
+    }
+
+    let type = 'success';
+    let error = undefined;
+    if (group.errors.length > 0) {
+      type = 'error';
+      error = group.errors.join(', ');
+    } else if (group.addToCartResult && group.addToCartResult.attempted !== false && group.addToCartResult.success === false) {
+      type = 'error';
+      error = group.addToCartResult.error || 'Add to cart failed';
+    } else if (issues.size > 0) {
+      type = 'warning';
+    }
+
+    const categoryPath = group.mainCategory
+      ? `${group.mainCategory} › ${group.category}`
+      : group.category;
+    const adLabel = Number.isFinite(group.adIndex) ? ` - Mix-In Ad #${group.adIndex + 1}` : '';
+
+    items.push({
+      key: `${group.culture}|${categoryPath}${adLabel}`,
+      type,
+      culture: group.culture,
+      categoryPath: `${categoryPath}${adLabel}`,
+      detail: `${widthCount} widths captured`,
+      issues: issues.size > 0 ? Array.from(issues) : undefined,
+      error,
+      url: group.url || undefined,
+      timestamp: group.timestamp
+    });
+  });
+
+  return items;
+}
+
+function addActivityItemsFromResults(results, options = {}) {
+  const items = buildMixInAdActivityItems(results, options);
+  if (options.replaceExisting) {
+    activityItems = [];
+  }
+  items.forEach(item => addActivityItem(item));
+  if (activityItems.length > 0 || isCapturing) {
+    activityFeed.style.display = 'block';
+  }
+  return items.length;
+}
+
 // Restore activity feed from server-side Mix-In Ad results
 async function restoreActivityFromServer() {
   try {
@@ -188,186 +333,15 @@ async function restoreActivityFromServer() {
       return;
     }
 
-    // Clear existing activity items - server data is authoritative and properly grouped
-    activityItems.length = 0;
-
-
-    // GROUP results by category (culture-mainCategory-category), not per capture
-    const categoryGroups = {};
-    for (const result of serverResults) {
-      const categoryPath = result.mainCategory
-        ? `${result.mainCategory} › ${result.category}`
-        : result.category;
-      const key = `${result.culture}-${categoryPath}`;
-
-      if (!categoryGroups[key]) {
-        categoryGroups[key] = {
-          culture: result.culture,
-          categoryPath: categoryPath,
-          mainCategory: result.mainCategory,
-          category: result.category,
-          url: result.url || '',
-          widths: [],
-          widthResults: {},
-          hasError: false,
-          errorMessages: [],
-          issues: [],
-          timestamp: result.timestamp || Date.now()
-        };
-      }
-
-      const isError = result.error === true;
-
-      // Track this width result
-      categoryGroups[key].widths.push(result.width);
-
-      // Check if this is an error result (error: true is set, not a boolean check on success)
-      if (isError) {
-        categoryGroups[key].hasError = true;
-        // Error message is in result.message, not result.error
-        const errorMsg = result.message || 'Capture failed';
-        categoryGroups[key].errorMessages.push(`${result.width}px: ${errorMsg}`);
-      }
-
-      const widthKey = String(result.width);
-      if (!categoryGroups[key].widthResults[widthKey]) {
-        categoryGroups[key].widthResults[widthKey] = {
-          success: true,
-          error: null,
-          adsFound: 0,
-          noAdsFound: false,
-          validations: []
-        };
-      }
-
-      const widthEntry = categoryGroups[key].widthResults[widthKey];
-      if (isError) {
-        widthEntry.success = false;
-        widthEntry.error = result.message || 'Capture failed';
-      } else if (result.noAdsFound) {
-        widthEntry.noAdsFound = true;
-      } else {
-        widthEntry.adsFound += 1;
-      }
-
-      if (result.validation) {
-        widthEntry.validations.push({
-          adIndex: result.adIndex,
-          position: result.position,
-          validation: result.validation
-        });
-      }
-
-      if (result.url && !categoryGroups[key].url) {
-        categoryGroups[key].url = result.url;
-      }
-
-      // Collect validation issues (only for successful captures)
-      if (!isError) {
-        const validation = result.validation || {};
-        if (validation.status === 'fail' && validation.failures) {
-          validation.failures.forEach(f => {
-            if (f === 'link' && !categoryGroups[key].issues.includes('Link mismatch')) {
-              categoryGroups[key].issues.push('Link mismatch');
-            }
-            if (f === 'target' && !categoryGroups[key].issues.includes('Target mismatch')) {
-              categoryGroups[key].issues.push('Target mismatch');
-            }
-            if (f === 'position' && !categoryGroups[key].issues.includes('Position mismatch')) {
-              categoryGroups[key].issues.push('Position mismatch');
-            }
-            if (f === 'imageLocale' && !categoryGroups[key].issues.includes('Image locale mismatch')) {
-              categoryGroups[key].issues.push('Image locale mismatch');
-            }
-          });
-        } else if (validation.status === 'not-found' && !categoryGroups[key].issues.includes('Not in Excel')) {
-          categoryGroups[key].issues.push('Not in Excel');
-        } else {
-          // Fallback checks for missing data on successful captures
-          if (!result.href && !categoryGroups[key].issues.includes('Missing link')) {
-            categoryGroups[key].issues.push('Missing link');
-          }
-          if (!result.target && !categoryGroups[key].issues.includes('Missing target')) {
-            categoryGroups[key].issues.push('Missing target');
-          }
-          if (!result.imageLocale && !categoryGroups[key].issues.includes('Missing image locale')) {
-            categoryGroups[key].issues.push('Missing image locale');
-          }
-        }
-      }
-    }
-
     const expectedWidthCount = Array.isArray(expectedWidths) ? expectedWidths.length : 0;
-    const filterIncomplete = isCapturing && expectedWidthCount > 0;
-
-    // Now create ONE activity item per category group
-    let addedCount = 0;
-    for (const key of Object.keys(categoryGroups)) {
-      const group = categoryGroups[key];
-      const uniqueWidths = [...new Set(group.widths)].length;
-      const isComplete = !filterIncomplete || uniqueWidths >= expectedWidthCount;
-
-      if (!isComplete) {
-        const categoryKey = `${group.culture}|${group.mainCategory || ''}|${group.category}`;
-        if (!mixinProgress[categoryKey]) {
-          mixinProgress[categoryKey] = {
-            culture: group.culture,
-            mainCategory: group.mainCategory || '',
-            category: group.category,
-            widths: {},
-            totalWidths: expectedWidthCount,
-            url: group.url || ''
-          };
-        }
-        Object.entries(group.widthResults).forEach(([width, result]) => {
-          mixinProgress[categoryKey].widths[width] = result;
-        });
-        continue;
-      }
-
-      let type = 'success';
-      let detail = `${uniqueWidths} widths captured`;
-
-      if (group.hasError) {
-        type = 'error';
-        detail = group.errorMessages.length > 0 ? group.errorMessages.join(', ') : 'Capture failed';
-      } else if (group.issues.length > 0) {
-        type = 'warning';
-      }
-
-      const item = {
-        type,
-        culture: group.culture,
-        categoryPath: group.categoryPath,
-        detail: detail,
-        issues: group.issues.length > 0 ? group.issues : undefined,
-        error: group.hasError ? (group.errorMessages[0] || 'Capture failed') : undefined,
-        url: group.url || undefined,
-        timestamp: new Date(group.timestamp)
-      };
-
-      // Add item - errors/warnings at start, success at end
-      if (type === 'error' || type === 'warning') {
-        activityItems.unshift(item);
-      } else {
-        const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
-        if (firstSuccessIndex === -1) {
-          activityItems.push(item);
-        } else {
-          activityItems.splice(firstSuccessIndex, 0, item);
-        }
-      }
-      addedCount++;
-    }
+    const addedCount = addActivityItemsFromResults(serverResults, {
+      replaceExisting: true,
+      filterIncomplete: isCapturing,
+      expectedWidthCount
+    });
 
     if (addedCount > 0) {
-      console.log(`[Activity] Restored ${addedCount} categories from server`);
-    }
-
-    saveActivityToStorage();
-    renderActivityFeed();
-    if (activityItems.length > 0 || isCapturing) {
-      activityFeed.style.display = 'block';
+      console.log(`[Activity] Restored ${addedCount} mix-in ads from server`);
     }
   } catch (err) {
     console.error('Failed to restore activity from server:', err);
@@ -379,6 +353,9 @@ function applyProgressSnapshot(progress) {
 
   if (progress.type === 'login') {
     setStatusRunning('Logging in...', progress.status || '');
+    return;
+  }
+  if (progress.type === 'add-to-cart-complete') {
     return;
   }
 
@@ -832,6 +809,13 @@ function handleWebSocketMessage(message) {
 
 function handleProgress(data) {
   const progress = data.progress;
+  if (progress.type === 'add-to-cart-complete') {
+    const activityResults = progress.result?.results || [];
+    if (Array.isArray(activityResults) && activityResults.length > 0) {
+      addActivityItemsFromResults(activityResults);
+    }
+    return;
+  }
   if (progress.type === 'login') {
     setStatusRunning('Logging in...', progress.status || '');
     return;
@@ -885,73 +869,8 @@ function handleProgress(data) {
     const totalAds = widthResults.reduce((sum, w) => sum + (w.adsFound || 0), 0);
     const hasNoAds = widthResults.some(w => w.noAdsFound);
 
-    // Collect validation issues from all widths
-    const validationIssues = [];
-    widthResults.forEach(w => {
-      if (w.validations && w.validations.length > 0) {
-        w.validations.forEach(v => {
-          if (v.validation && v.validation.status === 'fail' && v.validation.failures) {
-            v.validation.failures.forEach(f => {
-              if (f === 'link') validationIssues.push('Link mismatch');
-              if (f === 'target') validationIssues.push('Target mismatch');
-              if (f === 'position') validationIssues.push('Position mismatch');
-              if (f === 'imageLocale') validationIssues.push('Image locale mismatch');
-            });
-          } else if (v.validation && v.validation.status === 'not-found') {
-            validationIssues.push('Not in Excel');
-          }
-        });
-      }
-    });
-    const uniqueIssues = [...new Set(validationIssues)];
-
     // Check if all widths for this category are complete
     if (completedWidths >= mixin.totalWidths) {
-      const categoryPath = mixin.mainCategory ? `${mixin.mainCategory} › ${mixin.category}` : mixin.category;
-
-      if (errorWidths > 0) {
-        const errorMessages = Object.entries(mixin.widths)
-          .filter(([_, w]) => !w.success)
-          .map(([width, w]) => `${width}px: ${w.error}`)
-          .join(', ');
-
-        addActivityItem({
-          type: 'error',
-          culture: mixin.culture,
-          categoryPath: categoryPath,
-          detail: `${completedWidths - errorWidths}/${completedWidths} widths captured`,
-          error: errorMessages,
-          url: mixin.url
-        });
-      } else if (uniqueIssues.length > 0) {
-        addActivityItem({
-          type: 'warning',
-          culture: mixin.culture,
-          categoryPath: categoryPath,
-          detail: `${totalAds} ads • ${completedWidths} widths`,
-          issues: uniqueIssues,
-          url: mixin.url
-        });
-      } else if (hasNoAds) {
-        addActivityItem({
-          type: 'warning',
-          culture: mixin.culture,
-          categoryPath: categoryPath,
-          detail: `${completedWidths} widths captured`,
-          issues: ['No mix-in ads found'],
-          url: mixin.url
-        });
-      } else {
-        addActivityItem({
-          type: 'success',
-          culture: mixin.culture,
-          categoryPath: categoryPath,
-          url: mixin.url,
-          detail: `${totalAds} ads • ${completedWidths} widths`
-        });
-      }
-
-      // Clean up tracked category
       delete mixinProgress[categoryKey];
     }
   }
@@ -1371,7 +1290,10 @@ function saveActivityToStorage() {
 }
 
 function addActivityItem(item) {
-  item.timestamp = new Date();
+  if (item.key) {
+    activityItems = activityItems.filter(existing => existing.key !== item.key);
+  }
+  item.timestamp = item.timestamp ? new Date(item.timestamp) : new Date();
 
   if (item.type === 'error') {
     activityItems.unshift(item);
