@@ -209,7 +209,7 @@ async function restoreActivityFromServer() {
       const issues = [];
 
       if (result.addToCartResult && result.addToCartResult.success === false) {
-        issues.push('Add to cart failed');
+        issues.push(`Add to cart failed: ${result.addToCartResult.error || 'Unknown error'}`);
       }
       if (!data.description) {
         issues.push('Missing description');
@@ -560,7 +560,7 @@ function handleProgress(data) {
       const data = progress.data || {};
       const issues = [];
       if (data.addToCart && data.addToCart.success === false) {
-        issues.push('Add to cart failed');
+        issues.push(`Add to cart failed: ${data.addToCart.error || 'Unknown error'}`);
       }
       if (!data.description) {
         issues.push('Missing description');
