@@ -31,6 +31,9 @@ let configData = null;
 let isCapturing = false;
 let captureHadError = false;
 let captureErrorMessage = '';
+let jobSummary = '';
+let completionNotified = false;
+let audioContext = null;
 let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
@@ -798,6 +801,10 @@ function handleStatusUpdate(data) {
         isCapturing = true;
         captureHadError = false;
         captureErrorMessage = '';
+        completionNotified = false;
+        jobSummary = buildJobSummary();
+        requestNotificationPermission();
+        primeAudio();
         captureStartTime = Date.now();
         setUICapturing();
       setStatusRunning('Starting PSLP capture...', `${data.componentsCount ?? data.componentCount ?? 0} components to extract`);
@@ -826,7 +833,8 @@ function handleStatusUpdate(data) {
         const components = data.results?.componentReports?.length || 0;
 
         const hasResults = screenshots > 0 || components > 0;
-        if (captureHadError || !hasResults) {
+        const hasErrors = captureHadError || !hasResults;
+        if (hasErrors) {
           setStatusError(
             'Capture failed',
             captureErrorMessage || (hasResults ? 'Capture did not complete' : 'No screenshots or components were captured')
@@ -834,6 +842,16 @@ function handleStatusUpdate(data) {
         } else {
           setStatusSuccess('Capture complete!', `${screenshots} screenshots, ${components} components extracted in ${formatDuration(data.duration)}`);
         }
+
+        const resultParts = [];
+        resultParts.push(`${screenshots} screenshots`);
+        resultParts.push(`${components} components`);
+        if (data.duration) resultParts.push(formatDuration(data.duration));
+        const body = [jobSummary, resultParts.length ? `Result: ${resultParts.join(', ')}` : '']
+          .filter(Boolean)
+          .join(' | ');
+        const title = hasErrors ? 'PSLP capture finished with errors' : 'PSLP capture completed';
+        notifyJobComplete(title, body, hasErrors);
 
         if (saveReportBtn) saveReportBtn.disabled = !data.results;
         break;
@@ -844,6 +862,11 @@ function handleStatusUpdate(data) {
         captureHadError = true;
         captureErrorMessage = data.message || 'Capture failed';
         setStatusError('Error', data.message);
+        notifyJobComplete(
+          'PSLP capture failed',
+          [jobSummary, data.message ? `Error: ${data.message}` : 'Error'].filter(Boolean).join(' | '),
+          true
+        );
         break;
 
     case 'waiting-for-auth':
@@ -887,6 +910,8 @@ function handleError(data) {
   captureHadError = true;
   captureErrorMessage = data.message || 'Capture failed';
   setStatusError('Error', data.message);
+  const body = [jobSummary, data.message ? `Error: ${data.message}` : 'Error'].filter(Boolean).join(' | ');
+  notifyJobComplete('PSLP capture failed', body, true);
 }
 
 function showCredentialErrorAlert(errorMessage) {
@@ -942,6 +967,94 @@ function updateProgressBar(current, total) {
   }
 }
 
+function formatList(items, limit = 6) {
+  const list = Array.isArray(items) ? items.filter(Boolean).map(String) : [];
+  if (list.length === 0) return '-';
+  if (list.length <= limit) return list.join(', ');
+  return `${list.slice(0, limit).join(', ')} +${list.length - limit} more`;
+}
+
+function isNotificationsEnabled() {
+  const stored = localStorage.getItem('qaNotificationsEnabled');
+  return stored === null ? true : stored === 'true';
+}
+
+function buildJobSummary() {
+  const regionLabel = regionSelect?.options?.[regionSelect.selectedIndex]?.textContent || regionSelect?.value || '-';
+  const widths = getSelectedWidths();
+  const components = getSelectedComponents();
+  const parts = [
+    `Env: ${envSelect?.value || '-'}`,
+    `Region: ${regionLabel}`,
+    `Culture: ${cultureSelect?.value || '-'}`
+  ];
+
+  if (widths.length > 0) parts.push(`Widths: ${formatList(widths, 6)}`);
+  if (components.length > 0) parts.push(`Components: ${formatList(components, 6)} (${components.length})`);
+
+  return parts.join(' | ');
+}
+
+function requestNotificationPermission() {
+  if (!isNotificationsEnabled()) return;
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'default') return;
+  Notification.requestPermission().catch(() => {});
+}
+
+function primeAudio() {
+  if (!isNotificationsEnabled()) return;
+  if (audioContext) return;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  try {
+    audioContext = new AudioCtx();
+  } catch {
+    audioContext = null;
+  }
+}
+
+function playCompletionSound(isError) {
+  primeAudio();
+  if (!audioContext) return;
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
+
+  const now = audioContext.currentTime;
+  const gain = audioContext.createGain();
+  gain.gain.value = 0.12;
+  gain.connect(audioContext.destination);
+
+  const tones = isError ? [220, 180] : [880, 660];
+  tones.forEach((freq, index) => {
+    const osc = audioContext.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    osc.connect(gain);
+    const start = now + (index * 0.2);
+    const stop = start + 0.15;
+    osc.start(start);
+    osc.stop(stop);
+  });
+}
+
+function notifyJobComplete(title, body, isError) {
+  if (!isNotificationsEnabled()) return;
+  if (completionNotified) return;
+  completionNotified = true;
+
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body });
+    } catch {
+      // Ignore notification failures
+    }
+  }
+
+  playCompletionSound(isError);
+}
+
 function formatDuration(ms) {
   if (!ms) return '-';
   const seconds = Math.round(ms / 1000);
@@ -974,6 +1087,11 @@ async function startCapture() {
     setStatusError('Credentials required', 'Enter username and password to access PSLP');
     return;
   }
+
+  jobSummary = buildJobSummary();
+  completionNotified = false;
+  requestNotificationPermission();
+  primeAudio();
 
   const options = {
     environment,
@@ -1115,6 +1233,8 @@ async function resumeCapture() {
   try {
     setStatusRunning('Resuming...', 'Continuing capture after manual sign-in');
     startCaptureBtn.disabled = true;
+    requestNotificationPermission();
+    primeAudio();
 
     const response = await fetch(api('/api/pslp/resume'), {
       method: 'POST',

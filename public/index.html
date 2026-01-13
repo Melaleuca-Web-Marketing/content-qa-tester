@@ -647,6 +647,54 @@
       transform: translateX(24px);
     }
 
+    .dashboard-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toggle-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 48px;
+      height: 24px;
+      background: #475569;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .toggle-switch.active {
+      background: #10b981;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+
+    .toggle-switch.active .toggle-slider {
+      transform: translateX(24px);
+    }
+
     .excel-upload-area {
       display: flex;
       align-items: center;
@@ -907,8 +955,17 @@
             <span class="pulse"></span>
             Running Jobs (<span id="job-count">0</span>)
           </div>
-          <div id="resource-warning" class="resource-warning" style="display: none;">
-            ⚠️ Multiple jobs running - High resource usage
+          <div class="dashboard-controls">
+            <div class="toggle-container">
+              <label class="toggle-label" for="notifications-toggle-checkbox">Desktop notifications</label>
+              <div class="toggle-switch" id="notifications-toggle" onclick="toggleNotifications()">
+                <div class="toggle-slider"></div>
+              </div>
+              <input type="checkbox" id="notifications-toggle-checkbox" style="display: none;">
+            </div>
+            <div id="resource-warning" class="resource-warning" style="display: none;">
+              ⚠️ Multiple jobs running - High resource usage
+            </div>
           </div>
         </div>
         <div class="job-cards" id="job-cards">
@@ -1591,6 +1648,22 @@
       const uploadArea = document.getElementById('excel-upload-area');
 
       // Load saved state
+      (function initNotificationToggle() {
+        const toggle = document.getElementById('notifications-toggle');
+        const checkbox = document.getElementById('notifications-toggle-checkbox');
+        if (!toggle || !checkbox) return;
+
+        const stored = localStorage.getItem('qaNotificationsEnabled');
+        const enabled = stored === null ? true : stored === 'true';
+
+        checkbox.checked = enabled;
+        toggle.classList.toggle('active', enabled);
+
+        if (stored === null) {
+          localStorage.setItem('qaNotificationsEnabled', 'true');
+        }
+      })();
+
       const savedState = localStorage.getItem('excelValidationEnabled');
       const savedData = localStorage.getItem('excelValidationData');
 
@@ -1613,6 +1686,20 @@
         uploadArea.classList.add('disabled');
       }
     })();
+
+    window.toggleNotifications = function () {
+      const toggle = document.getElementById('notifications-toggle');
+      const checkbox = document.getElementById('notifications-toggle-checkbox');
+      if (!toggle || !checkbox) return;
+
+      checkbox.checked = !checkbox.checked;
+      toggle.classList.toggle('active', checkbox.checked);
+      localStorage.setItem('qaNotificationsEnabled', checkbox.checked);
+
+      if (checkbox.checked && 'Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    };
 
     window.toggleExcelValidation = function () {
       const toggle = document.getElementById('excel-toggle');

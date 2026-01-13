@@ -31,6 +31,9 @@ let configData = null;
 let isCapturing = false;
 let captureHadError = false;
 let captureErrorMessage = '';
+let jobSummary = '';
+let completionNotified = false;
+let audioContext = null;
 let captureStartTime = null;
 let ws = null;
 let reconnectAttempts = 0;
@@ -621,6 +624,10 @@ function handleStatusUpdate(data) {
         isCapturing = true;
         captureHadError = false;
         captureErrorMessage = '';
+        completionNotified = false;
+        jobSummary = buildJobSummary();
+        requestNotificationPermission();
+        primeAudio();
         captureStartTime = Date.now();
         setUICapturing();
       setStatusRunning('Starting capture...', `${data.skuCount} captures to process`);
@@ -681,8 +688,9 @@ function handleStatusUpdate(data) {
 
         const successCount = Number.isFinite(data.successCount) ? data.successCount : 0;
         const errorCount = Number.isFinite(data.errorCount) ? data.errorCount : 0;
+        const hasErrors = captureHadError || errorCount > 0 || successCount === 0;
 
-        if (captureHadError || errorCount > 0 || successCount === 0) {
+        if (hasErrors) {
           if (errorCount > 0) {
             setStatusError('Capture complete with errors', `${successCount} captures succeeded, ${errorCount} failed`);
           } else {
@@ -691,6 +699,16 @@ function handleStatusUpdate(data) {
         } else {
           setStatusSuccess('Capture complete!', `${successCount} captures completed in ${formatDuration(data.duration)}`);
         }
+
+        const resultParts = [];
+        resultParts.push(`${successCount} ok`);
+        if (errorCount > 0) resultParts.push(`${errorCount} failed`);
+        if (data.duration) resultParts.push(formatDuration(data.duration));
+        const body = [jobSummary, resultParts.length ? `Result: ${resultParts.join(', ')}` : '']
+          .filter(Boolean)
+          .join(' | ');
+        const title = hasErrors ? 'SKU capture finished with errors' : 'SKU capture completed';
+        notifyJobComplete(title, body, hasErrors);
 
         if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
         break;
@@ -703,6 +721,8 @@ function handleError(data) {
   captureHadError = true;
   captureErrorMessage = data.message || 'Capture failed';
   setStatusError('Error', data.message);
+  const body = [jobSummary, data.message ? `Error: ${data.message}` : 'Error'].filter(Boolean).join(' | ');
+  notifyJobComplete('SKU capture failed', body, true);
 }
 
 function showCredentialErrorAlert(errorMessage) {
@@ -758,6 +778,99 @@ function updateProgressBar(current, total) {
   }
 }
 
+function formatList(items, limit = 6) {
+  const list = Array.isArray(items) ? items.filter(Boolean).map(String) : [];
+  if (list.length === 0) return '-';
+  if (list.length <= limit) return list.join(', ');
+  return `${list.slice(0, limit).join(', ')} +${list.length - limit} more`;
+}
+
+function isNotificationsEnabled() {
+  const stored = localStorage.getItem('qaNotificationsEnabled');
+  return stored === null ? true : stored === 'true';
+}
+
+function buildJobSummary() {
+  const regionLabel = regionSelect?.options?.[regionSelect.selectedIndex]?.textContent || regionSelect?.value || '-';
+  const cultures = getSelectedCultures();
+  const skus = parseSkus(skuInput?.value || '');
+  const screenshotMode = topScreenshotCheck?.checked
+    ? 'top'
+    : (fullScreenshotCheck?.checked ? 'full' : 'none');
+  const addToCart = addToCartCheck?.checked ? 'on' : 'off';
+  const parts = [
+    `Env: ${envSelect?.value || '-'}`,
+    `Region: ${regionLabel}`
+  ];
+
+  if (cultures.length > 0) parts.push(`Cultures: ${formatList(cultures, 6)}`);
+  if (skus.length > 0) parts.push(`SKUs: ${formatList(skus, 6)} (${skus.length})`);
+  parts.push(`Screenshot: ${screenshotMode}`);
+  parts.push(`Add to cart: ${addToCart}`);
+
+  return parts.join(' | ');
+}
+
+function requestNotificationPermission() {
+  if (!isNotificationsEnabled()) return;
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'default') return;
+  Notification.requestPermission().catch(() => {});
+}
+
+function primeAudio() {
+  if (!isNotificationsEnabled()) return;
+  if (audioContext) return;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  try {
+    audioContext = new AudioCtx();
+  } catch {
+    audioContext = null;
+  }
+}
+
+function playCompletionSound(isError) {
+  primeAudio();
+  if (!audioContext) return;
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
+
+  const now = audioContext.currentTime;
+  const gain = audioContext.createGain();
+  gain.gain.value = 0.12;
+  gain.connect(audioContext.destination);
+
+  const tones = isError ? [220, 180] : [880, 660];
+  tones.forEach((freq, index) => {
+    const osc = audioContext.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    osc.connect(gain);
+    const start = now + (index * 0.2);
+    const stop = start + 0.15;
+    osc.start(start);
+    osc.stop(stop);
+  });
+}
+
+function notifyJobComplete(title, body, isError) {
+  if (!isNotificationsEnabled()) return;
+  if (completionNotified) return;
+  completionNotified = true;
+
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body });
+    } catch {
+      // Ignore notification failures
+    }
+  }
+
+  playCompletionSound(isError);
+}
+
 function formatDuration(ms) {
   if (!ms) return '-';
   const seconds = Math.round(ms / 1000);
@@ -805,6 +918,11 @@ async function startCapture() {
     setStatusError('Credentials required', 'Enter username and password to use Add to Cart');
     return;
   }
+
+  jobSummary = buildJobSummary();
+  completionNotified = false;
+  requestNotificationPermission();
+  primeAudio();
 
   const options = {
     skus,
@@ -925,6 +1043,8 @@ async function resumeCapture() {
   try {
     setStatusRunning('Resuming...', 'Continuing capture after manual sign-in');
     startCaptureBtn.disabled = true;
+    requestNotificationPermission();
+    primeAudio();
 
     const response = await fetch(api('/api/sku/resume'), {
       method: 'POST',
