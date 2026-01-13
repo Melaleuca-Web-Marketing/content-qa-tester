@@ -168,6 +168,10 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
         : (addToCart.attempted === false ? (addToCart.reason || 'Skipped') : (addToCart.error || 'Failed')))
       : '';
     const addToCartSku = addToCart?.sku ? `SKU ${addToCart.sku}` : '';
+    const addToCartValidation = group.validation?.comparisons?.sku;
+    const addToCartExpected = addToCartValidation && !addToCartValidation.match
+      ? addToCartValidation.expected
+      : '';
     const adLabel = group.adIndex !== null ? ` - Mix-In Ad #${group.adIndex + 1}` : '';
     const linkDisplay = stripDomain(group.href);
 
@@ -282,6 +286,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
           <strong>Add to Cart:</strong>
           <span>${escapeHtml(addToCartMessage)}</span>
           ${addToCartSku ? `<span class="cart-sku">${escapeHtml(addToCartSku)}</span>` : ''}
+          ${addToCartExpected ? `<div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Expected: ${escapeHtml(addToCartExpected)}</div>` : ''}
         </div>
         ` : ''}
 

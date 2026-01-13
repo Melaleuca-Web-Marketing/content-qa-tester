@@ -111,6 +111,36 @@ function normalizeTarget(value) {
   return normalized;
 }
 
+function normalizeSkuValue(value) {
+  if (value === null || value === undefined) return '';
+  return value.toString().trim();
+}
+
+function normalizeSkuList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeSkuValue(entry))
+      .filter(Boolean);
+  }
+  return normalizeSkuValue(value)
+    .split(/[,\n;]/)
+    .map((entry) => normalizeSkuValue(entry))
+    .filter(Boolean);
+}
+
+function compareSkus(actual, expected) {
+  const normalizedActual = normalizeSkuValue(actual);
+  const normalizedExpected = normalizeSkuList(expected);
+  const match = normalizedActual !== '' && normalizedExpected.includes(normalizedActual);
+
+  return {
+    actual: normalizedActual,
+    expected: normalizedExpected.join(', '),
+    match
+  };
+}
+
 /**
  * Find matching Excel row for a captured result
  */
@@ -270,6 +300,11 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
       };
     }
 
+    const expectedSkus = normalizeSkuList(match.skus);
+    if (type === 'mix-in-ad' && expectedSkus.length > 0) {
+      comparisons.sku = compareSkus(result.addToCartResult?.sku, expectedSkus);
+    }
+
     // Determine overall status
     const allMatch = Object.values(comparisons).every(c => c.match);
     const status = allMatch ? 'PASS' : 'FAIL';
@@ -298,7 +333,8 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
           link: match.bannerLink,
           target: match.target,
           imageLocale: match[localeField],
-          position: match.position
+          position: match.position,
+          sku: expectedSkus.join(', ')
         },
         comparisons
       }
@@ -361,6 +397,10 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
       match: result.position === match.position
     }
     : null;
+  const expectedSkus = normalizeSkuList(match.skus);
+  const skuResult = type === 'mix-in-ad' && expectedSkus.length > 0 && result.addToCartResult?.sku
+    ? compareSkus(result.addToCartResult.sku, expectedSkus)
+    : null;
 
   // Collect failures
   const failures = [];
@@ -368,6 +408,7 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
   if (!targetResult.match) failures.push('target');
   if (!localeResult.match) failures.push('imageLocale');
   if (positionResult && !positionResult.match) failures.push('position');
+  if (skuResult && !skuResult.match) failures.push('sku');
 
   const expected = {
     link: match.bannerLink,
@@ -383,6 +424,10 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
   if (positionResult) {
     expected.position = match.position;
     actual.position = result.position;
+  }
+  if (skuResult) {
+    expected.sku = skuResult.expected;
+    actual.sku = skuResult.actual;
   }
 
   return {
