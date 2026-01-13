@@ -225,6 +225,9 @@ async function restoreActivityFromServer() {
       const hasErrors = result.addToCartResult && result.addToCartResult.success === false;
       const hasWarnings = issues.length > 0;
       const type = hasErrors ? 'error' : (hasWarnings ? 'warning' : 'success');
+      const addToCartError = hasErrors
+        ? (result.addToCartResult.error || 'Add to cart failed')
+        : null;
 
       const item = {
         type,
@@ -234,6 +237,7 @@ async function restoreActivityFromServer() {
         price: data.price,
         addToCart: result.addToCartResult,
         issues: issues,
+        error: addToCartError || undefined,
         url: result.url,
         timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
       };
@@ -575,6 +579,9 @@ function handleProgress(data) {
       // Determine item type based on issues
       const hasErrors = data.addToCart && data.addToCart.success === false;
       const hasWarnings = issues.length > 0;
+      const addToCartError = hasErrors
+        ? (data.addToCart.error || 'Add to cart failed')
+        : null;
 
       addActivityItem({
         type: hasErrors ? 'error' : (hasWarnings ? 'warning' : 'success'),
@@ -584,6 +591,7 @@ function handleProgress(data) {
         price: data.price,
         addToCart: data.addToCart,
         issues: issues,
+        error: addToCartError || undefined,
         url: progress.url
       });
       break;
