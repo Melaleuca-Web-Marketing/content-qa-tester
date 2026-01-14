@@ -59,11 +59,11 @@ router.use(express.json({
 }));
 
 // Rate limiting to prevent abuse
-// Dashboard polls 4 status endpoints every 2s = 120 req/min = 1800 req/15min
-// Set generous limit for legitimate polling while still preventing runaway scripts
+// Dashboard now uses WebSocket for real-time updates with 60s HTTP polling backup
+// Reduced from 5000 to 1000 since WebSocket handles most traffic
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5000, // Limit each user to 5000 requests per windowMs
+  max: 1000, // Limit each user to 1000 requests per windowMs
   message: { error: 'Too many requests', message: 'Please try again later' },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
@@ -416,6 +416,9 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
     }, userId);
   });
 
+  // Broadcast immediate status update via WebSocket
+  broadcast({ type: 'sku-status', data: skuProcessor.getStatus() }, userId);
+
   res.json({ ok: true, message: 'SKU capture started' });
 }));
 
@@ -423,6 +426,8 @@ router.post('/api/sku/stop', (req, res) => {
   const userId = getUserId(req);
   const skuProcessor = getProcessor(userId, 'sku');
   skuProcessor.stop();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'sku-status', data: skuProcessor.getStatus() }, userId);
   res.json({ ok: true, message: 'Stop requested' });
 });
 
@@ -430,6 +435,8 @@ router.post('/api/sku/resume', (req, res) => {
   const userId = getUserId(req);
   const skuProcessor = getProcessor(userId, 'sku');
   skuProcessor.resume();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'sku-status', data: skuProcessor.getStatus() }, userId);
   res.json({ ok: true, message: 'Resume requested' });
 });
 
@@ -515,6 +522,9 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     broadcast({ type: 'banner-error', data: { message: err.message } }, userId);
   });
 
+  // Broadcast immediate status update via WebSocket
+  broadcast({ type: 'banner-status', data: bannerProcessor.getStatus() }, userId);
+
   res.json({ ok: true, message: 'Banner capture started' });
 }));
 
@@ -522,6 +532,8 @@ router.post('/api/banner/stop', (req, res) => {
   const userId = getUserId(req);
   const bannerProcessor = getProcessor(userId, 'banner');
   bannerProcessor.stop();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'banner-status', data: bannerProcessor.getStatus() }, userId);
   res.json({ ok: true, message: 'Stop requested' });
 });
 
@@ -529,6 +541,8 @@ router.post('/api/banner/resume', (req, res) => {
   const userId = getUserId(req);
   const bannerProcessor = getProcessor(userId, 'banner');
   bannerProcessor.resume();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'banner-status', data: bannerProcessor.getStatus() }, userId);
   res.json({ ok: true, message: 'Resume requested' });
 });
 
@@ -599,6 +613,9 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
     broadcast({ type: 'pslp-error', data: { message: err.message } }, userId);
   });
 
+  // Broadcast immediate status update via WebSocket
+  broadcast({ type: 'pslp-status', data: pslpProcessor.getStatus() }, userId);
+
   res.json({ ok: true, message: 'PSLP capture started' });
 }));
 
@@ -606,6 +623,8 @@ router.post('/api/pslp/stop', (req, res) => {
   const userId = getUserId(req);
   const pslpProcessor = getProcessor(userId, 'pslp');
   pslpProcessor.stop();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'pslp-status', data: pslpProcessor.getStatus() }, userId);
   res.json({ ok: true, message: 'Stop requested' });
 });
 
@@ -613,6 +632,8 @@ router.post('/api/pslp/resume', (req, res) => {
   const userId = getUserId(req);
   const pslpProcessor = getProcessor(userId, 'pslp');
   pslpProcessor.resume();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'pslp-status', data: pslpProcessor.getStatus() }, userId);
   res.json({ ok: true, message: 'Resume requested' });
 });
 
@@ -700,6 +721,9 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     broadcast({ type: 'mixinad-error', data: { message: err.message } }, userId);
   });
 
+  // Broadcast immediate status update via WebSocket
+  broadcast({ type: 'mixinad-status', data: mixinAdProcessor.getStatus() }, userId);
+
   res.json({ ok: true, message: 'Mix-In Ad capture started' });
 }));
 
@@ -707,6 +731,8 @@ router.post('/api/mixinad/stop', (req, res) => {
   const userId = getUserId(req);
   const mixinAdProcessor = getProcessor(userId, 'mixinad');
   mixinAdProcessor.stop();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'mixinad-status', data: mixinAdProcessor.getStatus() }, userId);
   res.json({ ok: true, message: 'Stop requested' });
 });
 
@@ -714,6 +740,8 @@ router.post('/api/mixinad/resume', (req, res) => {
   const userId = getUserId(req);
   const mixinAdProcessor = getProcessor(userId, 'mixinad');
   mixinAdProcessor.resume();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'mixinad-status', data: mixinAdProcessor.getStatus() }, userId);
   res.json({ ok: true, message: 'Resume requested' });
 });
 

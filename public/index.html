@@ -1416,6 +1416,17 @@
 
         if (type.endsWith('-progress') || type.endsWith('-status')) {
           const tool = type.split('-')[0];
+
+          // Check if job completed
+          if (data.type === 'completed' || !data.isRunning) {
+            // Job finished - clear state
+            jobStartTimes[tool] = null;
+            jobStates[tool] = null;
+            console.log(`[Dashboard] Job completed via WebSocket: ${tool}`);
+            renderDashboard();
+            return;
+          }
+
           if (jobStates[tool]) {
             // Merge data with existing state, preserving progress
             jobStates[tool] = {
@@ -1435,6 +1446,7 @@
               ...data,
               statusType: data.type
             };
+            console.log(`[Dashboard] Job started via WebSocket: ${tool}`);
           }
           renderDashboard();
         } else if (type.endsWith('-error')) {
@@ -1443,14 +1455,16 @@
             jobStates[tool].message = data.message || 'An error occurred';
             renderDashboard();
           }
-        } else if (type.endsWith('-completed')) {
-          // Job completed - poll to clear state
-          setTimeout(updateAllStatuses, 500);
         }
       };
 
+      // Initial status check
       updateAllStatuses();
-      setInterval(updateAllStatuses, 2000);
+
+      // Reduced polling - WebSocket is primary, HTTP is backup (60s interval)
+      setInterval(updateAllStatuses, 60000);
+
+      console.log('[Dashboard] Using WebSocket for real-time updates, HTTP polling every 60s as backup');
     })();
 
     // Job History Management
