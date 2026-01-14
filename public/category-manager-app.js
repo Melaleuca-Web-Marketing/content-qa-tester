@@ -4,6 +4,9 @@ let categoriesData = {};
 let currentRegion = null;
 let expandedItems = new Set(); // Track which subcategory rows are expanded
 let hasUnsavedChanges = false; // Track if there are unsaved changes
+let currentVersion = null; // Track version for conflict detection
+let lastModified = null;
+let lastModifiedBy = null;
 const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
 
@@ -82,7 +85,19 @@ async function loadCategories() {
     const response = await fetch(api('/api/categories'));
     if (!response.ok) throw new Error('Failed to load categories');
 
-    categoriesData = await response.json();
+    const responseData = await response.json();
+
+    // Extract version information
+    if (responseData.version) {
+      currentVersion = responseData.version;
+      lastModified = responseData.lastModified;
+      lastModifiedBy = responseData.modifiedBy;
+      categoriesData = responseData.data;
+    } else {
+      // Legacy format without version
+      categoriesData = responseData;
+    }
+
     renderUI();
   } catch (err) {
     showStatus('error', 'Failed to load categories: ' + err.message);
@@ -552,13 +567,40 @@ async function saveCategories() {
     const response = await fetch(api('/api/categories'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(categoriesData)
+      body: JSON.stringify({
+        categories: categoriesData,
+        version: currentVersion
+      })
     });
 
     const result = await response.json();
 
     if (!response.ok) {
+      // Handle conflict error (409)
+      if (response.status === 409) {
+        const reloadConfirm = await showConfirmModal({
+          icon: '⚠️',
+          title: 'Conflict Detected',
+          message: `Categories have been modified by ${result.lastModifiedBy || 'another user'}.\n\nYour changes cannot be saved. Would you like to reload and lose your changes?`,
+          confirmText: 'Reload',
+          cancelText: 'Cancel',
+          confirmStyle: 'btn-warning'
+        });
+
+        if (reloadConfirm) {
+          await loadCategories();
+          clearUnsaved();
+        }
+        return;
+      }
+
       throw new Error(result.error || result.message || 'Failed to save');
+    }
+
+    // Update version after successful save
+    if (result.version) {
+      currentVersion = result.version;
+      lastModified = result.lastModified;
     }
 
     clearUnsaved();

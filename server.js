@@ -24,6 +24,7 @@ import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFro
 import { initWebSocket, broadcast } from './utils/broadcast.js';
 import { cleanupOldReports, getReportStats } from './utils/report-cleanup.js';
 import { z } from 'zod';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -232,7 +233,37 @@ router.get('/api/categories', (req, res) => {
   try {
     const categoriesPath = join(__dirname, 'categories.json');
     const categoriesData = fs.readFileSync(categoriesPath, 'utf8');
-    res.json(JSON.parse(categoriesData));
+    const parsed = JSON.parse(categoriesData);
+
+    // Check if data has version metadata
+    if (parsed._version) {
+      // New format with version metadata
+      res.json({
+        version: parsed._version,
+        lastModified: parsed._lastModified,
+        modifiedBy: parsed._modifiedBy,
+        data: parsed.data
+      });
+    } else {
+      // Legacy format without version - migrate on first read
+      const version = crypto.randomUUID();
+      const versionedData = {
+        _version: version,
+        _lastModified: new Date().toISOString(),
+        _modifiedBy: 'system-migration',
+        data: parsed
+      };
+
+      // Write migrated format back to file
+      fs.writeFileSync(categoriesPath, JSON.stringify(versionedData, null, 2), 'utf8');
+
+      res.json({
+        version: version,
+        lastModified: versionedData._lastModified,
+        modifiedBy: 'system-migration',
+        data: parsed
+      });
+    }
   } catch (err) {
     console.error('Failed to read categories:', err);
     res.status(500).json({ error: 'Failed to load categories', message: err.message });
@@ -241,8 +272,15 @@ router.get('/api/categories', (req, res) => {
 
 router.post('/api/categories', express.json(), (req, res) => {
   try {
+    const userId = getUserId(req) || 'anonymous';
+    const { categories, version } = req.body;
+
+    if (!categories) {
+      return res.status(400).json({ error: 'No categories data provided' });
+    }
+
     // Validate with Zod schema
-    const validationResult = CategorySchema.safeParse(req.body);
+    const validationResult = CategorySchema.safeParse(categories);
 
     if (!validationResult.success) {
       const errors = validationResult.error.errors.map(err => ({
@@ -255,14 +293,53 @@ router.post('/api/categories', express.json(), (req, res) => {
       });
     }
 
-    const categories = validationResult.data;
+    const validatedCategories = validationResult.data;
     const categoriesPath = join(__dirname, 'categories.json');
-    fs.writeFileSync(categoriesPath, JSON.stringify(categories, null, 2), 'utf8');
+
+    // Read current file to check for conflicts
+    let currentData;
+    try {
+      const currentContent = fs.readFileSync(categoriesPath, 'utf8');
+      currentData = JSON.parse(currentContent);
+    } catch (err) {
+      // File doesn't exist or is corrupted, create new
+      currentData = null;
+    }
+
+    // Check for version conflict
+    if (currentData && currentData._version) {
+      if (version && currentData._version !== version) {
+        return res.status(409).json({
+          error: 'Conflict detected',
+          message: 'Categories have been modified by another user. Please reload to get the latest version.',
+          currentVersion: currentData._version,
+          lastModifiedBy: currentData._modifiedBy,
+          lastModified: currentData._lastModified
+        });
+      }
+    }
+
+    // Create new version
+    const newVersion = crypto.randomUUID();
+    const versionedData = {
+      _version: newVersion,
+      _lastModified: new Date().toISOString(),
+      _modifiedBy: userId,
+      data: validatedCategories
+    };
+
+    // Write with new version
+    fs.writeFileSync(categoriesPath, JSON.stringify(versionedData, null, 2), 'utf8');
 
     // Reload categories in memory
     reloadCategories();
 
-    res.json({ success: true, message: 'Categories saved successfully' });
+    res.json({
+      success: true,
+      message: 'Categories saved successfully',
+      version: newVersion,
+      lastModified: versionedData._lastModified
+    });
   } catch (err) {
     console.error('Failed to save categories:', err);
     res.status(500).json({ error: 'Failed to save categories', message: err.message });
