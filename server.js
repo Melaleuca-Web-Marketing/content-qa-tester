@@ -115,13 +115,22 @@ function getUserId(req) {
 
 function attachProcessorEvents(processor, tool, userId) {
   processor.on('progress', (data) => {
-    broadcast({ type: `${tool}-progress`, data: { progress: data } }, userId);
+    // Merge progress data with current processor status
+    // This ensures isRunning and other fields are always included
+    const fullStatus = { ...processor.getStatus(), progress: data };
+    broadcast({ type: `${tool}-progress`, data: fullStatus }, userId);
   });
 
   processor.on('status', (data) => {
     // Merge status event data with current processor status
     // This ensures isRunning and other fields are always included
     const fullStatus = { ...processor.getStatus(), ...data };
+    console.log(`[Server] Broadcasting ${tool} status:`, {
+      type: fullStatus.type,
+      isRunning: fullStatus.isRunning,
+      statusType: fullStatus.statusType,
+      message: fullStatus.message
+    });
     broadcast({ type: `${tool}-status`, data: fullStatus }, userId);
   });
 
