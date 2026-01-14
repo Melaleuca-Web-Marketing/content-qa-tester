@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import open, { apps } from 'open';
+import rateLimit from 'express-rate-limit';
 
 import { SkuProcessor } from './processors/sku-processor.js';
 import { BannerProcessor } from './processors/banner-processor.js';
@@ -22,6 +23,7 @@ import { autoGenerateReport } from './utils/auto-generate-report.js';
 import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory, markAsRead } from './utils/history.js';
 import { initWebSocket, broadcast } from './utils/broadcast.js';
 import { cleanupOldReports, getReportStats } from './utils/report-cleanup.js';
+import { z } from 'zod';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -54,6 +56,23 @@ router.use(express.json({
   limit: '10mb',  // Maximum request body size
   strict: true    // Only accept arrays and objects
 }));
+
+// Rate limiting to prevent abuse
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // Limit each user to 200 requests per windowMs
+  message: { error: 'Too many requests', message: 'Please try again later' },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Use X-User-Id header for user identification (internal tool, no IP-based limiting)
+  keyGenerator: (req) => {
+    return req.get('X-User-Id') || req.ip;
+  }
+});
+
+// Apply rate limiter to all API routes
+router.use('/api/', apiLimiter);
+
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.set('Pragma', 'no-cache');
@@ -192,6 +211,23 @@ router.get('/api/config', (req, res) => {
 
 // ============ Category Management API Routes ============
 
+// Zod schema for category validation
+const CategoryItemSchema = z.object({
+  label: z.string().min(1).max(200),
+  path: z.string().regex(/^\/[\w\-\/]*$/).optional(),
+  paths: z.record(z.string().regex(/^\/[\w\-\/]*$/)).optional()
+}).refine(data => data.path || data.paths, {
+  message: "Either 'path' or 'paths' must be provided"
+});
+
+const CategorySchema = z.record(
+  z.string().min(1).max(100), // Region name
+  z.record(
+    z.string().min(1).max(100), // Category name
+    z.array(CategoryItemSchema).min(1).max(100)
+  )
+);
+
 router.get('/api/categories', (req, res) => {
   try {
     const categoriesPath = join(__dirname, 'categories.json');
@@ -205,31 +241,21 @@ router.get('/api/categories', (req, res) => {
 
 router.post('/api/categories', express.json(), (req, res) => {
   try {
-    const categories = req.body;
+    // Validate with Zod schema
+    const validationResult = CategorySchema.safeParse(req.body);
 
-    // Basic validation
-    if (!categories || typeof categories !== 'object') {
-      return res.status(400).json({ error: 'Invalid categories data' });
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map(err => ({
+        path: err.path.join('.'),
+        message: err.message
+      }));
+      return res.status(400).json({
+        error: 'Invalid categories data',
+        details: errors
+      });
     }
 
-    // Validate structure
-    for (const [region, cats] of Object.entries(categories)) {
-      if (typeof cats !== 'object') {
-        return res.status(400).json({ error: `Invalid data for region: ${region}` });
-      }
-      for (const [catName, items] of Object.entries(cats)) {
-        if (!Array.isArray(items)) {
-          return res.status(400).json({ error: `Invalid items for category: ${catName}` });
-        }
-        for (const item of items) {
-          // Accept either old 'path' format or new 'paths' format
-          if (!item.label || (!item.path && !item.paths)) {
-            return res.status(400).json({ error: `Invalid item in category: ${catName}` });
-          }
-        }
-      }
-    }
-
+    const categories = validationResult.data;
     const categoriesPath = join(__dirname, 'categories.json');
     fs.writeFileSync(categoriesPath, JSON.stringify(categories, null, 2), 'utf8');
 
