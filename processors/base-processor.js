@@ -530,7 +530,7 @@ export class BaseProcessor extends EventEmitter {
     log('info', 'Stop requested');
     if (this.isRunning) {
       this.shouldStop = true;
-      this.emit('status', { type: 'stopping' });
+      this.emitStatus({ type: 'stopping' });
     }
   }
 
@@ -539,7 +539,7 @@ export class BaseProcessor extends EventEmitter {
     log('info', 'Resume requested');
     if (this.isRunning) {
       this.shouldResume = true;
-      this.emit('status', { type: 'resuming' });
+      this.emitStatus({ type: 'resuming' });
     }
   }
 
@@ -548,13 +548,9 @@ export class BaseProcessor extends EventEmitter {
     log('info', `Waiting for user to manually sign in to ${environment}...`);
     this.shouldResume = false;
 
-    // Store current status
-    this.currentStatusType = 'waiting-for-auth';
-    this.currentStatusMessage = `Please sign in to ${environment} in the browser window, then click "Resume Capture"`;
-
-    this.emit('status', {
+    this.emitStatus({
       type: 'waiting-for-auth',
-      message: this.currentStatusMessage
+      message: `Please sign in to ${environment} in the browser window, then click "Resume Capture"`
     });
 
     // Poll until user clicks resume or stop (with timeout)
@@ -577,10 +573,6 @@ export class BaseProcessor extends EventEmitter {
     log('info', 'User resumed after manual auth');
     this.shouldResume = false;
 
-    // Clear waiting-for-auth status
-    this.currentStatusType = null;
-    this.currentStatusMessage = null;
-
     // Wait a moment for any post-auth redirects to complete
     await this.page.waitForTimeout(2000);
   }
@@ -594,13 +586,9 @@ export class BaseProcessor extends EventEmitter {
     log('warn', `Authentication failed: ${errorMessage}. Pausing for credential update...`);
     this.shouldResume = false;
 
-    // Store current status
-    this.currentStatusType = 'waiting-for-credentials';
-    this.currentStatusMessage = `Authentication failed: ${errorMessage}. Update credentials and click Resume.`;
-
-    this.emit('status', {
+    this.emitStatus({
       type: 'waiting-for-credentials',
-      message: this.currentStatusMessage,
+      message: `Authentication failed: ${errorMessage}. Update credentials and click Resume.`,
       error: errorMessage,
       environment: environment
     });
@@ -624,10 +612,6 @@ export class BaseProcessor extends EventEmitter {
 
     log('info', 'User resumed with updated credentials');
     this.shouldResume = false;
-
-    // Set resuming status
-    this.currentStatusType = 'resuming';
-    this.currentStatusMessage = 'Retrying authentication with updated credentials...';
 
     // Brief delay before retry
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -668,8 +652,16 @@ export class BaseProcessor extends EventEmitter {
     this.results = [];
   }
 
-  // Helper to emit status
+  // Helper to emit status (updates internal state for HTTP polling backup)
   emitStatus(data) {
+    // Update current status type and message for getStatus() polling
+    if (data.type) {
+      this.currentStatusType = data.type;
+    }
+    if (data.message) {
+      this.currentStatusMessage = data.message;
+    }
+    // Emit status event for WebSocket broadcasting
     this.emit('status', data);
   }
 

@@ -805,7 +805,7 @@ export class SkuProcessor extends BaseProcessor {
     const startTime = Date.now();
     const totalRuns = selectedCultures.length * options.skus.length;
 
-    this.emit('status', {
+    this.emitStatus( {
       type: 'started',
       skuCount: totalRuns,
       cultureCount: selectedCultures.length
@@ -839,7 +839,7 @@ export class SkuProcessor extends BaseProcessor {
         for (let i = 0; i < options.skus.length; i++) {
           if (this.shouldStop) {
             log('info', 'Capture stopped by user');
-            this.emit('status', { type: 'cancelled', results: this.results });
+            this.emitStatus( { type: 'cancelled', results: this.results });
             break outer;
           }
 
@@ -875,7 +875,7 @@ export class SkuProcessor extends BaseProcessor {
       log('info', 'Results summary', { duration, successCount, errorCount, totalSkus: this.results.length });
 
       if (!this.shouldStop) {
-        this.emit('status', {
+        this.emitStatus( {
           type: 'completed',
           results: this.results,
           duration,

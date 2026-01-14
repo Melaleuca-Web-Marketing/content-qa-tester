@@ -753,7 +753,7 @@ export class MixInAdProcessor extends BaseProcessor {
 
         log('info', `Total categories: ${totalCategories}, Widths: ${selectedWidths.length}, Estimated captures: ${estimatedCaptures}`);
 
-        this.emit('status', {
+        this.emitStatus( {
             type: 'started',
             jobCount: jobs.length,
             widthCount: selectedWidths.length,
@@ -1068,7 +1068,7 @@ export class MixInAdProcessor extends BaseProcessor {
             log('info', 'Results summary', { duration, successCount, errorCount, noAdsCount, total: this.results.length });
 
             if (!this.shouldStop) {
-                this.emit('status', {
+                this.emitStatus( {
                     type: 'completed',
                     results: this.results,
                     duration,
@@ -1077,7 +1077,7 @@ export class MixInAdProcessor extends BaseProcessor {
                     noAdsCount
                 });
             } else {
-                this.emit('status', {
+                this.emitStatus( {
                     type: 'cancelled',
                     results: this.results,
                     duration,

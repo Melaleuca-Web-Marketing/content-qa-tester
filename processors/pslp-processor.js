@@ -66,7 +66,7 @@ export class PSLPProcessor extends BaseProcessor {
 
     const baseUrl = getBaseUrl(options.environment, options.region);
 
-    this.emit('status', {
+    this.emitStatus( {
       type: 'started',
       componentCount: options.components.length,
       screenshotCount: (options.screenWidths && options.screenWidths.length > 0)
@@ -390,7 +390,7 @@ export class PSLPProcessor extends BaseProcessor {
         log('info', 'PSLP TEST COMPLETE');
         log('info', '========================================');
 
-        this.emit('status', {
+        this.emitStatus( {
           type: 'completed',
           results: this.results,
           duration,
@@ -398,7 +398,7 @@ export class PSLPProcessor extends BaseProcessor {
           componentCount: componentReports.length
         });
       } else {
-        this.emit('status', {
+        this.emitStatus( {
           type: 'cancelled',
           duration
         });

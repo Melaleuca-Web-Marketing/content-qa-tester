@@ -411,7 +411,7 @@ export class BannerProcessor extends BaseProcessor {
 
     log('info', `Total banners: ${totalBanners}, Widths: ${selectedWidths.length}, Total captures: ${totalCaptures}`);
 
-    this.emit('status', {
+    this.emitStatus( {
       type: 'started',
       jobCount: jobs.length,
       widthCount: selectedWidths.length,
@@ -584,7 +584,7 @@ export class BannerProcessor extends BaseProcessor {
       log('info', 'Results summary', { duration, successCount, errorCount, total: this.results.length });
 
       if (!this.shouldStop) {
-        this.emit('status', {
+        this.emitStatus( {
           type: 'completed',
           results: this.results,
           duration,
@@ -592,7 +592,7 @@ export class BannerProcessor extends BaseProcessor {
           errorCount
         });
       } else {
-        this.emit('status', {
+        this.emitStatus( {
           type: 'cancelled',
           results: this.results,
           duration,
