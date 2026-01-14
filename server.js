@@ -59,9 +59,11 @@ router.use(express.json({
 }));
 
 // Rate limiting to prevent abuse
+// Dashboard polls 4 status endpoints every 2s = 120 req/min = 1800 req/15min
+// Set generous limit for legitimate polling while still preventing runaway scripts
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each user to 200 requests per windowMs
+  max: 5000, // Limit each user to 5000 requests per windowMs
   message: { error: 'Too many requests', message: 'Please try again later' },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
