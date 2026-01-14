@@ -736,14 +736,18 @@ function showCredentialErrorAlert(errorMessage) {
     document.querySelector('.container').prepend(alertBanner);
   }
 
+  // Safely create alert content to prevent XSS
   alertBanner.innerHTML = `
     <div class="alert-icon">⚠️</div>
     <div class="alert-content">
       <div class="alert-title">Authentication Failed</div>
-      <div class="alert-message">${errorMessage}</div>
+      <div class="alert-message"></div>
       <div class="alert-instructions">Please update your username and password below, then click "Update & Resume"</div>
     </div>
   `;
+  // Set error message as text content to prevent XSS
+  const messageDiv = alertBanner.querySelector('.alert-message');
+  messageDiv.textContent = errorMessage;
 
   alertBanner.style.display = 'flex';
 }
