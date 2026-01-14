@@ -872,6 +872,11 @@ function notifyJobComplete(title, body, isError) {
     }
   }
 
+  // Show visual notification fallback for HTTP environments
+  if (typeof showVisualNotification === 'function') {
+    showVisualNotification(title, body, isError ? 'error' : 'success');
+  }
+
   playCompletionSound(isError);
 }
 
