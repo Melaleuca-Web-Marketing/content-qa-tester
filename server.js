@@ -49,7 +49,11 @@ if (!fs.existsSync(REPORTS_DIR)) {
 }
 
 // Middleware
-router.use(express.json());
+// Global JSON body limit to prevent memory exhaustion
+router.use(express.json({
+  limit: '10mb',  // Maximum request body size
+  strict: true    // Only accept arrays and objects
+}));
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.set('Pragma', 'no-cache');
@@ -255,6 +259,14 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'No SKUs provided' });
   }
 
+  // Prevent excessive SKU counts to avoid memory exhaustion
+  if (skus.length > 500) {
+    return res.status(400).json({
+      error: 'Too many SKUs',
+      message: 'Maximum 500 SKUs allowed per batch. Please split into smaller batches.'
+    });
+  }
+
   const useTopScreenshot = topScreenshot === true;
   const normalizedCultures = Array.isArray(cultures)
     ? cultures.map(c => String(c).trim()).filter(Boolean)
@@ -344,12 +356,24 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'No cultures selected' });
   }
 
+  if (cultures.length > 50) {
+    return res.status(400).json({ error: 'Too many cultures', message: 'Maximum 50 cultures allowed' });
+  }
+
   if (!widths || !Array.isArray(widths) || widths.length === 0) {
     return res.status(400).json({ error: 'No widths selected' });
   }
 
+  if (widths.length > 20) {
+    return res.status(400).json({ error: 'Too many widths', message: 'Maximum 20 widths allowed' });
+  }
+
   if (!categories || !Array.isArray(categories) || categories.length === 0) {
     return res.status(400).json({ error: 'No categories selected' });
+  }
+
+  if (categories.length > 100) {
+    return res.status(400).json({ error: 'Too many categories', message: 'Maximum 100 categories allowed' });
   }
 
   const bannerProcessor = getProcessor(userId, 'banner');
@@ -433,6 +457,16 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'No culture selected' });
   }
 
+  // Validate array sizes to prevent memory exhaustion
+  if (components && Array.isArray(components) && components.length > 50) {
+    return res.status(400).json({ error: 'Too many components', message: 'Maximum 50 components allowed' });
+  }
+
+  const widthsArray = screenWidths || widths;
+  if (widthsArray && Array.isArray(widthsArray) && widthsArray.length > 20) {
+    return res.status(400).json({ error: 'Too many screen widths', message: 'Maximum 20 screen widths allowed' });
+  }
+
   const pslpProcessor = getProcessor(userId, 'pslp');
   if (pslpProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'PSLP capture already in progress' });
@@ -507,12 +541,24 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'No cultures selected' });
   }
 
+  if (cultures.length > 50) {
+    return res.status(400).json({ error: 'Too many cultures', message: 'Maximum 50 cultures allowed' });
+  }
+
   if (!widths || !Array.isArray(widths) || widths.length === 0) {
     return res.status(400).json({ error: 'No widths selected' });
   }
 
+  if (widths.length > 20) {
+    return res.status(400).json({ error: 'Too many widths', message: 'Maximum 20 widths allowed' });
+  }
+
   if (!categories || !Array.isArray(categories) || categories.length === 0) {
     return res.status(400).json({ error: 'No categories selected' });
+  }
+
+  if (categories.length > 100) {
+    return res.status(400).json({ error: 'Too many categories', message: 'Maximum 100 categories allowed' });
   }
 
   const mixinAdProcessor = getProcessor(userId, 'mixinad');
