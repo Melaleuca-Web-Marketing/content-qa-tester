@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import open, { apps } from 'open';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 import { SkuProcessor } from './processors/sku-processor.js';
 import { BannerProcessor } from './processors/banner-processor.js';
@@ -67,9 +67,12 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests', message: 'Please try again later' },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Use X-User-Id header for user identification (internal tool, no IP-based limiting)
+  // Use X-User-Id header for user identification, fallback to IPv6-safe IP key
   keyGenerator: (req) => {
-    return req.get('X-User-Id') || req.ip;
+    const userId = req.get('X-User-Id');
+    if (userId) return userId;
+    // Use library's ipKeyGenerator for proper IPv6 handling
+    return ipKeyGenerator(req);
   }
 });
 
