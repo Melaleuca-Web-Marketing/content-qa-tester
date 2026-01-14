@@ -119,7 +119,10 @@ function attachProcessorEvents(processor, tool, userId) {
   });
 
   processor.on('status', (data) => {
-    broadcast({ type: `${tool}-status`, data }, userId);
+    // Merge status event data with current processor status
+    // This ensures isRunning and other fields are always included
+    const fullStatus = { ...processor.getStatus(), ...data };
+    broadcast({ type: `${tool}-status`, data: fullStatus }, userId);
   });
 
   processor.on('error', (data) => {
