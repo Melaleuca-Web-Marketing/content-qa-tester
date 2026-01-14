@@ -1422,7 +1422,11 @@
             // Job finished - clear state
             jobStartTimes[tool] = null;
             jobStates[tool] = null;
-            console.log(`[Dashboard] Job completed via WebSocket: ${tool}`);
+            console.log(`[Dashboard] Job completed via WebSocket: ${tool}`, {
+              'data.type': data.type,
+              'data.isRunning': data.isRunning,
+              'condition': data.type === 'completed' ? 'type===completed' : '!isRunning'
+            });
             renderDashboard();
             return;
           }
