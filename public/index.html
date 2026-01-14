@@ -1152,6 +1152,11 @@
           try {
             const response = await fetch(api(`/api/${tool}/status`), { headers: withUserHeaders() });
             if (!response.ok) {
+              if (response.status === 429) {
+                // Rate limit - keep existing state, don't clear
+                continue;
+              }
+              // Other errors - clear state
               jobStates[tool] = null;
               jobStartTimes[tool] = null;
               continue;
@@ -1468,14 +1473,31 @@
         try {
           console.log(`[History] Fetching history | userId: ${userId || '(none)'}`);
           const response = await fetch(api('/api/history'), { headers: withUserHeaders() });
+
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn('[History] Rate limit exceeded, keeping existing history');
+              return; // Keep existing history, don't clear it
+            }
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
           const data = await response.json();
-          history = data.history;
-          historyLimit = data.limit;
-          console.log(`[History] Received ${history.length} history entries from server`);
-          document.getElementById('history-limit').value = historyLimit;
+          if (data && data.history && Array.isArray(data.history)) {
+            history = data.history;
+            historyLimit = data.limit;
+            console.log(`[History] Received ${history.length} history entries from server`);
+            document.getElementById('history-limit').value = historyLimit;
+          } else {
+            console.error('[History] Invalid response format:', data);
+            history = [];
+          }
         } catch (err) {
           console.error('[History] Error fetching history:', err);
-          history = [];
+          // Only clear history if we don't have any existing data
+          if (!history || history.length === 0) {
+            history = [];
+          }
         }
       }
 
@@ -1583,8 +1605,17 @@
             method: 'POST',
             headers: withUserHeaders()
           });
+
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn('[History] Rate limit exceeded on markAsRead, will retry later');
+              return; // Don't update UI, keep current state
+            }
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
           const data = await response.json();
-          if (data.history) {
+          if (data && data.history && Array.isArray(data.history)) {
             history = data.history;
             renderHistory();
           }
