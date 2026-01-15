@@ -200,8 +200,14 @@ export class MixInAdProcessor extends BaseProcessor {
             const optionButtons = await list.$$(config.sku.selectors.configuratorOptionButton);
             for (const option of optionButtons) {
                 const disabledAttr = await option.getAttribute('disabled');
-                const ariaDisabled = await option.getAttribute('aria-disabled');
-                if (disabledAttr !== null || ariaDisabled === 'true') {
+                const ariaDisabled = (await option.getAttribute('aria-disabled')) || '';
+                const dataDisabled = (await option.getAttribute('data-disabled')) || '';
+                const className = (await option.getAttribute('class')) || '';
+                const isDisabledClass = className.split(/\s+/).some((name) => name.includes('disabled'));
+                const isAriaDisabled = ariaDisabled.toLowerCase() === 'true';
+                const isDataDisabled = dataDisabled.toLowerCase() === 'true';
+
+                if (disabledAttr !== null || isAriaDisabled || isDataDisabled || isDisabledClass) {
                     continue;
                 }
 
@@ -601,6 +607,25 @@ export class MixInAdProcessor extends BaseProcessor {
                 adsInfo = await this.detectAllMixInAds();
 
                 if (adsInfo.length > 0) break;
+            }
+
+            if (adsInfo.length === 0) {
+                // Extra fallback to catch lazy-loaded ads at small widths
+                try {
+                    await page.waitForSelector(config.mixinad.selector, { state: 'attached', timeout: 2000 });
+                } catch {
+                    // Ignore selector timeout
+                }
+                try {
+                    await page.evaluate(() => {
+                        const maxScroll = document.body.scrollHeight || document.documentElement.scrollHeight || 0;
+                        window.scrollTo(0, Math.floor(maxScroll * 0.35));
+                    });
+                } catch {
+                    // Ignore scroll errors
+                }
+                await page.waitForTimeout(600);
+                adsInfo = await this.detectAllMixInAds();
             }
 
             // If no ads found, return informational result (not an error)

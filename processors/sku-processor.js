@@ -432,8 +432,14 @@ export class SkuProcessor extends BaseProcessor {
       const optionButtons = await list.$$(config.sku.selectors.configuratorOptionButton);
       for (const option of optionButtons) {
         const disabledAttr = await option.getAttribute('disabled');
-        const ariaDisabled = await option.getAttribute('aria-disabled');
-        if (disabledAttr !== null || ariaDisabled === 'true') {
+        const ariaDisabled = (await option.getAttribute('aria-disabled')) || '';
+        const dataDisabled = (await option.getAttribute('data-disabled')) || '';
+        const className = (await option.getAttribute('class')) || '';
+        const isDisabledClass = className.split(/\s+/).some((name) => name.includes('disabled'));
+        const isAriaDisabled = ariaDisabled.toLowerCase() === 'true';
+        const isDataDisabled = dataDisabled.toLowerCase() === 'true';
+
+        if (disabledAttr !== null || isAriaDisabled || isDataDisabled || isDisabledClass) {
           continue;
         }
 

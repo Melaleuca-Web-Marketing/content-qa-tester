@@ -64,7 +64,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
         imageAlt: item.imageAlt,
         url: item.url,
         hasError: false,
-        noAdsFound: item.noAdsFound || false,
+        noAdsFound: false,
         validation: item.validation,
         addToCartResult: item.addToCartResult || null
       };
@@ -80,7 +80,15 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
     }
   });
 
-  const groups = Object.values(groupedItems);
+  const groups = Object.values(groupedItems).map((group) => {
+    const hasSuccess = group.items.some((item) => !item.error && !item.noAdsFound);
+    const allNoAds = group.items.length > 0 && group.items.every((item) => item.noAdsFound);
+    return {
+      ...group,
+      hasSuccess,
+      noAdsFound: !hasSuccess && allNoAds
+    };
+  });
   if (excelValidation && excelValidation.enabled && excelValidation.data) {
     validationSummary = buildGroupValidationSummary(groups);
   }
@@ -155,8 +163,11 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
     </div>
 
     ${groups.map((group, groupIdx) => {
-    const allErrors = group.items.every(i => i.error);
-    const hasErrors = group.items.some(i => i.error) || isValidationFailure(group.validation);
+    const displayItems = group.hasSuccess
+      ? group.items.filter((item) => !item.noAdsFound)
+      : group.items;
+    const allErrors = displayItems.length > 0 && displayItems.every((item) => item.error);
+    const hasErrors = displayItems.some((item) => item.error) || isValidationFailure(group.validation);
     const isNoAds = group.noAdsFound;
     const statusClass = allErrors ? 'error' : isNoAds ? 'none-found' : hasErrors ? 'partial' : 'success';
     const statusText = allErrors ? 'Failed' : isNoAds ? 'No Ads' : hasErrors ? 'Partial' : 'Success';
@@ -193,7 +204,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
         </div>
         ` : allErrors ? `
         <div class="error-message">
-          All captures failed: ${escapeHtml(group.items[0]?.message || 'Mix-in ad not found or request failed')}
+          All captures failed: ${escapeHtml(displayItems[0]?.message || 'Mix-in ad not found or request failed')}
         </div>
         ` : `
         <div class="ad-info">
@@ -293,7 +304,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
         <div class="screenshots-section">
           <h3>Screenshots by Viewport Width</h3>
           <div class="screenshots-grid">
-            ${group.items.map((item, itemIdx) => {
+            ${displayItems.map((item, itemIdx) => {
       const sizeClass = item.width <= 576 ? 'size-mobile' : item.width < 1000 ? 'size-tablet' : 'size-desktop';
       if (item.error) {
         return `

@@ -170,8 +170,8 @@ export const config = {
       errorMessage: ".m-cartAddConfig__error",
       closeShelfButton: ".o-cartShelf__close, .o-shelf__close button, [data-testid='button-closeX']",
       configuratorList: ".o-configuratorAcc__list",
-      configuratorOptionButton: ".m-refinerImage",
-      configuratorSelectedOption: ".o-configuratorAcc__item.-selected, .o-configuratorAcc__item.-active, .m-refinerImage.-selected, .m-refinerImage.-active, .m-refinerImage[aria-pressed='true'], .m-refinerImage[aria-selected='true']",
+      configuratorOptionButton: ".m-refinerImage, .m-refinerSwatch",
+      configuratorSelectedOption: ".o-configuratorAcc__item.-selected, .o-configuratorAcc__item.-active, .m-refinerImage.-selected, .m-refinerImage.-active, .m-refinerImage[aria-pressed='true'], .m-refinerImage[aria-selected='true'], .m-refinerSwatch.-selected, .m-refinerSwatch.-active, .m-refinerSwatch[aria-pressed='true'], .m-refinerSwatch[aria-selected='true']",
       configuratorAccordionToggle: ".o-configuratorAcc .o-accordion__toggler[aria-expanded]",
       // Login selectors (home page)
       homePageSignInButton: "a.a-authorBtn",
