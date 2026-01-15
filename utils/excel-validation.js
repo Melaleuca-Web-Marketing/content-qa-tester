@@ -249,6 +249,8 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
   console.log(`[Excel Validation] Validating ${capturedResults.length} results against ${excelData.length} Excel rows (type: ${type})`);
 
   return capturedResults.map(result => {
+    const culture = result.culture || '';
+
     // Find matching Excel row
     const match = findMatchingRow(result, excelData, type);
 
