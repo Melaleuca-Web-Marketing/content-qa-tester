@@ -235,20 +235,6 @@ function compareTargets(actual, expected) {
 }
 
 /**
- * Compare image locale fields
- */
-function compareImageLocale(actual, expected) {
-  const normalizedActual = normalizeText(actual || '');
-  const normalizedExpected = normalizeText(expected || '');
-
-  return {
-    actual: normalizedActual,
-    expected: normalizedExpected,
-    match: normalizedActual === normalizedExpected
-  };
-}
-
-/**
  * Validate captured results against Excel data
  * @param {Array} capturedResults - Results from banner/mix-in ad capture
  * @param {Array} excelData - Normalized Excel data from frontend
@@ -263,11 +249,6 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
   console.log(`[Excel Validation] Validating ${capturedResults.length} results against ${excelData.length} Excel rows (type: ${type})`);
 
   return capturedResults.map(result => {
-    // Determine which locale column to use based on culture
-    const culture = result.culture || '';
-    const isCanada = culture.toLowerCase().includes('ca');
-    const localeField = isCanada ? 'imageLocaleCA' : 'imageLocaleUS';
-
     // Find matching Excel row
     const match = findMatchingRow(result, excelData, type);
 
@@ -287,8 +268,7 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
     // Compare fields
     const comparisons = {
       link: compareLinks(result.href, match.bannerLink, culture, result.environment),
-      target: compareTargets(result.target, match.target),
-      imageLocale: compareImageLocale(result.imageLocale, match[localeField])
+      target: compareTargets(result.target, match.target)
     };
 
     // For mix-in ads, also compare position
@@ -332,7 +312,6 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
         expected: {
           link: match.bannerLink,
           target: match.target,
-          imageLocale: match[localeField],
           position: match.position,
           sku: expectedSkus.join(', ')
         },
@@ -362,7 +341,7 @@ export function generateValidationSummary(validatedResults) {
 
 /**
  * Validate a single capture result against Excel data (for real-time activity feed)
- * @param {Object} result - Single capture result with href, target, imageLocale, culture, category, mainCategory
+ * @param {Object} result - Single capture result with href, target, culture, category, mainCategory
  * @param {Array} excelData - Normalized Excel data array
  * @param {string} type - Type: 'category-banner' or 'mix-in-ad'
  * @returns {Object} Validation result: { status, failures, expected }
@@ -373,8 +352,6 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
   }
 
   const culture = result.culture || '';
-  const isCanada = culture.toLowerCase().includes('ca');
-  const localeField = isCanada ? 'imageLocaleCA' : 'imageLocaleUS';
 
   // Find matching Excel row
   const match = findMatchingRow(result, excelData, type);
@@ -389,7 +366,6 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
   // Compare fields
   const linkResult = compareLinks(result.href, match.bannerLink, culture, result.environment);
   const targetResult = compareTargets(result.target, match.target);
-  const localeResult = compareImageLocale(result.imageLocale, match[localeField]);
   const positionResult = type === 'mix-in-ad' && result.position !== undefined
     ? {
       actual: result.position,
@@ -406,19 +382,16 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
   const failures = [];
   if (!linkResult.match) failures.push('link');
   if (!targetResult.match) failures.push('target');
-  if (!localeResult.match) failures.push('imageLocale');
   if (positionResult && !positionResult.match) failures.push('position');
   if (skuResult && !skuResult.match) failures.push('sku');
 
   const expected = {
     link: match.bannerLink,
-    target: match.target,
-    imageLocale: match[localeField]
+    target: match.target
   };
   const actual = {
     link: result.href,
-    target: result.target,
-    imageLocale: result.imageLocale
+    target: result.target
   };
 
   if (positionResult) {

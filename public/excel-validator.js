@@ -9,9 +9,8 @@ const REQUIRED_COLUMNS = [
   'Subcategory',
   'Banner Link',
   'Target',
-  'Image Locale US',
-  'Image Locale CA',
-  'Position'
+  'Position',
+  'SKUs'
 ];
 
 const CULTURE_LANG_MAP = {
@@ -118,10 +117,10 @@ async function parseExcelFile(file) {
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
-        // Convert to JSON
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        // Read rows with header row preserved
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
-        if (jsonData.length === 0) {
+        if (rows.length === 0) {
           resolve({
             success: false,
             errors: ['Excel file is empty']
@@ -129,14 +128,33 @@ async function parseExcelFile(file) {
           return;
         }
 
-        // Validate headers
-        const headers = Object.keys(jsonData[0]);
+        const headers = rows[0].map((header) => String(header || '').trim());
         const missingColumns = REQUIRED_COLUMNS.filter(col => !headers.includes(col));
 
         if (missingColumns.length > 0) {
           resolve({
             success: false,
             errors: [`Missing required columns: ${missingColumns.join(', ')}`]
+          });
+          return;
+        }
+
+        const jsonData = rows
+          .slice(1)
+          .filter(row => row.some(cell => String(cell || '').trim() !== ''))
+          .map((row) => {
+            const rowData = {};
+            headers.forEach((header, idx) => {
+              if (!header) return;
+              rowData[header] = row[idx];
+            });
+            return rowData;
+          });
+
+        if (jsonData.length === 0) {
+          resolve({
+            success: false,
+            errors: ['Excel file has headers but no data rows']
           });
           return;
         }
@@ -150,8 +168,6 @@ async function parseExcelFile(file) {
             subcategory: normalizeText(row['Subcategory']),
             bannerLink: normalizeLink(row['Banner Link']),
             target: normalizeTarget(row['Target']),
-            imageLocaleUS: normalizeText(row['Image Locale US']),
-            imageLocaleCA: normalizeText(row['Image Locale CA']),
             position: row['Position'] ? parseInt(row['Position']) : null,
             skus: normalizeSkuList(row['SKUs']),
             raw: row
@@ -196,7 +212,7 @@ async function parseExcelFile(file) {
           .map(row => `Row ${row.rowNumber}: ${row.error}`);
 
         // Check for unexpected columns
-        const unexpectedColumns = headers.filter(col => !REQUIRED_COLUMNS.includes(col) && col !== 'SKUs');
+          const unexpectedColumns = headers.filter(col => !REQUIRED_COLUMNS.includes(col));
         const hasUnexpectedColumns = unexpectedColumns.length > 0;
 
         // Create preview (first 5 rows)
@@ -371,9 +387,6 @@ function validateResults(capturedResults, excelData, culture) {
   }
 
   // Determine which locale column to use
-  const isCanada = culture && culture.toLowerCase().includes('ca');
-  const localeField = isCanada ? 'imageLocaleCA' : 'imageLocaleUS';
-
   return capturedResults.map(result => {
     // Find matching Excel row
     const match = findMatchingRow(result, excelData);
@@ -391,8 +404,7 @@ function validateResults(capturedResults, excelData, culture) {
     // Compare fields
     const comparisons = {
       link: compareLinks(result.link, match.bannerLink, culture, result.environment),
-      target: compareTargets(result.target, match.target),
-      imageLocale: compareImageLocale(result.imageLocale, match[localeField])
+      target: compareTargets(result.target, match.target)
     };
 
     // For mix-in ads, also compare position
@@ -414,7 +426,6 @@ function validateResults(capturedResults, excelData, culture) {
         expected: {
           link: match.bannerLink,
           target: match.target,
-          imageLocale: match[localeField],
           position: match.position
         },
         comparisons
@@ -506,20 +517,6 @@ function compareLinks(actual, expected, culture = '', environment = 'production'
 function compareTargets(actual, expected) {
   const normalizedActual = normalizeTarget(actual || '');
   const normalizedExpected = normalizeTarget(expected || '');
-
-  return {
-    actual: normalizedActual,
-    expected: normalizedExpected,
-    match: normalizedActual === normalizedExpected
-  };
-}
-
-/**
- * Compare image locale fields
- */
-function compareImageLocale(actual, expected) {
-  const normalizedActual = normalizeText(actual || '');
-  const normalizedExpected = normalizeText(expected || '');
 
   return {
     actual: normalizedActual,
