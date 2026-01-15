@@ -12,10 +12,11 @@ function loadCategories() {
   try {
     const categoriesPath = join(__dirname, 'categories.json');
     const categoriesData = JSON.parse(readFileSync(categoriesPath, 'utf8'));
+    const source = categoriesData && categoriesData.data ? categoriesData.data : categoriesData;
 
     // Transform JSON format to config format
     const transformed = {};
-    for (const [region, categories] of Object.entries(categoriesData)) {
+    for (const [region, categories] of Object.entries(source || {})) {
       transformed[region] = Object.entries(categories).map(([name, items]) => ({
         name,
         items
