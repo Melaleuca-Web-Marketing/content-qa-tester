@@ -2,15 +2,27 @@
 
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, resolve, isAbsolute } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const DEFAULT_CATEGORIES_PATH = join(__dirname, 'categories.json');
+const TEMPLATE_CATEGORIES_PATH = join(__dirname, 'categories.template.json');
+
+export function getCategoriesPath() {
+  const envPath = process.env.CATEGORIES_PATH;
+  if (!envPath) return DEFAULT_CATEGORIES_PATH;
+  return isAbsolute(envPath) ? envPath : resolve(process.cwd(), envPath);
+}
+
+export function getCategoriesTemplatePath() {
+  return TEMPLATE_CATEGORIES_PATH;
+}
 
 // Load categories from external JSON file
 function loadCategories() {
   try {
-    const categoriesPath = join(__dirname, 'categories.json');
+    const categoriesPath = getCategoriesPath();
     const categoriesData = JSON.parse(readFileSync(categoriesPath, 'utf8'));
     const source = categoriesData && categoriesData.data ? categoriesData.data : categoriesData;
 
@@ -24,7 +36,20 @@ function loadCategories() {
     }
     return transformed;
   } catch (err) {
-    console.warn('Could not load categories.json, using defaults:', err.message);
+    try {
+      const categoriesData = JSON.parse(readFileSync(TEMPLATE_CATEGORIES_PATH, 'utf8'));
+      const source = categoriesData && categoriesData.data ? categoriesData.data : categoriesData;
+      const transformed = {};
+      for (const [region, categories] of Object.entries(source || {})) {
+        transformed[region] = Object.entries(categories).map(([name, items]) => ({
+          name,
+          items
+        }));
+      }
+      return transformed;
+    } catch (templateErr) {
+      console.warn('Could not load categories file, using defaults:', err.message);
+    }
     // Return default categories if file doesn't exist
     return getDefaultCategories();
   }

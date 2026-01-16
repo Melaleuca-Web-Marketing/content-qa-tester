@@ -4,6 +4,9 @@ node_modules/
 # Generated reports
 reports/
 
+# Runtime categories data
+categories.json
+
 # Logs
 *.log
 server.log

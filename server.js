@@ -17,7 +17,7 @@ import { generateSkuReport } from './report-generators/sku-report.js';
 import { generateBannerReport } from './report-generators/banner-report.js';
 import { generatePslpReport } from './report-generators/pslp-report.js';
 import { generateMixInAdReport } from './report-generators/mixinad-report.js';
-import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, reloadCategories } from './config.js';
+import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, reloadCategories, getCategoriesPath, getCategoriesTemplatePath } from './config.js';
 import { asyncHandler } from './utils/async-handler.js';
 import { autoGenerateReport } from './utils/auto-generate-report.js';
 import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory, markAsRead } from './utils/history.js';
@@ -78,6 +78,37 @@ const apiLimiter = rateLimit({
 
 // Apply rate limiter to all API routes
 router.use('/api/', apiLimiter);
+
+function ensureCategoriesFile() {
+  const categoriesPath = getCategoriesPath();
+  if (fs.existsSync(categoriesPath)) {
+    return categoriesPath;
+  }
+
+  let templateData = {};
+  const templatePath = getCategoriesTemplatePath();
+  if (fs.existsSync(templatePath)) {
+    try {
+      templateData = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+    } catch (err) {
+      console.warn('[Categories] Failed to read template file:', err.message);
+      templateData = {};
+    }
+  }
+
+  const source = templateData && templateData.data ? templateData.data : templateData;
+  const versionedData = {
+    _version: crypto.randomUUID(),
+    _lastModified: new Date().toISOString(),
+    _modifiedBy: 'system-seed',
+    data: source
+  };
+
+  fs.mkdirSync(dirname(categoriesPath), { recursive: true });
+  fs.writeFileSync(categoriesPath, JSON.stringify(versionedData, null, 2), 'utf8');
+  console.log('[Categories] Seeded categories file:', categoriesPath);
+  return categoriesPath;
+}
 
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -248,7 +279,7 @@ const CategorySchema = z.record(
 
 router.get('/api/categories', (req, res) => {
   try {
-    const categoriesPath = join(__dirname, 'categories.json');
+    const categoriesPath = ensureCategoriesFile();
     const categoriesData = fs.readFileSync(categoriesPath, 'utf8');
     const parsed = JSON.parse(categoriesData);
 
@@ -313,7 +344,8 @@ router.post('/api/categories', express.json(), (req, res) => {
     }
 
     const validatedCategories = validationResult.data;
-    const categoriesPath = join(__dirname, 'categories.json');
+    const categoriesPath = getCategoriesPath();
+    fs.mkdirSync(dirname(categoriesPath), { recursive: true });
 
     // Read current file to check for conflicts
     let currentData;

@@ -1,9 +1,11 @@
 # How to Add or Modify Categories
 
-Categories for the Banner Tester and Mix-In Ad Tester are stored in `categories.json` for easy management.
+Categories for the Banner Tester and Mix-In Ad Tester are stored in a JSON file for easy management.
 
 ## File Location
-`melaleuca-unified-tester/categories.json`
+- Runtime file: set `CATEGORIES_PATH` to an absolute path (recommended for servers).
+- Default local file: `categories.json` in the project root.
+- Template: `categories.template.json` (used to seed new files).
 
 ## Structure
 
@@ -40,7 +42,7 @@ Categories for the Banner Tester and Mix-In Ad Tester are stored in `categories.
 
 ##  Adding a New Category
 
-1. Open `categories.json`
+1. Open the categories file (from `CATEGORIES_PATH` or `categories.json`).
 2. Find the region (e.g., "US & Canada")
 3. Add a new category object:
 
@@ -93,4 +95,4 @@ If categories don't appear after editing:
 1. Check JSON syntax (use a JSON validator)
 2. Ensure the file is saved
 3. Restart the server
-4. Check server console for errors about loading categories.json
+4. Check server console for errors about loading the categories file
