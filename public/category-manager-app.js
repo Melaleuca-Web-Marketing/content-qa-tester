@@ -245,6 +245,30 @@ function renderCategoryContent() {
   contentContainer.innerHTML = categoriesHTML;
 }
 
+function getSaveErrorMessage(result) {
+  const details = Array.isArray(result.details) && result.details.length > 0
+    ? result.details.map(detail => `${detail.path || '(root)'}: ${detail.message}`).join('; ')
+    : '';
+  const message = result.error || result.message || 'Failed to save';
+  return details ? `${message} (${details})` : message;
+}
+
+async function handleCategorySaveConflict(result) {
+  const reloadConfirm = await showConfirmModal({
+    icon: 'ƒsÿ‹,?',
+    title: 'Conflict Detected',
+    message: `Categories have been modified by ${result.lastModifiedBy || 'another user'}.\n\nYour changes cannot be saved. Would you like to reload and lose your changes?`,
+    confirmText: 'Reload',
+    cancelText: 'Cancel',
+    confirmStyle: 'btn-warning'
+  });
+
+  if (reloadConfirm) {
+    await loadCategories();
+    clearUnsaved();
+  }
+}
+
 // Toggle expand/collapse for subcategory
 function toggleExpand(itemKey) {
   if (expandedItems.has(itemKey)) {
@@ -461,13 +485,20 @@ async function deleteCategory(catName) {
     const response = await fetch(api('/api/categories'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(categoriesData)
+      body: JSON.stringify({
+        categories: categoriesData,
+        version: currentVersion
+      })
     });
 
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error || result.message || 'Failed to save');
+      if (response.status === 409) {
+        await handleCategorySaveConflict(result);
+        return;
+      }
+      throw new Error(getSaveErrorMessage(result));
     }
 
     clearUnsaved();
@@ -552,13 +583,20 @@ async function deleteSubcategory(catName, idx) {
     const response = await fetch(api('/api/categories'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(categoriesData)
+      body: JSON.stringify({
+        categories: categoriesData,
+        version: currentVersion
+      })
     });
 
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error || result.message || 'Failed to save');
+      if (response.status === 409) {
+        await handleCategorySaveConflict(result);
+        return;
+      }
+      throw new Error(getSaveErrorMessage(result));
     }
 
     clearUnsaved();
