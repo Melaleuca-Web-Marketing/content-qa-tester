@@ -142,6 +142,7 @@ async function checkStatus() {
       isCapturing = true;
       setUICapturing();
       setStatusRunning('Job in progress', 'Reconnected to running job');
+      syncCaptureStartTime(status.startedAt);
 
       if (status.statusType === 'waiting-for-auth') {
         isWaitingForResume = true;
@@ -813,6 +814,7 @@ function handleWebSocketMessage(message) {
 }
 
 function handleProgress(data) {
+  syncCaptureStartTime(data.startedAt);
   const progress = data.progress;
   if (progress.type === 'add-to-cart-complete') {
     const activityResults = progress.result?.results || [];
@@ -891,7 +893,7 @@ function handleStatusUpdate(data) {
         jobSummary = buildJobSummary();
         requestNotificationPermission();
         primeAudio();
-        captureStartTime = Date.now();
+        captureStartTime = Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
         setUICapturing();
       // Use category count (jobCount) for status message, not estimatedCaptures
       setStatusRunning('Starting capture...', `${data.jobCount || data.totalBanners} categories to process`);
@@ -911,6 +913,7 @@ function handleStatusUpdate(data) {
     case 'cancelled':
       isCapturing = false;
       setUIIdle();
+      captureStartTime = null;
       setStatusIdle('Capture cancelled', `${data.successCount} captures completed before cancellation`);
       if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
       break;
@@ -919,6 +922,7 @@ function handleStatusUpdate(data) {
         isCapturing = false;
         isWaitingForResume = false;
         setUIIdle();
+        captureStartTime = null;
 
         const successCount = Number.isFinite(data.successCount) ? data.successCount : 0;
         const errorCount = Number.isFinite(data.errorCount) ? data.errorCount : 0;
@@ -955,6 +959,7 @@ function handleStatusUpdate(data) {
       startCaptureBtn.textContent = 'Resume Capture';
       startCaptureBtn.disabled = false;
       stopCaptureBtn.disabled = false;
+      progressEta.textContent = 'ETR: --:--';
       break;
 
     case 'waiting-for-credentials':
@@ -964,6 +969,7 @@ function handleStatusUpdate(data) {
       startCaptureBtn.textContent = 'Update & Resume';
       startCaptureBtn.disabled = false;
       stopCaptureBtn.disabled = false;
+      progressEta.textContent = 'ETR: --:--';
       if (loginToggle) loginToggle.checked = true;
       setLoginEnabled(true);
       if (loginSection) {
@@ -1034,6 +1040,19 @@ function resetCredentialPromptState() {
   hideCredentialErrorAlert();
 }
 
+function syncCaptureStartTime(startedAt) {
+  if (!Number.isFinite(startedAt)) return;
+  if (!captureStartTime || Math.abs(captureStartTime - startedAt) > 1000) {
+    captureStartTime = startedAt;
+  }
+}
+
+function ensureCaptureStartTime() {
+  if (!captureStartTime) {
+    captureStartTime = Date.now();
+  }
+}
+
 async function updateCredentialsAndResume() {
   const username = usernameInput.value.trim();
   const password = passwordInput.value;
@@ -1089,15 +1108,25 @@ async function updateCredentialsAndResume() {
 }
 
 function updateProgressBar(current, total) {
-  const percentage = total > 0 ? (current / total) * 100 : 0;
+  const safeTotal = Number.isFinite(total) && total > 0 ? total : 0;
+  const safeCurrent = Number.isFinite(current) ? Math.max(0, current) : 0;
+  const clampedCurrent = safeTotal > 0 ? Math.min(safeCurrent, safeTotal) : safeCurrent;
+  const percentage = safeTotal > 0 ? Math.min(100, (clampedCurrent / safeTotal) * 100) : 0;
   progressBarInner.style.width = `${percentage}%`;
-  progressCount.textContent = `${current} / ${total}`;
+  progressCount.textContent = safeTotal > 0 ? `${clampedCurrent} / ${safeTotal}` : '-- / --';
 
-  if (captureStartTime && current > 0) {
+  if (safeTotal > 0 && clampedCurrent > 0) {
+    ensureCaptureStartTime();
+    const progressPercent = Math.min(100, (clampedCurrent / safeTotal) * 100);
     const elapsed = Date.now() - captureStartTime;
-    const avgPerCategory = elapsed / current;
-    const remaining = (total - current) * avgPerCategory;
-    progressEta.textContent = `ETR: ${formatTime(remaining)}`;
+    const remaining = progressPercent > 0
+      ? (elapsed * (100 - progressPercent)) / progressPercent
+      : null;
+    progressEta.textContent = Number.isFinite(remaining) && remaining >= 0
+      ? `ETR: ${formatTime(remaining)}`
+      : 'ETR: --:--';
+  } else {
+    progressEta.textContent = 'ETR: --:--';
   }
 }
 
@@ -1214,6 +1243,7 @@ function formatDuration(ms) {
 }
 
 function formatTime(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '--:--';
   const totalSeconds = Math.floor(ms / 1000);
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;

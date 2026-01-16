@@ -120,6 +120,7 @@ async function checkStatus() {
       isCapturing = true;
       setUICapturing();
       setStatusRunning('Job in progress', 'Reconnected to running job');
+      syncCaptureStartTime(status.startedAt);
 
       if (status.options) {
         if (status.options.environment) {
@@ -216,7 +217,7 @@ function applyProgressSnapshot(progress) {
   }
 
   if (progress.current !== undefined && progress.total !== undefined) {
-    updateProgressBar(progress.current, progress.total);
+    updateProgressBar(progress.current, progress.total, progress.progress);
   }
 }
 
@@ -648,6 +649,7 @@ function handleWebSocketMessage(message) {
 }
 
 function handleProgress(data) {
+  syncCaptureStartTime(data.startedAt);
   const progress = data.progress;
   switch (progress.type) {
     case 'browser':
@@ -673,7 +675,7 @@ function handleProgress(data) {
       currentStepStatus.textContent = progress.status;
       setStatusRunning('Capturing screenshots...', progress.status);
       if (progress.current !== undefined && progress.total !== undefined) {
-        updateProgressBar(progress.current, progress.total);
+        updateProgressBar(progress.current, progress.total, progress.progress);
         // Add to activity feed when a width is complete
         if (progress.width && progress.status && progress.status.includes('captured')) {
           addActivityItem({
@@ -692,7 +694,7 @@ function handleProgress(data) {
       currentStepStatus.textContent = progress.status;
       setStatusRunning('Extracting component data...', `${progress.componentName || progress.component}: ${progress.status}`);
       if (progress.current !== undefined && progress.total !== undefined) {
-        updateProgressBar(progress.current, progress.total);
+        updateProgressBar(progress.current, progress.total, progress.progress);
       }
       // Add component completion to activity feed
       if (progress.status === 'Complete' || progress.status === 'Extracted') {
@@ -805,7 +807,7 @@ function handleStatusUpdate(data) {
         jobSummary = buildJobSummary();
         requestNotificationPermission();
         primeAudio();
-        captureStartTime = Date.now();
+        captureStartTime = Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
         setUICapturing();
       setStatusRunning('Starting PSLP capture...', `${data.componentsCount ?? data.componentCount ?? 0} components to extract`);
       // Clear and show activity feed
@@ -820,6 +822,7 @@ function handleStatusUpdate(data) {
     case 'cancelled':
       isCapturing = false;
       setUIIdle();
+      captureStartTime = null;
       setStatusIdle('Capture cancelled', 'Operation was cancelled by user');
       if (saveReportBtn) saveReportBtn.disabled = true;
       break;
@@ -828,6 +831,7 @@ function handleStatusUpdate(data) {
         isCapturing = false;
         isWaitingForResume = false;
         setUIIdle();
+        captureStartTime = null;
 
         const screenshots = data.results?.screenshots?.length || 0;
         const components = data.results?.componentReports?.length || 0;
@@ -875,6 +879,7 @@ function handleStatusUpdate(data) {
       startCaptureBtn.textContent = 'Resume Capture';
       startCaptureBtn.disabled = false;
       stopCaptureBtn.disabled = false;
+      progressEta.textContent = 'ETR: --:--';
       break;
 
     case 'waiting-for-credentials':
@@ -884,6 +889,7 @@ function handleStatusUpdate(data) {
       startCaptureBtn.textContent = '🔄 Update & Resume';
       startCaptureBtn.disabled = false;
       stopCaptureBtn.disabled = false;
+      progressEta.textContent = 'ETR: --:--';
       // Enable credential inputs
       usernameInput.disabled = false;
       passwordInput.disabled = false;
@@ -958,16 +964,39 @@ function resetCredentialPromptState() {
   hideCredentialErrorAlert();
 }
 
-function updateProgressBar(current, total) {
-  const percentage = total > 0 ? (current / total) * 100 : 0;
-  progressBarInner.style.width = `${percentage}%`;
-  progressCount.textContent = `${current} / ${total}`;
+function syncCaptureStartTime(startedAt) {
+  if (!Number.isFinite(startedAt)) return;
+  if (!captureStartTime || Math.abs(captureStartTime - startedAt) > 1000) {
+    captureStartTime = startedAt;
+  }
+}
 
-  if (captureStartTime && current > 0) {
+function ensureCaptureStartTime() {
+  if (!captureStartTime) {
+    captureStartTime = Date.now();
+  }
+}
+
+function updateProgressBar(current, total, progressPercent) {
+  const safeTotal = Number.isFinite(total) && total > 0 ? total : 0;
+  const safeCurrent = Number.isFinite(current) ? Math.max(0, current) : 0;
+  const clampedCurrent = safeTotal > 0 ? Math.min(safeCurrent, safeTotal) : safeCurrent;
+  const percentage = safeTotal > 0 ? Math.min(100, (clampedCurrent / safeTotal) * 100) : 0;
+  progressBarInner.style.width = `${percentage}%`;
+  progressCount.textContent = safeTotal > 0 ? `${clampedCurrent} / ${safeTotal}` : '-- / --';
+
+  const rawPercent = Number.isFinite(progressPercent) ? progressPercent : percentage;
+  if (rawPercent > 0) {
+    ensureCaptureStartTime();
     const elapsed = Date.now() - captureStartTime;
-    const avgPerItem = elapsed / current;
-    const remaining = (total - current) * avgPerItem;
-    progressEta.textContent = `ETR: ${formatTime(remaining)}`;
+    const remaining = rawPercent >= 100
+      ? 0
+      : (elapsed * (100 - rawPercent)) / rawPercent;
+    progressEta.textContent = Number.isFinite(remaining) && remaining >= 0
+      ? `ETR: ${formatTime(remaining)}`
+      : 'ETR: --:--';
+  } else {
+    progressEta.textContent = 'ETR: --:--';
   }
 }
 
@@ -1074,6 +1103,7 @@ function formatDuration(ms) {
 }
 
 function formatTime(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '--:--';
   const totalSeconds = Math.floor(ms / 1000);
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;

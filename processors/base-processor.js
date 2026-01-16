@@ -35,6 +35,7 @@ export class BaseProcessor extends EventEmitter {
     this.currentStatusType = null;
     this.currentStatusMessage = null;
     this.currentProgress = null; // Track current progress for status API
+    this.startedAt = null;
     this.on('progress', (data) => {
       this.currentProgress = data;
       if (data && (data.status || data.message)) {
@@ -638,7 +639,8 @@ export class BaseProcessor extends EventEmitter {
       options: this.currentOptions,
       statusType: this.currentStatusType,
       message: this.currentStatusMessage,
-      progress: this.currentProgress // Include current progress for dashboard polling
+      progress: this.currentProgress, // Include current progress for dashboard polling
+      startedAt: this.startedAt
     };
   }
 
@@ -654,6 +656,12 @@ export class BaseProcessor extends EventEmitter {
 
   // Helper to emit status (updates internal state for HTTP polling backup)
   emitStatus(data) {
+    if (data.type === 'started') {
+      this.startedAt = Date.now();
+    }
+    if (data.type === 'completed' || data.type === 'cancelled') {
+      this.startedAt = null;
+    }
     // Update current status type and message for getStatus() polling
     if (data.type) {
       this.currentStatusType = data.type;
