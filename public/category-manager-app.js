@@ -34,6 +34,29 @@ function getCulturesForRegion(region) {
   return REGION_CULTURES[region] || [{ code: 'default', label: 'Default' }];
 }
 
+function normalizeCategoryPath(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    let path = parsed.pathname || '';
+    if (!path.startsWith('/')) {
+      path = `/${path}`;
+    }
+    return path;
+  } catch (err) {
+    let path = raw;
+    const queryIndex = path.indexOf('?');
+    if (queryIndex >= 0) path = path.slice(0, queryIndex);
+    const hashIndex = path.indexOf('#');
+    if (hashIndex >= 0) path = path.slice(0, hashIndex);
+    if (!path.startsWith('/')) {
+      path = `/${path}`;
+    }
+    return path;
+  }
+}
+
 // Theme management - just read from localStorage (toggle is on main dashboard)
 function initTheme() {
   // Dashboard uses 'testerTheme' key and 'light-mode' class (default is dark)
@@ -244,7 +267,7 @@ function updateCulturePath(catName, idx, cultureCode, value) {
       item.paths[c.code] = defaultPath;
     });
   }
-  item.paths[cultureCode] = value;
+  item.paths[cultureCode] = normalizeCategoryPath(value);
   markUnsaved();
 }
 
@@ -594,7 +617,11 @@ async function saveCategories() {
         return;
       }
 
-      throw new Error(result.error || result.message || 'Failed to save');
+      const details = Array.isArray(result.details) && result.details.length > 0
+        ? result.details.map(detail => `${detail.path || '(root)'}: ${detail.message}`).join('; ')
+        : '';
+      const message = result.error || result.message || 'Failed to save';
+      throw new Error(details ? `${message} (${details})` : message);
     }
 
     // Update version after successful save

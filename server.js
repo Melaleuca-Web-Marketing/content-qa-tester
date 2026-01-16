@@ -233,7 +233,7 @@ router.get('/api/config', (req, res) => {
 const CategoryItemSchema = z.object({
   label: z.string().min(1).max(200),
   path: z.string().regex(/^\/[\w\-\/]*$/).optional(),
-  paths: z.record(z.string().regex(/^\/[\w\-\/]*$/)).optional()
+  paths: z.record(z.string(), z.string().regex(/^\/[\w\-\/]*$/)).optional()
 }).refine(data => data.path || data.paths, {
   message: "Either 'path' or 'paths' must be provided"
 });
@@ -300,10 +300,12 @@ router.post('/api/categories', express.json(), (req, res) => {
     const validationResult = CategorySchema.safeParse(categories);
 
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map(err => ({
-        path: err.path.join('.'),
-        message: err.message
+      const issues = validationResult.error?.issues || validationResult.error?.errors || [];
+      const errors = issues.map(err => ({
+        path: Array.isArray(err.path) ? err.path.join('.') : String(err.path || ''),
+        message: err.message || 'Invalid value'
       }));
+      console.warn('[Categories] Validation failed', { userId, errors });
       return res.status(400).json({
         error: 'Invalid categories data',
         details: errors
