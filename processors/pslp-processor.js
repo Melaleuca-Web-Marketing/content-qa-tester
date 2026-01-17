@@ -29,6 +29,23 @@ const componentExtractors = {
 export class PSLPProcessor extends BaseProcessor {
   constructor() {
     super('PSLP');
+    this.activityResults = [];
+  }
+
+  getActivityResults() {
+    return this.activityResults;
+  }
+
+  getStatus() {
+    return {
+      isRunning: this.isRunning,
+      resultsCount: Array.isArray(this.activityResults) ? this.activityResults.length : 0,
+      options: this.currentOptions,
+      statusType: this.currentStatusType,
+      message: this.currentStatusMessage,
+      progress: this.currentProgress,
+      startedAt: this.startedAt
+    };
   }
 
   async start(options) {
@@ -44,38 +61,85 @@ export class PSLPProcessor extends BaseProcessor {
 
     this.isRunning = true;
     this.shouldStop = false;
-    this.results = [];
-    this.currentOptions = options;
+    this.results = null;
+    this.activityResults = [];
+
+    const normalizedCultures = Array.isArray(options.cultures)
+      ? options.cultures.map(c => String(c).trim()).filter(Boolean)
+      : (options.culture ? [String(options.culture).trim()] : []);
+    const selectedCultures = normalizedCultures.length > 0 ? normalizedCultures : [];
+    this.currentOptions = {
+      ...options,
+      culture: selectedCultures[0] || options.culture || null,
+      cultures: selectedCultures
+    };
 
     const startTime = Date.now();
 
     // Validate options
-    const errors = validatePslpConfig(options);
+    const errors = validatePslpConfig(this.currentOptions);
     if (errors.length > 0) {
       this.isRunning = false;
       this.emit('error', { message: errors.join(', ') });
       throw new Error(errors.join(', '));
     }
 
-    const pslpUrl = buildPslpUrl(options.environment, options.region, options.culture);
-    if (!pslpUrl) {
+    const baseUrl = getBaseUrl(this.currentOptions.environment, this.currentOptions.region);
+    if (!baseUrl) {
       this.isRunning = false;
-      this.emit('error', { message: 'Could not build PSLP URL' });
-      throw new Error('Could not build PSLP URL');
+      this.emit('error', { message: 'Could not build PSLP base URL' });
+      throw new Error('Could not build PSLP base URL');
     }
 
-    const baseUrl = getBaseUrl(options.environment, options.region);
+    const components = Array.isArray(this.currentOptions.components) && this.currentOptions.components.length > 0
+      ? this.currentOptions.components
+      : config.pslp.components;
 
-    this.emitStatus( {
+    const rawWidths = Array.isArray(this.currentOptions.screenWidths) && this.currentOptions.screenWidths.length > 0
+      ? this.currentOptions.screenWidths
+      : Array.isArray(this.currentOptions.widths) && this.currentOptions.widths.length > 0
+        ? this.currentOptions.widths
+        : config.pslp.screenWidths;
+
+    const screenWidths = rawWidths.filter(w => typeof w === 'number' && w >= SCREEN.MIN_WIDTH && w <= SCREEN.MAX_WIDTH);
+    if (screenWidths.length === 0) {
+      this.isRunning = false;
+      this.emit('error', { message: `No valid screen widths provided (must be between ${SCREEN.MIN_WIDTH}-${SCREEN.MAX_WIDTH}px)` });
+      throw new Error(`No valid screen widths provided (must be between ${SCREEN.MIN_WIDTH}-${SCREEN.MAX_WIDTH}px)`);
+    }
+
+    this.currentOptions.components = components;
+    this.currentOptions.screenWidths = screenWidths;
+
+    const totalStepsPerCulture = screenWidths.length + components.length;
+    const totalSteps = totalStepsPerCulture * Math.max(selectedCultures.length, 1);
+
+    this.emitStatus({
       type: 'started',
-      componentCount: options.components.length,
-      screenshotCount: (options.screenWidths && options.screenWidths.length > 0)
-        ? options.screenWidths.length
-        : config.pslp.screenWidths.length
+      componentCount: components.length,
+      screenshotCount: screenWidths.length,
+      cultureCount: selectedCultures.length,
+      totalSteps
     });
 
-    let screenshots = [];
-    let componentReports = [];
+    const buildResultsPayload = (runs) => {
+      const payload = {
+        environment: this.currentOptions.environment,
+        region: this.currentOptions.region,
+        culture: selectedCultures.length === 1 ? selectedCultures[0] : 'multi',
+        cultures: selectedCultures,
+        runs,
+        options: this.currentOptions
+      };
+      if (runs.length === 1) {
+        payload.screenshots = runs[0].screenshots;
+        payload.componentReports = runs[0].componentReports;
+      }
+      return payload;
+    };
+
+    let completedSteps = 0;
+    const runResults = [];
 
     try {
       // Launch browser
@@ -90,7 +154,7 @@ export class PSLPProcessor extends BaseProcessor {
       if (this.shouldStop) throw new Error('Operation stopped by user');
 
       // Handle Microsoft authentication for stage/UAT environments
-      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password);
+      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(this.currentOptions.environment, this.currentOptions.username, this.currentOptions.password);
       if (msAuthHandled) {
         // Navigate back to the base URL after auth
         await this.page.goto(baseUrl, { waitUntil: 'load', timeout: config.pslp.timeouts.pageLoad });
@@ -109,8 +173,8 @@ export class PSLPProcessor extends BaseProcessor {
       await this.page.waitForSelector(config.pslp.selectors.login.username, { timeout: config.pslp.timeouts.loginWait });
 
       this.emit('progress', { type: 'login', status: 'Logging in...' });
-      await this.page.fill(config.pslp.selectors.login.username, options.username);
-      await this.page.fill(config.pslp.selectors.login.password, options.password);
+      await this.page.fill(config.pslp.selectors.login.username, this.currentOptions.username);
+      await this.page.fill(config.pslp.selectors.login.password, this.currentOptions.password);
 
       try {
         await Promise.all([
@@ -147,7 +211,7 @@ export class PSLPProcessor extends BaseProcessor {
         log('error', 'Login failed - error message displayed', { error: errorMessage });
 
         // Pause and wait for credential update
-        await this.waitForCredentialUpdate(errorMessage, options.environment);
+        await this.waitForCredentialUpdate(errorMessage, this.currentOptions.environment);
 
         // Retry login with updated credentials
         log('info', 'Retrying login with updated credentials');
@@ -200,7 +264,7 @@ export class PSLPProcessor extends BaseProcessor {
         log('warn', 'Login failed - still on login page');
 
         // Pause and wait for credential update
-        await this.waitForCredentialUpdate(errorMessage, options.environment);
+        await this.waitForCredentialUpdate(errorMessage, this.currentOptions.environment);
 
         // Retry login with updated credentials
         log('info', 'Retrying login with updated credentials');
@@ -250,131 +314,172 @@ export class PSLPProcessor extends BaseProcessor {
 
       if (this.shouldStop) throw new Error('Operation stopped by user');
 
-      // Navigate to PSLP
-      this.emit('progress', { type: 'navigation', status: `Navigating to PSLP: ${pslpUrl}...` });
-      await this.page.goto(pslpUrl, { waitUntil: 'domcontentloaded', timeout: config.pslp.timeouts.pageLoad });
-      await this.page.waitForTimeout(1500);
-      await this.dismissModalIfPresent();
+      for (let cultureIndex = 0; cultureIndex < selectedCultures.length; cultureIndex++) {
+        const culture = selectedCultures[cultureIndex];
+        const culturePosition = cultureIndex + 1;
 
-      // Wait for components to load
-      this.emit('progress', { type: 'step', step: 'Components', status: 'Waiting for components to load...' });
-      await this.waitForComponentsToLoad(options.components);
-      await this.dismissModalIfPresent();
-      await this.primeMonthlySpecialsSlides(options.components);
-
-      if (this.shouldStop) throw new Error('Operation stopped by user');
-
-      const rawWidths = Array.isArray(options.screenWidths) && options.screenWidths.length > 0
-        ? options.screenWidths
-        : Array.isArray(options.widths) && options.widths.length > 0
-          ? options.widths
-          : config.pslp.screenWidths;
-
-      const screenWidths = rawWidths.filter(w => typeof w === 'number' && w >= SCREEN.MIN_WIDTH && w <= SCREEN.MAX_WIDTH);
-
-      if (screenWidths.length === 0) {
-        throw new Error(`No valid screen widths provided (must be between ${SCREEN.MIN_WIDTH}-${SCREEN.MAX_WIDTH}px)`);
-      }
-
-      // Take screenshots at different widths
-      this.emit('progress', { type: 'screenshot', status: 'Preparing screenshots...', current: 0, total: screenWidths.length });
-      const totalSteps = screenWidths.length + options.components.length;
-      let completedSteps = 0;
-
-      await this.setScrollbarVisibility(true);
-      try {
-        for (const width of screenWidths) {
-          if (this.shouldStop) throw new Error('Operation stopped by user');
-
-          completedSteps++;
-          const progress = (completedSteps / totalSteps) * 100;
-
-          this.emit('progress', {
-            type: 'screenshot',
-            status: `Taking screenshot at ${width}px...`,
-            progress,
-            width,
-            current: completedSteps,
-            total: screenWidths.length
-          });
-
-          await this.page.setViewportSize({ width, height: 1080 });
-          await this.applyCarouselStacking({ stackMonthlySpecials: width >= 768 });
-          await this.injectCarouselSlideArrows(width);
-          await this.normalizeTabletLayout(width);
-          await this.prepareForScreenshot();
-          await this.dismissModalIfPresent();
-
-          const screenshotBuffer = await this.page.screenshot({
-            fullPage: true,
-            type: 'jpeg',
-            quality: 80
-          });
-
-          screenshots.push({
-            width,
-            data: screenshotBuffer.toString('base64')
-          });
-
-          await this.page.waitForTimeout(500);
+        const pslpUrl = buildPslpUrl(this.currentOptions.environment, this.currentOptions.region, culture);
+        if (!pslpUrl) {
+          throw new Error('Could not build PSLP URL');
         }
-      } finally {
-        await this.setScrollbarVisibility(false);
-      }
 
-      // Extract component data
-      for (const componentName of options.components) {
+        // Navigate to PSLP
+        this.emit('progress', {
+          type: 'navigation',
+          status: `Navigating to PSLP: ${pslpUrl}...`,
+          culture,
+          cultureIndex: culturePosition,
+          cultureTotal: selectedCultures.length
+        });
+        await this.page.goto(pslpUrl, { waitUntil: 'domcontentloaded', timeout: config.pslp.timeouts.pageLoad });
+        await this.page.waitForTimeout(1500);
+        await this.dismissModalIfPresent();
+
+        // Wait for components to load
+        this.emit('progress', {
+          type: 'step',
+          step: 'Components',
+          status: 'Waiting for components to load...',
+          culture,
+          cultureIndex: culturePosition,
+          cultureTotal: selectedCultures.length
+        });
+        await this.waitForComponentsToLoad(components);
+        await this.dismissModalIfPresent();
+        await this.primeMonthlySpecialsSlides(components);
+
         if (this.shouldStop) throw new Error('Operation stopped by user');
 
-        completedSteps++;
-        const progress = (completedSteps / totalSteps) * 100;
+        const screenshots = [];
+        const componentReports = [];
 
+        // Take screenshots at different widths
         this.emit('progress', {
-          type: 'component',
-          status: `Extracting data: ${config.pslp.componentNames[componentName] || componentName}...`,
-          progress,
-          component: componentName,
-          componentName: config.pslp.componentNames[componentName] || componentName,
-          current: completedSteps - config.pslp.screenWidths.length,
-          total: options.components.length
+          type: 'screenshot',
+          status: `Preparing screenshots for ${culture}...`,
+          current: completedSteps,
+          total: totalSteps,
+          progress: totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0,
+          culture,
+          cultureIndex: culturePosition,
+          cultureTotal: selectedCultures.length
         });
 
-        const extractor = componentExtractors[componentName];
-        if (extractor) {
-          await this.dismissModalIfPresent();
-          const data = await extractor(this.page, config.pslp.selectors);
-          componentReports.push({ name: componentName, data });
+        await this.setScrollbarVisibility(true);
+        try {
+          for (const width of screenWidths) {
+            if (this.shouldStop) throw new Error('Operation stopped by user');
 
-          // Emit result for activity feed
-          this.emit('result', {
-            component: componentName,
-            componentName: config.pslp.componentNames[componentName] || componentName,
-            data,
-            success: true
-          });
-        } else {
-          // Emit result for missing component
-          this.emit('result', {
-            component: componentName,
-            componentName: config.pslp.componentNames[componentName] || componentName,
-            success: false,
-            error: 'Component extractor not found'
-          });
+            completedSteps += 1;
+            const progress = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
+
+            this.emit('progress', {
+              type: 'screenshot',
+              status: `Taking screenshot at ${width}px...`,
+              progress,
+              width,
+              current: completedSteps,
+              total: totalSteps,
+              culture,
+              cultureIndex: culturePosition,
+              cultureTotal: selectedCultures.length
+            });
+
+            await this.page.setViewportSize({ width, height: 1080 });
+            await this.applyCarouselStacking({ stackMonthlySpecials: width >= 768 });
+            await this.injectCarouselSlideArrows(width);
+            await this.normalizeTabletLayout(width);
+            await this.prepareForScreenshot();
+            await this.dismissModalIfPresent();
+
+            const screenshotBuffer = await this.page.screenshot({
+              fullPage: true,
+              type: 'jpeg',
+              quality: 80
+            });
+
+            screenshots.push({
+              width,
+              data: screenshotBuffer.toString('base64')
+            });
+
+            await this.page.waitForTimeout(500);
+          }
+        } finally {
+          await this.setScrollbarVisibility(false);
         }
 
-        await this.page.waitForTimeout(config.pslp.timeouts.betweenComponents);
+        // Extract component data
+        for (const componentName of components) {
+          if (this.shouldStop) throw new Error('Operation stopped by user');
+
+          completedSteps += 1;
+          const progress = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
+
+          this.emit('progress', {
+            type: 'component',
+            status: `Extracting data: ${config.pslp.componentNames[componentName] || componentName}...`,
+            progress,
+            component: componentName,
+            componentName: config.pslp.componentNames[componentName] || componentName,
+            current: completedSteps,
+            total: totalSteps,
+            culture,
+            cultureIndex: culturePosition,
+            cultureTotal: selectedCultures.length
+          });
+
+          const extractor = componentExtractors[componentName];
+          if (extractor) {
+            await this.dismissModalIfPresent();
+            const data = await extractor(this.page, config.pslp.selectors);
+            componentReports.push({ name: componentName, data });
+
+            // Emit result for activity feed
+            const resultEntry = {
+              component: componentName,
+              componentName: config.pslp.componentNames[componentName] || componentName,
+              data,
+              success: true,
+              culture,
+              timestamp: new Date().toISOString()
+            };
+            this.activityResults.push(resultEntry);
+            this.emit('result', resultEntry);
+          } else {
+            // Emit result for missing component
+            const resultEntry = {
+              component: componentName,
+              componentName: config.pslp.componentNames[componentName] || componentName,
+              success: false,
+              error: 'Component extractor not found',
+              culture,
+              timestamp: new Date().toISOString()
+            };
+            this.activityResults.push(resultEntry);
+            this.emit('result', resultEntry);
+          }
+
+          await this.page.waitForTimeout(config.pslp.timeouts.betweenComponents);
+        }
+
+        await this.removeCarouselStacking();
+
+        runResults.push({
+          environment: this.currentOptions.environment,
+          region: this.currentOptions.region,
+          culture,
+          screenshots,
+          componentReports,
+          options: { ...this.currentOptions, culture }
+        });
+
+        this.results = buildResultsPayload(runResults);
       }
 
-      await this.removeCarouselStacking();
-
-      this.results = {
-        environment: options.environment,
-        region: options.region,
-        culture: options.culture,
-        screenshots,
-        componentReports,
-        options
-      };
+      if (runResults.length > 0) {
+        this.results = buildResultsPayload(runResults);
+      }
 
     } catch (err) {
       log('error', 'PSLP test error', { error: err.message, stack: err.stack });
@@ -384,21 +489,23 @@ export class PSLPProcessor extends BaseProcessor {
       this.isRunning = false;
 
       const duration = Date.now() - startTime;
+      const totalScreenshots = runResults.reduce((sum, run) => sum + (run.screenshots?.length || 0), 0);
+      const totalComponents = runResults.reduce((sum, run) => sum + (run.componentReports?.length || 0), 0);
 
       if (!this.shouldStop && this.results) {
         log('info', '========================================');
         log('info', 'PSLP TEST COMPLETE');
         log('info', '========================================');
 
-        this.emitStatus( {
+        this.emitStatus({
           type: 'completed',
           results: this.results,
           duration,
-          screenshotCount: screenshots.length,
-          componentCount: componentReports.length
+          screenshotCount: totalScreenshots,
+          componentCount: totalComponents
         });
       } else {
-        this.emitStatus( {
+        this.emitStatus({
           type: 'cancelled',
           duration
         });

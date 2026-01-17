@@ -168,6 +168,10 @@ function attachProcessorEvents(processor, tool, userId) {
   processor.on('error', (data) => {
     broadcast({ type: `${tool}-error`, data }, userId);
   });
+
+  processor.on('result', (data) => {
+    broadcast({ type: `${tool}-result`, data }, userId);
+  });
 }
 
 function createProcessor(tool, userId) {
@@ -226,7 +230,11 @@ function getProcessorStatus(userId, tool) {
 function getProcessorResults(userId, tool) {
   const entry = userProcessors.get(userId || 'anonymous');
   const processor = entry ? entry[tool] : null;
-  return processor ? processor.getResults() : [];
+  if (!processor) return [];
+  if (tool === 'pslp' && typeof processor.getActivityResults === 'function') {
+    return processor.getActivityResults();
+  }
+  return processor.getResults();
 }
 
 // ============ API Routes ============
@@ -619,10 +627,14 @@ router.get('/api/pslp/status', (req, res) => {
 
 router.post('/api/pslp/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  const { environment, region, culture, components, widths, screenWidths, username, password, excelValidation } = req.body;
+  const { environment, region, culture, cultures, components, widths, screenWidths, username, password, excelValidation } = req.body;
 
-  if (!culture) {
-    return res.status(400).json({ error: 'No culture selected' });
+  const normalizedCultures = Array.isArray(cultures)
+    ? cultures.map(c => String(c).trim()).filter(Boolean)
+    : (culture ? [String(culture).trim()] : []);
+
+  if (normalizedCultures.length === 0) {
+    return res.status(400).json({ error: 'No cultures selected' });
   }
 
   // Validate array sizes to prevent memory exhaustion
@@ -643,12 +655,18 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
   const options = {
     environment: environment || 'production',
     region: region || 'us',
-    culture,
+    culture: normalizedCultures[0],
+    cultures: normalizedCultures,
     components: components || config.pslp.defaults.components,
     screenWidths: screenWidths || widths || config.pslp.screenWidths,
     username: username || null,
     password: password || null
   };
+
+  const errors = validatePslpConfig(options);
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join(', ') });
+  }
 
   if (excelValidation && excelValidation.enabled) {
     options.excelValidation = excelValidation;

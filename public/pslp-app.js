@@ -55,7 +55,9 @@ if (userId) {
 // DOM Elements
 const envSelect = document.getElementById('env-select');
 const regionSelect = document.getElementById('region-select');
-const cultureSelect = document.getElementById('culture-select');
+const cultureOptions = document.getElementById('culture-options');
+const selectAllCulturesBtn = document.getElementById('select-all-cultures');
+const deselectAllCulturesBtn = document.getElementById('deselect-all-cultures');
 const usernameInput = document.getElementById('username-input');
 const passwordInput = document.getElementById('password-input');
 const widthOptions = document.getElementById('width-options');
@@ -95,7 +97,7 @@ async function init() {
   try {
     await loadConfig();
     setupEventListeners();
-    updateCultureOptions();
+    renderCultureOptions();
     renderWidthOptions();
     loadPreferences();
     connectWebSocket();
@@ -126,7 +128,9 @@ async function checkStatus() {
         if (status.options.environment) {
           progressEnv.textContent = `Env: ${status.options.environment}`;
         }
-        if (status.options.culture) {
+        if (Array.isArray(status.options.cultures) && status.options.cultures.length > 0) {
+          progressCulture.textContent = `Culture: ${formatCultureList(status.options.cultures)}`;
+        } else if (status.options.culture) {
           progressCulture.textContent = `Culture: ${status.options.culture}`;
         }
       }
@@ -170,6 +174,10 @@ async function checkStatus() {
 
 function applyProgressSnapshot(progress) {
   if (!progress) return;
+
+  if (progress.culture) {
+    progressCulture.textContent = `Culture: ${formatCultureProgress(progress)}`;
+  }
 
   switch (progress.type) {
     case 'browser':
@@ -234,12 +242,12 @@ async function restoreActivityFromServer() {
     }
 
     // Get existing components in activity feed to avoid duplicates
-    const existingKeys = new Set(activityItems.map(item => `${item.component}-${item.width || ''}`));
+    const existingKeys = new Set(activityItems.map(item => `${item.component}-${item.width || ''}-${item.culture || ''}`));
 
     // Add any missing results from server
     let addedCount = 0;
     for (const result of serverResults) {
-      const key = `${result.componentName || result.component}-${result.width || ''}`;
+      const key = `${result.componentName || result.component}-${result.width || ''}-${result.culture || ''}`;
       if (existingKeys.has(key)) {
         continue; // Already have this result
       }
@@ -250,7 +258,8 @@ async function restoreActivityFromServer() {
           type: 'error',
           component: result.componentName || result.component,
           error: result.error || 'Failed to extract component',
-          timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
+          timestamp: result.timestamp ? new Date(result.timestamp) : new Date(),
+          culture: result.culture
         };
         activityItems.unshift(item);
         addedCount++;
@@ -321,7 +330,8 @@ async function restoreActivityFromServer() {
         componentData: componentData,
         issues: hasErrors ? issues : undefined,
         warnings: hasWarnings ? warnings : undefined,
-        timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
+        timestamp: result.timestamp ? new Date(result.timestamp) : new Date(),
+        culture: result.culture
       };
 
       // Add item - errors/warnings at start, success at end
@@ -356,7 +366,7 @@ async function loadConfig() {
 
 function setupEventListeners() {
   regionSelect.addEventListener('change', () => {
-    updateCultureOptions();
+    renderCultureOptions();
     applySavedCredentials();
     savePreferences();
   });
@@ -365,25 +375,10 @@ function setupEventListeners() {
     applySavedCredentials();
     savePreferences();
   });
-  cultureSelect.addEventListener('change', () => {
-    // Auto-correct region if culture doesn't match current region
-    const selectedCulture = cultureSelect.value;
-    const currentRegion = regionSelect.value;
-    const currentRegionConfig = configData?.regions?.[currentRegion];
-
-    // If selected culture is not valid for current region, update region
-    if (currentRegionConfig && !currentRegionConfig.cultures.includes(selectedCulture)) {
-      const correctRegion = getRegionFromCulture(selectedCulture);
-      if (correctRegion && correctRegion !== currentRegion) {
-        regionSelect.value = correctRegion;
-        updateCultureOptions();
-        cultureSelect.value = selectedCulture; // Re-set culture after update
-      }
-    }
-
-    applySavedCredentials();
-    savePreferences();
-  });
+  if (selectAllCulturesBtn && deselectAllCulturesBtn) {
+    selectAllCulturesBtn.addEventListener('click', () => toggleAllCultures(true));
+    deselectAllCulturesBtn.addEventListener('click', () => toggleAllCultures(false));
+  }
 
   if (selectAllWidthsBtn && deselectAllWidthsBtn) {
     selectAllWidthsBtn.addEventListener('click', () => toggleAllWidths(true));
@@ -461,25 +456,49 @@ function getRegionFromCulture(culture) {
   return null;
 }
 
-function updateCultureOptions() {
+function renderCultureOptions(selectedCultures = null) {
   const region = regionSelect.value;
   const regionConfig = configData?.regions?.[region];
 
-  if (!regionConfig) return;
-
-  const currentCulture = cultureSelect.value;
-  cultureSelect.innerHTML = '';
-
-  regionConfig.cultures.forEach(culture => {
-    const option = document.createElement('option');
-    option.value = culture;
-    option.textContent = configData.cultureNames[culture] || culture;
-    cultureSelect.appendChild(option);
-  });
-
-  if (regionConfig.cultures.includes(currentCulture)) {
-    cultureSelect.value = currentCulture;
+  if (!regionConfig) {
+    if (cultureOptions) {
+      cultureOptions.innerHTML = '<div class="meta">No cultures available</div>';
+    }
+    return;
   }
+
+  const defaultSelection = Array.isArray(selectedCultures) && selectedCultures.length > 0
+    ? selectedCultures
+    : regionConfig.cultures;
+
+  cultureOptions.innerHTML = regionConfig.cultures.map(culture => `
+    <label class="checkbox-row">
+      <input type="checkbox" name="culture" value="${culture}" ${defaultSelection.includes(culture) ? 'checked' : ''}>
+      <span>${configData.cultureNames?.[culture] || culture}</span>
+    </label>
+  `).join('');
+
+  cultureOptions.querySelectorAll('input').forEach(cb => {
+    cb.addEventListener('change', () => {
+      applySavedCredentials();
+      savePreferences();
+    });
+  });
+}
+
+function toggleAllCultures(checked) {
+  if (!cultureOptions) return;
+  cultureOptions.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = checked;
+  });
+  applySavedCredentials();
+  savePreferences();
+}
+
+function getSelectedCultures() {
+  if (!cultureOptions) return [];
+  return Array.from(cultureOptions.querySelectorAll('input[name="culture"]:checked'))
+    .map(cb => cb.value);
 }
 
 function applySavedCredentials() {
@@ -488,7 +507,8 @@ function applySavedCredentials() {
 
   if (!window.CredentialStore) return;
   const env = envSelect.value;
-  const culture = cultureSelect.value;
+  const cultures = getSelectedCultures();
+  const culture = cultures[0];
   if (!env || !culture) return;
   const entry = window.CredentialStore.getEntry(env, culture);
   if (!entry) return;
@@ -547,10 +567,11 @@ function updateComponentCount() {
 }
 
 function savePreferences() {
+  const cultures = getSelectedCultures();
   const prefs = {
     environment: envSelect.value,
     region: regionSelect.value,
-    culture: cultureSelect.value,
+    cultures,
     widths: getSelectedWidths(),
     components: getSelectedComponents(),
     username: usernameInput.value.trim() || null,
@@ -564,18 +585,23 @@ function loadPreferences() {
     const prefs = JSON.parse(localStorage.getItem('pslpTesterPrefs'));
     if (prefs) {
       if (prefs.environment) envSelect.value = prefs.environment;
+      const selectedCultures = Array.isArray(prefs.cultures)
+        ? prefs.cultures
+        : (prefs.culture ? [prefs.culture] : null);
       // If we have a culture but no region, try to infer the region from the culture
-      if (prefs.culture && !prefs.region) {
-        const inferredRegion = getRegionFromCulture(prefs.culture);
+      if (selectedCultures && selectedCultures.length > 0 && !prefs.region) {
+        const inferredRegion = getRegionFromCulture(selectedCultures[0]);
         if (inferredRegion) {
           regionSelect.value = inferredRegion;
-          updateCultureOptions();
+          renderCultureOptions(selectedCultures);
         }
       } else if (prefs.region) {
         regionSelect.value = prefs.region;
-        updateCultureOptions();
+        renderCultureOptions(selectedCultures);
       }
-      if (prefs.culture) cultureSelect.value = prefs.culture;
+      if (!prefs.region && selectedCultures) {
+        renderCultureOptions(selectedCultures);
+      }
       if (prefs.widths && widthOptions) {
         widthOptions.querySelectorAll('input').forEach(cb => {
           const checked = prefs.widths.includes(parseInt(cb.value, 10));
@@ -651,6 +677,9 @@ function handleWebSocketMessage(message) {
 function handleProgress(data) {
   syncCaptureStartTime(data.startedAt);
   const progress = data.progress;
+  if (progress.culture) {
+    progressCulture.textContent = `Culture: ${formatCultureProgress(progress)}`;
+  }
   switch (progress.type) {
     case 'browser':
       setStatusRunning('Starting...', progress.status);
@@ -682,7 +711,8 @@ function handleProgress(data) {
             type: 'success',
             component: 'Screenshot',
             width: progress.width,
-            detail: progress.status
+            detail: progress.status,
+            culture: progress.culture
           });
         }
       }
@@ -701,13 +731,15 @@ function handleProgress(data) {
         addActivityItem({
           type: 'success',
           component: progress.componentName || progress.component,
-          detail: 'Data extracted successfully'
+          detail: 'Data extracted successfully',
+          culture: progress.culture
         });
       } else if (progress.status && progress.status.toLowerCase().includes('error')) {
         addActivityItem({
           type: 'error',
           component: progress.componentName || progress.component,
-          error: progress.status
+          error: progress.status,
+          culture: progress.culture
         });
       }
       break;
@@ -726,7 +758,8 @@ function handleResult(data) {
     addActivityItem({
       type: 'error',
       component: data.componentName || data.component,
-      error: data.error || 'Failed to extract component'
+      error: data.error || 'Failed to extract component',
+      culture: data.culture
     });
     return;
   }
@@ -793,7 +826,8 @@ function handleResult(data) {
     component: data.componentName || data.component,
     componentData: componentData,
     issues: hasErrors ? issues : undefined,
-    warnings: hasWarnings ? warnings : undefined
+    warnings: hasWarnings ? warnings : undefined,
+    culture: data.culture
   });
 }
 
@@ -833,8 +867,18 @@ function handleStatusUpdate(data) {
         setUIIdle();
         captureStartTime = null;
 
-        const screenshots = data.results?.screenshots?.length || 0;
-        const components = data.results?.componentReports?.length || 0;
+        const runs = Array.isArray(data.results?.runs) ? data.results.runs : null;
+        const screenshots = runs
+          ? runs.reduce((sum, run) => sum + (run.screenshots?.length || 0), 0)
+          : (data.results?.screenshots?.length || 0);
+        const components = runs
+          ? runs.reduce((sum, run) => sum + (run.componentReports?.length || 0), 0)
+          : (data.results?.componentReports?.length || 0);
+        const cultureList = runs
+          ? runs.map(run => run.culture).filter(Boolean)
+          : (data.results?.culture ? [data.results.culture] : []);
+        const cultureCount = new Set(cultureList).size;
+        const cultureSuffix = cultureCount > 1 ? ` across ${cultureCount} cultures` : '';
 
         const hasResults = screenshots > 0 || components > 0;
         const hasErrors = captureHadError || !hasResults;
@@ -844,12 +888,13 @@ function handleStatusUpdate(data) {
             captureErrorMessage || (hasResults ? 'Capture did not complete' : 'No screenshots or components were captured')
           );
         } else {
-          setStatusSuccess('Capture complete!', `${screenshots} screenshots, ${components} components extracted in ${formatDuration(data.duration)}`);
+          setStatusSuccess('Capture complete!', `${screenshots} screenshots, ${components} components${cultureSuffix} extracted in ${formatDuration(data.duration)}`);
         }
 
         const resultParts = [];
         resultParts.push(`${screenshots} screenshots`);
         resultParts.push(`${components} components`);
+        if (cultureCount > 1) resultParts.push(`${cultureCount} cultures`);
         if (data.duration) resultParts.push(formatDuration(data.duration));
         const body = [jobSummary, resultParts.length ? `Result: ${resultParts.join(', ')}` : '']
           .filter(Boolean)
@@ -1016,12 +1061,13 @@ function buildJobSummary() {
   const regionLabel = regionSelect?.options?.[regionSelect.selectedIndex]?.textContent || regionSelect?.value || '-';
   const widths = getSelectedWidths();
   const components = getSelectedComponents();
+  const cultures = getSelectedCultures();
   const parts = [
     `Env: ${envSelect?.value || '-'}`,
-    `Region: ${regionLabel}`,
-    `Culture: ${cultureSelect?.value || '-'}`
+    `Region: ${regionLabel}`
   ];
 
+  if (cultures.length > 0) parts.push(`Cultures: ${formatList(cultures, 6)}`);
   if (widths.length > 0) parts.push(`Widths: ${formatList(widths, 6)}`);
   if (components.length > 0) parts.push(`Components: ${formatList(components, 6)} (${components.length})`);
 
@@ -1110,9 +1156,26 @@ function formatTime(ms) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+function formatCultureList(cultures) {
+  if (!cultures || cultures.length === 0) return '-';
+  if (cultures.length <= 2) return cultures.join(', ');
+  return `${cultures.length} cultures`;
+}
+
+function formatCultureProgress(progress) {
+  const culture = progress?.culture;
+  const index = Number(progress?.cultureIndex);
+  const total = Number(progress?.cultureTotal);
+  if (culture && Number.isFinite(index) && Number.isFinite(total) && total > 1) {
+    return `${culture} (${index}/${total})`;
+  }
+  return culture || '-';
+}
+
 async function startCapture() {
   const components = getSelectedComponents();
   const widths = getSelectedWidths();
+  const cultures = getSelectedCultures();
   const username = usernameInput.value.trim();
   const password = passwordInput.value;
   const environment = envSelect.value;
@@ -1127,6 +1190,11 @@ async function startCapture() {
     return;
   }
 
+  if (cultures.length === 0) {
+    setStatusError('No cultures selected', 'Select at least one culture');
+    return;
+  }
+
   jobSummary = buildJobSummary();
   completionNotified = false;
   requestNotificationPermission();
@@ -1135,7 +1203,8 @@ async function startCapture() {
   const options = {
     environment,
     region: regionSelect.value,
-    culture: cultureSelect.value,
+    culture: cultures[0],
+    cultures,
     screenWidths: widths,
     components,
     username,
@@ -1163,7 +1232,7 @@ async function startCapture() {
   }
 
   progressEnv.textContent = `Env: ${options.environment}`;
-  progressCulture.textContent = `Culture: ${options.culture}`;
+  progressCulture.textContent = `Culture: ${formatCultureList(cultures)}`;
   progressStep.textContent = `Screens: ${widths.length}`;
   if (progressWidths) {
     progressWidths.textContent = `Widths: ${widths.join(', ')}`;
@@ -1435,7 +1504,10 @@ function renderActivityFeed() {
     }
 
     const timeStr = formatActivityTime(item.timestamp);
-    const main = item.width ? `${item.component} @ ${item.width}px` : item.component;
+    const cultureLabel = item.culture ? ` (${item.culture})` : '';
+    const main = item.width
+      ? `${item.component}${cultureLabel} @ ${item.width}px`
+      : `${item.component}${cultureLabel}`;
 
     // Build details section
     let detailsHTML = '';

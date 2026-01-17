@@ -571,8 +571,17 @@ export function validatePslpConfig(options) {
   }
 
   const validCultures = getCulturesForRegion(options.region);
-  if (validCultures.length > 0 && !validCultures.includes(options.culture)) {
-    errors.push(`Invalid culture for region ${options.region}: ${options.culture}. Valid: ${validCultures.join(', ')}`);
+  const selectedCultures = Array.isArray(options.cultures) && options.cultures.length > 0
+    ? options.cultures
+    : (options.culture ? [options.culture] : []);
+
+  if (selectedCultures.length === 0) {
+    errors.push('At least one culture must be selected for PSLP testing');
+  } else if (validCultures.length > 0) {
+    const invalidCultures = selectedCultures.filter(culture => !validCultures.includes(culture));
+    if (invalidCultures.length > 0) {
+      errors.push(`Invalid culture(s) for region ${options.region}: ${invalidCultures.join(', ')}. Valid: ${validCultures.join(', ')}`);
+    }
   }
 
   if (options.screenWidths && (!Array.isArray(options.screenWidths) || options.screenWidths.length === 0)) {

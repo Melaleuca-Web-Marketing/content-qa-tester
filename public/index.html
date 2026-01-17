@@ -1405,16 +1405,15 @@
 
         // Handle both single culture (SKU, PSLP) and multiple cultures (Banner, Mix-in Ad)
         let cultureBadge = 'N/A';
-        if (status.options?.culture) {
-          // Single culture test (SKU, PSLP)
-          cultureBadge = status.options.culture;
-        } else if (status.options?.cultures && Array.isArray(status.options.cultures)) {
-          // Multiple cultures test (Banner, Mix-in Ad)
+        if (status.options?.cultures && Array.isArray(status.options.cultures)) {
           if (status.options.cultures.length === 1) {
             cultureBadge = status.options.cultures[0];
-          } else {
+          } else if (status.options.cultures.length > 1) {
             cultureBadge = `${status.options.cultures.length} cultures`;
           }
+        } else if (status.options?.culture) {
+          // Single culture test
+          cultureBadge = status.options.culture;
         } else if (status.progress?.culture) {
           // Fallback to current culture from progress
           cultureBadge = status.progress.culture;

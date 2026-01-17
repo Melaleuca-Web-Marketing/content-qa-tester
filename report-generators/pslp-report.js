@@ -4,37 +4,23 @@ import { detectImageLocale } from '../utils/image-utils.js';
 
 export function generatePslpReport(results, duration, theme = 'dark', excelValidation = null) {
   const timestamp = new Date().toISOString();
-  const { options = {}, screenshots = [], componentReports = [] } = results;
   const isDark = theme === 'dark';
-  const monthlySpecialsValidation = buildMonthlySpecialsValidation(componentReports, excelValidation);
-  const heroCarouselValidation = buildCarouselValidation(componentReports, excelValidation, options, 'heroCarousel', 'hero-carousel');
-  const variableWindowsValidation = buildCarouselValidation(componentReports, excelValidation, options, 'variableWindows', 'variable-windows');
-  const fullWidthBannerValidation = buildCarouselValidation(componentReports, excelValidation, options, 'fullWidthBanner', 'full-width-banner');
-  const seasonalCarouselValidation = buildSeasonalCarouselValidation(componentReports, excelValidation, options);
-  const brandCTAWindowsValidation = buildCarouselValidation(componentReports, excelValidation, options, 'brandCTAWindows', 'brand-cta-windows');
-  const validationContext = {
-    monthlySpecials: monthlySpecialsValidation,
-    heroCarousel: heroCarouselValidation,
-    variableWindows: variableWindowsValidation,
-    fullWidthBanner: fullWidthBannerValidation,
-    seasonalCarousel: seasonalCarouselValidation,
-    brandCTAWindows: brandCTAWindowsValidation
-  };
-  const validationSummary = buildPslpValidationSummary(validationContext);
+  const runs = normalizePslpRuns(results);
+  const runSummaries = runs.map((run) => buildRunSummary(run, excelValidation));
+  const totalComponents = runSummaries.reduce((sum, run) => sum + run.componentSummaries.length, 0);
+  const totalPassed = runSummaries.reduce((sum, run) => sum + run.passedCount, 0);
+  const totalFailed = runSummaries.reduce((sum, run) => sum + run.failedCount, 0);
+  const totalScreenshots = runSummaries.reduce((sum, run) => sum + run.screenshots.length, 0);
+  const validationSummaries = runSummaries.map((run) => run.validationSummary).filter(Boolean);
+  const validationSummary = validationSummaries.length > 0 ? aggregateValidationSummary(validationSummaries) : null;
   const excelFilename = excelValidation?.filename || 'Unknown';
-
-  const componentSummaries = componentReports.map((report) => {
-    const itemCount = getItemCount(report.data);
-    const validation = getComponentValidation(report.name, validationContext);
-    const hasIssues = hasValidationIssues(validation);
-    return {
-      name: report.name,
-      itemCount,
-      passed: itemCount > 0 && !hasIssues
-    };
-  });
-  const passedCount = componentSummaries.filter((r) => r.passed).length;
-  const failedCount = componentSummaries.length - passedCount;
+  const environment = results?.environment || runSummaries[0]?.environment || runSummaries[0]?.options?.environment || 'N/A';
+  const region = results?.region || runSummaries[0]?.region || runSummaries[0]?.options?.region || 'N/A';
+  const cultureList = runSummaries.map((run) => run.cultureLabel).filter(Boolean);
+  const cultureLabel = cultureList.length === 0
+    ? 'N/A'
+    : (cultureList.length === 1 ? cultureList[0] : `Multiple (${cultureList.join(', ')})`);
+  const showCultureLabel = runSummaries.length > 1;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -49,9 +35,9 @@ export function generatePslpReport(results, duration, theme = 'dark', excelValid
 <div class="header">
 <h1>PSLP Test Report</h1>
 <div class="header-meta">
-<span><strong>Environment:</strong> ${escapeHtml(options.environment || 'N/A')}</span>
-<span><strong>Region:</strong> ${escapeHtml((options.region || '').toUpperCase())}</span>
-<span><strong>Culture:</strong> ${escapeHtml(options.culture || 'N/A')}</span>
+<span><strong>Environment:</strong> ${escapeHtml(environment)}</span>
+<span><strong>Region:</strong> ${escapeHtml(String(region || '').toUpperCase())}</span>
+<span><strong>Culture:</strong> ${escapeHtml(cultureLabel)}</span>
 <span><strong>Generated:</strong> ${new Date(timestamp).toLocaleString()}</span>
 <span><strong>Duration:</strong> ${duration ? (duration / 1000).toFixed(1) + 's' : 'N/A'}</span>
 ${validationSummary ? `<span><strong>Excel Validation:</strong> ${escapeHtml(excelFilename)}</span>` : ''}
@@ -61,19 +47,19 @@ ${validationSummary ? `<span><strong>Excel Validation:</strong> ${escapeHtml(exc
 <div class="summary">
 <div class="summary-card">
 <h3>Components Tested</h3>
-<div class="value count">${componentSummaries.length}</div>
+<div class="value count">${totalComponents}</div>
 </div>
 <div class="summary-card">
 <h3>Passed</h3>
-<div class="value passed">${passedCount}</div>
+<div class="value passed">${totalPassed}</div>
 </div>
 <div class="summary-card">
 <h3>Failed</h3>
-<div class="value failed">${failedCount}</div>
+<div class="value failed">${totalFailed}</div>
 </div>
 <div class="summary-card">
 <h3>Screenshots</h3>
-<div class="value count">${screenshots.length}</div>
+<div class="value count">${totalScreenshots}</div>
 </div>
 ${validationSummary ? `
 <div class="summary-card" style="border: 2px solid #10b981;">
@@ -95,13 +81,14 @@ ${validationSummary ? `
 ` : ''}
 </div>
 
+${runSummaries.map((summary) => `
 <div class="section">
-<div class="section-header"><h2>Screenshots</h2></div>
+<div class="section-header"><h2>Screenshots${showCultureLabel ? ` - ${escapeHtml(summary.cultureLabel)}` : ''}</h2></div>
 <div class="section-body">
-${screenshots.length === 0
+${summary.screenshots.length === 0
   ? '<div class="empty-state">No screenshots captured.</div>'
   : `<div class="screenshot-stack">
-${screenshots.map((s) => {
+${summary.screenshots.map((s) => {
   const sizeClass = s.width <= 576 ? 'size-mobile' : s.width < 1000 ? 'size-tablet' : 'size-desktop';
   return `<details class="screenshot-item ${sizeClass}">
 <summary>${s.width}px - ${getScreenshotLabel(s.width)} Screenshot</summary>
@@ -115,13 +102,14 @@ ${screenshots.map((s) => {
 </div>
 
 <div class="section">
-<div class="section-header"><h2>Component Data</h2></div>
+<div class="section-header"><h2>Component Data${showCultureLabel ? ` - ${escapeHtml(summary.cultureLabel)}` : ''}</h2></div>
 <div class="section-body">
-${componentReports.length === 0
+${summary.componentReports.length === 0
   ? '<div class="empty-state">No components were selected for testing.</div>'
-  : componentReports.map((report) => renderComponentSection(report, isDark, validationContext)).join('')}
+  : summary.componentReports.map((report) => renderComponentSection(report, isDark, summary.validationContext)).join('')}
 </div>
 </div>
+`).join('')}
 
 <div class="footer">Generated by Melaleuca Unified Tester</div>
 </div>
@@ -131,6 +119,102 @@ ${componentReports.length === 0
 </html>`;
 
   return { html, name: `pslp-report-${timestamp.replace(/:/g, '-')}.html` };
+}
+
+function normalizePslpRuns(results) {
+  if (!results) return [];
+  if (Array.isArray(results.runs) && results.runs.length > 0) {
+    return results.runs.map((run) => {
+      const options = run.options || results.options || {};
+      const culture = run.culture || options.culture || results.culture || '';
+      return {
+        ...run,
+        culture,
+        options,
+        screenshots: Array.isArray(run.screenshots) ? run.screenshots : [],
+        componentReports: Array.isArray(run.componentReports) ? run.componentReports : []
+      };
+    });
+  }
+
+  const options = results.options || {};
+  return [{
+    culture: results.culture || options.culture || '',
+    screenshots: Array.isArray(results.screenshots) ? results.screenshots : [],
+    componentReports: Array.isArray(results.componentReports) ? results.componentReports : [],
+    environment: results.environment || options.environment,
+    region: results.region || options.region,
+    options
+  }];
+}
+
+function buildRunSummary(run, excelValidation) {
+  const options = run.options || {};
+  const cultureLabel = run.culture || options.culture || 'N/A';
+  const runOptions = { ...options, culture: cultureLabel };
+  const componentReports = Array.isArray(run.componentReports) ? run.componentReports : [];
+  const screenshots = Array.isArray(run.screenshots) ? run.screenshots : [];
+
+  const monthlySpecialsValidation = buildMonthlySpecialsValidation(componentReports, excelValidation);
+  const heroCarouselValidation = buildCarouselValidation(componentReports, excelValidation, runOptions, 'heroCarousel', 'hero-carousel');
+  const variableWindowsValidation = buildCarouselValidation(componentReports, excelValidation, runOptions, 'variableWindows', 'variable-windows');
+  const fullWidthBannerValidation = buildCarouselValidation(componentReports, excelValidation, runOptions, 'fullWidthBanner', 'full-width-banner');
+  const seasonalCarouselValidation = buildSeasonalCarouselValidation(componentReports, excelValidation, runOptions);
+  const brandCTAWindowsValidation = buildCarouselValidation(componentReports, excelValidation, runOptions, 'brandCTAWindows', 'brand-cta-windows');
+  const validationContext = {
+    monthlySpecials: monthlySpecialsValidation,
+    heroCarousel: heroCarouselValidation,
+    variableWindows: variableWindowsValidation,
+    fullWidthBanner: fullWidthBannerValidation,
+    seasonalCarousel: seasonalCarouselValidation,
+    brandCTAWindows: brandCTAWindowsValidation
+  };
+  const validationSummary = buildPslpValidationSummary(validationContext);
+
+  const componentSummaries = componentReports.map((report) => {
+    const itemCount = getItemCount(report.data);
+    const validation = getComponentValidation(report.name, validationContext);
+    const hasIssues = hasValidationIssues(validation);
+    return {
+      name: report.name,
+      itemCount,
+      passed: itemCount > 0 && !hasIssues
+    };
+  });
+  const passedCount = componentSummaries.filter((r) => r.passed).length;
+  const failedCount = componentSummaries.length - passedCount;
+
+  return {
+    ...run,
+    environment: run.environment || runOptions.environment,
+    region: run.region || runOptions.region,
+    cultureLabel,
+    options: runOptions,
+    screenshots,
+    componentReports,
+    validationContext,
+    validationSummary,
+    componentSummaries,
+    passedCount,
+    failedCount
+  };
+}
+
+function aggregateValidationSummary(summaries) {
+  let total = 0;
+  let passed = 0;
+  let failed = 0;
+  let notFound = 0;
+
+  summaries.forEach((summary) => {
+    total += Number(summary.total || 0);
+    passed += Number(summary.passed || 0);
+    failed += Number(summary.failed || 0);
+    notFound += Number(summary.notFound || 0);
+  });
+
+  const passRate = total > 0 ? ((passed / total) * 100).toFixed(1) : '0.0';
+  return { total, passed, failed, notFound, passRate };
 }
 
 function getScreenshotLabel(width) {

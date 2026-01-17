@@ -79,9 +79,20 @@ export function autoGenerateReport(processor, reportGenerator, mode, userId = nu
           entry.cultures = uniqueCultures;
         }
       } else {
-        entry.region = results.region;
-        entry.componentsCount = results.componentReports?.length || 0;
-        entry.screenshotsCount = results.screenshots?.length || 0;
+        const runs = Array.isArray(results.runs) ? results.runs : null;
+        if (runs && runs.length > 0) {
+          entry.region = results.region || runs[0]?.region;
+          entry.componentsCount = runs.reduce((sum, run) => sum + (run.componentReports?.length || 0), 0);
+          entry.screenshotsCount = runs.reduce((sum, run) => sum + (run.screenshots?.length || 0), 0);
+          const uniqueCultures = [...new Set(runs.map(run => run.culture).filter(Boolean))];
+          if (uniqueCultures.length > 1) {
+            entry.cultures = uniqueCultures;
+          }
+        } else {
+          entry.region = results.region;
+          entry.componentsCount = results.componentReports?.length || 0;
+          entry.screenshotsCount = results.screenshots?.length || 0;
+        }
       }
 
       saveToHistory(entry, userId);
