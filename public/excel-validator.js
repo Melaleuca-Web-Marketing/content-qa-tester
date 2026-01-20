@@ -3,15 +3,28 @@
 /**
  * Required Excel columns
  */
-const REQUIRED_COLUMNS = [
+const BASE_REQUIRED_COLUMNS = [
   'Type',
   'Main Category',
   'Subcategory',
-  'Banner Link',
   'Target',
   'Position',
   'SKUs'
 ];
+
+const US_CA_LINK_COLUMNS = ['Banner Link', 'Link'];
+const EU_LINK_COLUMNS = ['UKIE Link', 'DE Link', 'NL Link', 'PL Link', 'LT Link'];
+const EU_CULTURE_LINK_COLUMNS = {
+  uk: 'UKIE Link',
+  ie: 'UKIE Link',
+  de: 'DE Link',
+  nl: 'NL Link',
+  pl: 'PL Link',
+  lt: 'LT Link'
+};
+
+const FORMAT_US_CA = 'us-ca';
+const FORMAT_UK_EU = 'uk-eu';
 
 const CULTURE_LANG_MAP = {
   enus: 'en-US',
@@ -99,12 +112,80 @@ function resolveExpectedDomain(culture, environment) {
   return HOST_MAP[envKey]?.[cultureKey] || null;
 }
 
+function normalizeHeaderKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildHeaderMap(headers) {
+  const map = new Map();
+  headers.forEach((header) => {
+    if (!header) return;
+    map.set(normalizeHeaderKey(header), header);
+  });
+  return map;
+}
+
+function resolveLinkColumn(headerMap) {
+  for (const column of US_CA_LINK_COLUMNS) {
+    const key = normalizeHeaderKey(column);
+    if (headerMap.has(key)) {
+      return headerMap.get(key);
+    }
+  }
+  return null;
+}
+
+function pickDataSheet(sheetNames) {
+  if (!Array.isArray(sheetNames) || sheetNames.length === 0) return null;
+  const lower = sheetNames.map(name => normalizeHeaderKey(name));
+  const mainIndex = lower.indexOf('main');
+  return mainIndex >= 0 ? sheetNames[mainIndex] : sheetNames[0];
+}
+
+function detectExcelFormat(headers, sheetNames, filename) {
+  const headerMap = buildHeaderMap(headers);
+  const euColumnsFound = EU_LINK_COLUMNS.filter(col => headerMap.has(normalizeHeaderKey(col)));
+  const hasMultipleEuLinks = euColumnsFound.length >= 2;
+  const hasUsCaLink = US_CA_LINK_COLUMNS.some(col => headerMap.has(normalizeHeaderKey(col)));
+  const hasCulture = headerMap.has('culture');
+
+  const sheetNamesLower = (sheetNames || []).map(name => normalizeHeaderKey(name));
+  const hasMainAndLists = sheetNamesLower.includes('main') && sheetNamesLower.includes('lists');
+  const nameLower = String(filename || '').toLowerCase();
+  const nameHint = nameLower.includes('eu') || nameLower.includes('uk');
+
+  if (hasMultipleEuLinks) {
+    return { format: FORMAT_UK_EU, reason: 'headers', euColumnsFound };
+  }
+
+  if (hasUsCaLink || hasCulture) {
+    return { format: FORMAT_US_CA, reason: 'headers', euColumnsFound };
+  }
+
+  if (hasMainAndLists) {
+    return { format: FORMAT_UK_EU, reason: 'sheets', euColumnsFound };
+  }
+
+  if (nameHint) {
+    return { format: FORMAT_UK_EU, reason: 'filename', euColumnsFound };
+  }
+
+  return { format: 'unknown', reason: 'unknown', euColumnsFound };
+}
+
+function getEuLinkColumnForCulture(culture) {
+  const cultureKey = normalizeCultureKey(culture);
+  if (!cultureKey) return null;
+  return EU_CULTURE_LINK_COLUMNS[cultureKey] || null;
+}
+
 /**
  * Parse and validate Excel file
  * @param {File} file - The Excel file to parse
  * @returns {Promise<{success: boolean, data?: Array, errors?: Array, preview?: Object}>}
  */
-async function parseExcelFile(file) {
+async function parseExcelFile(file, options = {}) {
+  const formatOverride = options.formatOverride || null;
   return new Promise((resolve) => {
     const reader = new FileReader();
 
@@ -113,9 +194,16 @@ async function parseExcelFile(file) {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
 
-        // Get first sheet
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
+        const sheetNames = workbook.SheetNames || [];
+        const dataSheetName = pickDataSheet(sheetNames);
+        if (!dataSheetName) {
+          resolve({
+            success: false,
+            errors: ['Excel file has no worksheets']
+          });
+          return;
+        }
+        const worksheet = workbook.Sheets[dataSheetName];
 
         // Read rows with header row preserved
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
@@ -129,12 +217,59 @@ async function parseExcelFile(file) {
         }
 
         const headers = rows[0].map((header) => String(header || '').trim());
-        const missingColumns = REQUIRED_COLUMNS.filter(col => !headers.includes(col));
+        const detection = detectExcelFormat(headers, sheetNames, file?.name);
+        let format = formatOverride || detection.format;
+        let needsFormatConfirmation = false;
+        let formatReason = detection.reason;
 
-        if (missingColumns.length > 0) {
+        if (!formatOverride) {
+          if (format === 'unknown') {
+            format = FORMAT_US_CA;
+            needsFormatConfirmation = true;
+            formatReason = 'default';
+          } else if (format === FORMAT_UK_EU) {
+            needsFormatConfirmation = true;
+          }
+        }
+
+        const headerMap = buildHeaderMap(headers);
+        const linkColumn = resolveLinkColumn(headerMap);
+        const euColumnsFound = detection.euColumnsFound || EU_LINK_COLUMNS.filter(col => headerMap.has(normalizeHeaderKey(col)));
+        const linkColumns = format === FORMAT_UK_EU
+          ? euColumnsFound
+          : (linkColumn ? [linkColumn] : []);
+        const detectionDetails = {
+          format,
+          detectedFormat: detection.format,
+          formatReason,
+          linkColumns,
+          needsFormatConfirmation,
+          euColumnsFound
+        };
+        const missingBaseColumns = BASE_REQUIRED_COLUMNS.filter(col => !headerMap.has(normalizeHeaderKey(col)));
+        if (missingBaseColumns.length > 0) {
           resolve({
             success: false,
-            errors: [`Missing required columns: ${missingColumns.join(', ')}`]
+            errors: [`Missing required columns: ${missingBaseColumns.join(', ')}`],
+            ...detectionDetails
+          });
+          return;
+        }
+
+        if (format === FORMAT_US_CA && !linkColumn) {
+          resolve({
+            success: false,
+            errors: ['Missing required columns: Banner Link or Link'],
+            ...detectionDetails
+          });
+          return;
+        }
+
+        if (format === FORMAT_UK_EU && euColumnsFound.length === 0) {
+          resolve({
+            success: false,
+            errors: [`Missing required columns: ${EU_LINK_COLUMNS.join(', ')}`],
+            ...detectionDetails
           });
           return;
         }
@@ -154,19 +289,30 @@ async function parseExcelFile(file) {
         if (jsonData.length === 0) {
           resolve({
             success: false,
-            errors: ['Excel file has headers but no data rows']
+            errors: ['Excel file has headers but no data rows'],
+            ...detectionDetails
           });
           return;
         }
 
         // Normalize data
         const normalizedData = jsonData.map((row, index) => {
+          const linkByCulture = {};
+          if (format === FORMAT_UK_EU) {
+            Object.entries(EU_CULTURE_LINK_COLUMNS).forEach(([cultureKey, columnName]) => {
+              const headerKey = headerMap.get(normalizeHeaderKey(columnName));
+              if (!headerKey) return;
+              linkByCulture[cultureKey] = normalizeLink(row[headerKey]);
+            });
+          }
+
           const normalized = {
             rowNumber: index + 2, // +2 because row 1 is headers and Excel is 1-indexed
             type: normalizeType(row['Type']),
             mainCategory: normalizeText(row['Main Category']),
             subcategory: normalizeText(row['Subcategory']),
-            bannerLink: normalizeLink(row['Banner Link']),
+            bannerLink: format === FORMAT_US_CA ? normalizeLink(row[linkColumn]) : '',
+            linkByCulture: format === FORMAT_UK_EU ? linkByCulture : undefined,
             target: normalizeTarget(row['Target']),
             position: row['Position'] ? parseInt(row['Position']) : null,
             skus: normalizeSkuList(row['SKUs']),
@@ -212,12 +358,18 @@ async function parseExcelFile(file) {
           .map(row => `Row ${row.rowNumber}: ${row.error}`);
 
         // Check for unexpected columns
-          const unexpectedColumns = headers.filter(col => !REQUIRED_COLUMNS.includes(col));
+        const allowedColumns = format === FORMAT_UK_EU
+          ? [...BASE_REQUIRED_COLUMNS, ...EU_LINK_COLUMNS, ...US_CA_LINK_COLUMNS, 'Culture']
+          : [...BASE_REQUIRED_COLUMNS, ...US_CA_LINK_COLUMNS, 'Culture'];
+        const allowedKeys = new Set(allowedColumns.map(normalizeHeaderKey));
+        const unexpectedColumns = headers.filter(col => col && !allowedKeys.has(normalizeHeaderKey(col)));
         const hasUnexpectedColumns = unexpectedColumns.length > 0;
 
         // Create preview (first 5 rows)
         const preview = {
-          sheetName: firstSheetName,
+          sheetName: dataSheetName,
+          format,
+          linkColumns,
           totalRows: jsonData.length,
           categoryBanners: normalizedData.filter(r => r.type === 'category-banner').length,
           mixInAds: normalizedData.filter(r => r.type === 'mix-in-ad').length,
@@ -246,6 +398,12 @@ async function parseExcelFile(file) {
           data: normalizedData,
           errors: dataErrors.length > 0 ? dataErrors : undefined,
           preview,
+          format,
+          detectedFormat: detection.format,
+          formatReason,
+          linkColumns,
+          needsFormatConfirmation,
+          euColumnsFound,
           warnings: hasUnexpectedColumns ? [`Unexpected columns: ${unexpectedColumns.join(', ')}`] : undefined
         });
 
@@ -374,6 +532,29 @@ function normalizeTarget(value) {
   return normalized;
 }
 
+function resolveExpectedLink(match, culture) {
+  if (!match) return { value: '', missing: true, cultureKey: null, columnName: null };
+  const cultureKey = normalizeCultureKey(culture);
+
+  if (match.linkByCulture && cultureKey) {
+    const hasColumn = Object.prototype.hasOwnProperty.call(match.linkByCulture, cultureKey);
+    const value = hasColumn ? match.linkByCulture[cultureKey] : '';
+    return {
+      value: value || '',
+      missing: !hasColumn || !value,
+      cultureKey,
+      columnName: getEuLinkColumnForCulture(cultureKey)
+    };
+  }
+
+  return {
+    value: match.bannerLink || '',
+    missing: false,
+    cultureKey,
+    columnName: null
+  };
+}
+
 /**
  * Validate captured results against Excel data
  * @param {Array} capturedResults - Results from banner/mix-in ad capture
@@ -401,9 +582,20 @@ function validateResults(capturedResults, excelData, culture) {
       };
     }
 
+    const linkInfo = resolveExpectedLink(match, culture);
+    const linkComparison = linkInfo.missing
+      ? {
+        actual: normalizeLink(result.link || ''),
+        expected: '',
+        match: false,
+        missing: true,
+        message: linkInfo.columnName ? `Missing ${linkInfo.columnName}` : 'Missing link for culture'
+      }
+      : compareLinks(result.link, linkInfo.value, culture, result.environment);
+
     // Compare fields
     const comparisons = {
-      link: compareLinks(result.link, match.bannerLink, culture, result.environment),
+      link: linkComparison,
       target: compareTargets(result.target, match.target)
     };
 
@@ -424,7 +616,7 @@ function validateResults(capturedResults, excelData, culture) {
       validation: {
         status: allMatch ? 'pass' : 'fail',
         expected: {
-          link: match.bannerLink,
+          link: linkInfo.value,
           target: match.target,
           position: match.position
         },
@@ -550,5 +742,7 @@ window.ExcelValidator = {
   generateValidationSummary,
   normalizeText,
   normalizeLink,
-  normalizeTarget
+  normalizeTarget,
+  normalizeCultureKey,
+  getEuLinkColumnForCulture
 };

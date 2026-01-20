@@ -14,6 +14,15 @@ function normalizeText(value) {
     .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
 }
 
+const EU_CULTURE_LINK_COLUMNS = {
+  uk: 'UKIE Link',
+  ie: 'UKIE Link',
+  de: 'DE Link',
+  nl: 'NL Link',
+  pl: 'PL Link',
+  lt: 'LT Link'
+};
+
 const HOST_MAP = config.banner?.hostMap || {};
 const CULTURE_LABEL_TO_CODE = Object.entries(config.banner?.cultureLangMap || {}).reduce((acc, [code, label]) => {
   acc[String(label).toLowerCase()] = code;
@@ -43,6 +52,35 @@ function resolveExpectedDomain(culture, environment) {
   const cultureKey = normalizeCultureKey(culture);
   if (!cultureKey) return null;
   return HOST_MAP[envKey]?.[cultureKey] || null;
+}
+
+function getEuLinkColumnForCulture(culture) {
+  const cultureKey = normalizeCultureKey(culture);
+  if (!cultureKey) return null;
+  return EU_CULTURE_LINK_COLUMNS[cultureKey] || null;
+}
+
+function resolveExpectedLink(match, culture) {
+  if (!match) return { value: '', missing: true, cultureKey: null, columnName: null };
+  const cultureKey = normalizeCultureKey(culture);
+
+  if (match.linkByCulture && cultureKey) {
+    const hasColumn = Object.prototype.hasOwnProperty.call(match.linkByCulture, cultureKey);
+    const value = hasColumn ? match.linkByCulture[cultureKey] : '';
+    return {
+      value: value || '',
+      missing: !hasColumn || !value,
+      cultureKey,
+      columnName: getEuLinkColumnForCulture(cultureKey)
+    };
+  }
+
+  return {
+    value: match.bannerLink || '',
+    missing: false,
+    cultureKey,
+    columnName: null
+  };
 }
 
 /**
@@ -267,9 +305,20 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
       };
     }
 
+    const linkInfo = resolveExpectedLink(match, culture);
+    const linkComparison = linkInfo.missing
+      ? {
+        actual: normalizeLink(result.href || ''),
+        expected: '',
+        match: false,
+        missing: true,
+        message: linkInfo.columnName ? `Missing ${linkInfo.columnName}` : 'Missing link for culture'
+      }
+      : compareLinks(result.href, linkInfo.value, culture, result.environment);
+
     // Compare fields
     const comparisons = {
-      link: compareLinks(result.href, match.bannerLink, culture, result.environment),
+      link: linkComparison,
       target: compareTargets(result.target, match.target)
     };
 
@@ -312,7 +361,7 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
       validation: {
         status: allMatch ? 'pass' : 'fail',
         expected: {
-          link: match.bannerLink,
+          link: linkInfo.value,
           target: match.target,
           position: match.position,
           sku: expectedSkus.join(', ')
@@ -365,8 +414,16 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
     };
   }
 
-  // Compare fields
-  const linkResult = compareLinks(result.href, match.bannerLink, culture, result.environment);
+  const linkInfo = resolveExpectedLink(match, culture);
+  const linkResult = linkInfo.missing
+    ? {
+      actual: normalizeLink(result.href || ''),
+      expected: '',
+      match: false,
+      missing: true,
+      message: linkInfo.columnName ? `Missing ${linkInfo.columnName}` : 'Missing link for culture'
+    }
+    : compareLinks(result.href, linkInfo.value, culture, result.environment);
   const targetResult = compareTargets(result.target, match.target);
   const positionResult = type === 'mix-in-ad' && result.position !== undefined
     ? {
@@ -388,7 +445,7 @@ export function validateSingleResult(result, excelData, type = 'category-banner'
   if (skuResult && !skuResult.match) failures.push('sku');
 
   const expected = {
-    link: match.bannerLink,
+    link: linkInfo.value,
     target: match.target
   };
   const actual = {

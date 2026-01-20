@@ -814,6 +814,72 @@
       margin-bottom: 0;
     }
 
+    .excel-format-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .excel-format-modal.show {
+      display: flex;
+    }
+
+    .excel-format-dialog {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 20px 24px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .excel-format-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .excel-format-message {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .excel-format-columns {
+      font-size: 13px;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .excel-format-warning {
+      background: rgba(251, 191, 36, 0.12);
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      color: #f59e0b;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .excel-format-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .excel-format-actions button {
+      min-width: 160px;
+    }
+
     .storage-warning {
       background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
       color: #000;
@@ -995,6 +1061,19 @@
   </div>
 
   <div class="version">Content QA Tester v1.0.0</div>
+
+  <div class="excel-format-modal" id="excel-format-modal" role="dialog" aria-modal="true" aria-labelledby="excel-format-title" aria-hidden="true">
+    <div class="excel-format-dialog">
+      <div class="excel-format-title" id="excel-format-title">Confirm Excel Format</div>
+      <div class="excel-format-message" id="excel-format-message"></div>
+      <div class="excel-format-columns" id="excel-format-columns"></div>
+      <div class="excel-format-warning" id="excel-format-warning" style="display: none;"></div>
+      <div class="excel-format-actions">
+        <button class="secondary" id="excel-format-usca" type="button">Use US/CA format</button>
+        <button class="primary" id="excel-format-ukeu" type="button">Use UK/EU format</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     function toggleTheme() {
@@ -1851,6 +1930,211 @@
       }
     };
 
+    let pendingExcelUpload = null;
+
+    function getExcelFormatLabel(format) {
+      if (format === 'uk-eu') return 'UK/EU';
+      if (format === 'us-ca') return 'US/CA';
+      return 'Unknown';
+    }
+
+    function formatLinkColumns(columns) {
+      if (!Array.isArray(columns)) return [];
+      return columns
+        .map(col => String(col).replace(/\s*link$/i, '').trim())
+        .filter(Boolean);
+    }
+
+    function getSavedCultures() {
+      const keys = ['bannerTesterPrefs', 'mixinadTesterPrefs', 'pslpTesterPrefs', 'skuTesterPrefs'];
+      const cultures = new Set();
+      keys.forEach((key) => {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        try {
+          const prefs = JSON.parse(raw);
+          const list = Array.isArray(prefs?.cultures)
+            ? prefs.cultures
+            : (prefs?.culture ? [prefs.culture] : []);
+          list.forEach((culture) => {
+            if (culture) cultures.add(culture);
+          });
+        } catch (err) {
+          console.warn(`[Excel Validation] Failed to read ${key}:`, err);
+        }
+      });
+      return Array.from(cultures);
+    }
+
+    function getMissingCultureColumns(format, availableColumns) {
+      if (format !== 'uk-eu') return [];
+      const available = new Set((availableColumns || []).map(col => String(col).toLowerCase()));
+      const missing = new Set();
+      const selectedCultures = getSavedCultures();
+
+      selectedCultures.forEach((culture) => {
+        const column = window.ExcelValidator?.getEuLinkColumnForCulture?.(culture);
+        if (!column) {
+          missing.add(`${String(culture).toUpperCase()} Link`);
+          return;
+        }
+        if (!available.has(String(column).toLowerCase())) {
+          missing.add(column);
+        }
+      });
+
+      return Array.from(missing);
+    }
+
+    function isFormatRelatedError(errors) {
+      if (!Array.isArray(errors)) return false;
+      return errors.some(err =>
+        String(err).includes('Banner Link') ||
+        String(err).includes('UKIE Link')
+      );
+    }
+
+    function openExcelFormatModal(result, file) {
+      pendingExcelUpload = { result, file };
+      const modal = document.getElementById('excel-format-modal');
+      const message = document.getElementById('excel-format-message');
+      const columnsDiv = document.getElementById('excel-format-columns');
+      const warningDiv = document.getElementById('excel-format-warning');
+      const usBtn = document.getElementById('excel-format-usca');
+      const euBtn = document.getElementById('excel-format-ukeu');
+
+      const columns = formatLinkColumns(result.linkColumns || result.euColumnsFound || []);
+      const detectedUkEu = result.detectedFormat === 'uk-eu' || result.format === 'uk-eu';
+      const formatLabel = detectedUkEu ? 'UK/EU' : 'US/CA';
+
+      if (detectedUkEu && columns.length > 0) {
+        message.textContent = `Detected ${formatLabel} validation sheet with columns: ${columns.join(', ')}.`;
+        columnsDiv.textContent = '';
+      } else if (detectedUkEu) {
+        message.textContent = `Detected ${formatLabel} validation sheet.`;
+        columnsDiv.textContent = '';
+      } else {
+        message.textContent = 'Unable to confirm the Excel format. Choose the format to use.';
+        columnsDiv.textContent = columns.length > 0
+          ? `Columns found: ${columns.join(', ')}`
+          : '';
+      }
+
+      const shouldCheckEu = detectedUkEu || columns.length > 0;
+      const missingColumns = shouldCheckEu
+        ? getMissingCultureColumns('uk-eu', result.linkColumns || [])
+        : [];
+      if (missingColumns.length > 0) {
+        warningDiv.textContent = `Missing link columns for selected cultures: ${missingColumns.join(', ')}`;
+        warningDiv.style.display = 'block';
+      } else {
+        warningDiv.textContent = '';
+        warningDiv.style.display = 'none';
+      }
+
+      if (result.format === 'uk-eu') {
+        euBtn.classList.add('primary');
+        euBtn.classList.remove('secondary');
+        usBtn.classList.add('secondary');
+        usBtn.classList.remove('primary');
+        euBtn.focus();
+      } else {
+        usBtn.classList.add('primary');
+        usBtn.classList.remove('secondary');
+        euBtn.classList.add('secondary');
+        euBtn.classList.remove('primary');
+        usBtn.focus();
+      }
+
+      modal.classList.add('show');
+      modal.setAttribute('aria-hidden', 'false');
+
+      document.getElementById('excel-file-info').innerHTML = '<span style="color: var(--text-secondary); font-size: 14px;">Waiting for format confirmation...</span>';
+    }
+
+    function closeExcelFormatModal() {
+      const modal = document.getElementById('excel-format-modal');
+      modal.classList.remove('show');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    async function chooseExcelFormat(format) {
+      const pending = pendingExcelUpload;
+      pendingExcelUpload = null;
+      closeExcelFormatModal();
+      if (!pending || !pending.file) return;
+
+      const previewDiv = document.getElementById('excel-preview');
+      const errorsDiv = document.getElementById('excel-errors');
+
+      try {
+        const result = pending.result?.format === format
+          ? pending.result
+          : await ExcelValidator.parseExcelFile(pending.file, { formatOverride: format });
+        applyExcelParseResult(result, pending.file, previewDiv, errorsDiv);
+      } catch (error) {
+        console.error('Error processing Excel file:', error);
+        errorsDiv.innerHTML = `<div class="excel-error-item">Error processing file: ${error.message}</div>`;
+        errorsDiv.style.display = 'block';
+        document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">Error processing file</span>';
+        localStorage.removeItem('excelValidationData');
+      }
+    }
+
+    document.getElementById('excel-format-usca').addEventListener('click', () => chooseExcelFormat('us-ca'));
+    document.getElementById('excel-format-ukeu').addEventListener('click', () => chooseExcelFormat('uk-eu'));
+
+    function applyExcelParseResult(result, file, previewDiv, errorsDiv) {
+      if (result.success) {
+        const dataToStore = {
+          filename: file.name,
+          data: result.data,
+          preview: result.preview,
+          format: result.format,
+          detectedFormat: result.detectedFormat,
+          linkColumns: result.linkColumns,
+          uploadedAt: new Date().toISOString()
+        };
+
+        try {
+          localStorage.setItem('excelValidationData', JSON.stringify(dataToStore));
+
+          displayExcelFileInfo(dataToStore);
+          displayExcelPreview(dataToStore);
+        } catch (storageError) {
+          if (storageError.name === 'QuotaExceededError' || storageError.message.includes('quota')) {
+            errorsDiv.innerHTML = `
+              <div style="font-weight: 600; margin-bottom: 8px; color: #ef4444;">File Too Large</div>
+              <div class="excel-error-item">
+                The Excel file is too large to store in browser memory (${result.preview.totalRows} rows).
+              </div>
+              <div class="excel-error-item" style="margin-top: 8px;">
+                <strong>Suggestions:</strong>
+                <ul style="margin: 8px 0 0 20px;">
+                  <li>Reduce the number of rows in your Excel file</li>
+                  <li>Split the file into smaller files and test them separately</li>
+                  <li>Remove unnecessary columns or data</li>
+                </ul>
+              </div>
+            `;
+            errorsDiv.style.display = 'block';
+            document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">File too large</span>';
+          } else {
+            throw storageError;
+          }
+        }
+      } else {
+        errorsDiv.innerHTML = `
+          <div style="font-weight: 600; margin-bottom: 8px;">Validation Errors:</div>
+          ${result.errors.map(err => `<div class="excel-error-item">- ${err}</div>`).join('')}
+        `;
+        errorsDiv.style.display = 'block';
+
+        document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">Invalid Excel file</span>';
+        localStorage.removeItem('excelValidationData');
+      }
+    }
+
     window.handleExcelUpload = async function (event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -1859,71 +2143,23 @@
       const errorsDiv = document.getElementById('excel-errors');
 
       // Show loading state
-      document.getElementById('excel-file-info').innerHTML = '<span style="color: var(--text-secondary); font-size: 14px;">⏳ Parsing Excel file...</span>';
+      document.getElementById('excel-file-info').innerHTML = '<span style="color: var(--text-secondary); font-size: 14px;">Parsing Excel file...</span>';
       previewDiv.style.display = 'none';
       errorsDiv.style.display = 'none';
 
       try {
         const result = await ExcelValidator.parseExcelFile(file);
-
-        if (result.success) {
-          // Store the validated data
-          const dataToStore = {
-            filename: file.name,
-            data: result.data,
-            preview: result.preview,
-            uploadedAt: new Date().toISOString()
-          };
-
-          try {
-            localStorage.setItem('excelValidationData', JSON.stringify(dataToStore));
-
-            // Display success
-            displayExcelFileInfo(dataToStore);
-            displayExcelPreview(dataToStore);
-          } catch (storageError) {
-            // Handle storage quota exceeded error
-            if (storageError.name === 'QuotaExceededError' || storageError.message.includes('quota')) {
-              errorsDiv.innerHTML = `
-                <div style="font-weight: 600; margin-bottom: 8px; color: #ef4444;">❌ File Too Large</div>
-                <div class="excel-error-item">
-                  The Excel file is too large to store in browser memory (${result.preview.totalRows} rows).
-                </div>
-                <div class="excel-error-item" style="margin-top: 8px;">
-                  <strong>Suggestions:</strong>
-                  <ul style="margin: 8px 0 0 20px;">
-                    <li>Reduce the number of rows in your Excel file</li>
-                    <li>Split the file into smaller files and test them separately</li>
-                    <li>Remove unnecessary columns or data</li>
-                  </ul>
-                </div>
-              `;
-              errorsDiv.style.display = 'block';
-              document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">❌ File too large</span>';
-            } else {
-              throw storageError;
-            }
-          }
-
+        const shouldPrompt = result.needsFormatConfirmation && (result.success || isFormatRelatedError(result.errors));
+        if (shouldPrompt) {
+          openExcelFormatModal(result, file);
         } else {
-          // Show errors
-          errorsDiv.innerHTML = `
-            <div style="font-weight: 600; margin-bottom: 8px;">⚠️ Validation Errors:</div>
-            ${result.errors.map(err => `<div class="excel-error-item">• ${err}</div>`).join('')}
-          `;
-          errorsDiv.style.display = 'block';
-
-          document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">❌ Invalid Excel file</span>';
-
-          // Clear stored data
-          localStorage.removeItem('excelValidationData');
+          applyExcelParseResult(result, file, previewDiv, errorsDiv);
         }
-
       } catch (error) {
         console.error('Error processing Excel file:', error);
-        errorsDiv.innerHTML = `<div class="excel-error-item">❌ Failed to process file: ${error.message}</div>`;
+        errorsDiv.innerHTML = `<div class="excel-error-item">Failed to process file: ${error.message}</div>`;
         errorsDiv.style.display = 'block';
-        document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">❌ Error processing file</span>';
+        document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">Error processing file</span>';
         localStorage.removeItem('excelValidationData');
       }
 
@@ -1989,6 +2225,24 @@
           <span>${p.mixInAds}</span>
         </div>
       `;
+
+      if (p.format) {
+        previewHTML += `
+          <div class="excel-preview-row">
+            <span class="excel-preview-label">Format:</span>
+            <span>${getExcelFormatLabel(p.format)}</span>
+          </div>
+        `;
+      }
+
+      if (Array.isArray(p.linkColumns) && p.linkColumns.length > 0) {
+        previewHTML += `
+          <div class="excel-preview-row">
+            <span class="excel-preview-label">Link Columns:</span>
+            <span>${p.linkColumns.join(', ')}</span>
+          </div>
+        `;
+      }
 
       // Add additional content types if they exist
       if (p.monthlySpecials > 0) {

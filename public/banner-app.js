@@ -1362,7 +1362,9 @@ async function startCapture() {
         options.excelValidation = {
           enabled: true,
           data: excelData.data,
-          filename: excelData.filename
+          filename: excelData.filename,
+          format: excelData.format || excelData.preview?.format || null,
+          linkColumns: excelData.linkColumns || excelData.preview?.linkColumns || null
         };
       } catch (e) {
         console.error('Failed to parse Excel validation data:', e);
