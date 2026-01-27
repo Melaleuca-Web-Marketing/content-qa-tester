@@ -235,12 +235,7 @@ export const config = {
     },
 
     browser: {
-      userAgent: "Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
-      deviceScaleFactor: 2,
-      captureHeight: 1800,
-      isMobile: true,
-      hasTouch: true,
-      headless: true
+      captureHeight: 1800
     },
 
     // Culture code mapping for URL lang parameter
@@ -439,11 +434,7 @@ export const config = {
     },
 
     browser: {
-      userAgent: "Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
-      deviceScaleFactor: 2,
-      captureHeight: 1800,
-      isMobile: true,
-      hasTouch: true
+      captureHeight: 1800
     },
 
     // Reuse banner's region and culture configuration
@@ -454,6 +445,71 @@ export const config = {
       environment: "stage",
       region: "usca",
       widths: [320, 768, 1210]
+    }
+  },
+
+  // ============ PDP TESTER CONFIGURATION ============
+  pdp: {
+    screenWidths: [320, 415, 576, 768, 992, 1210],
+
+    selectors: {
+      // Main "About This Product" section
+      aboutSection: '#section-pdp-about',
+      aboutHeader: '#section-pdp-about > header',
+      aboutContent: '#section-pdp-about > div',
+
+      // Generic image selectors (find any image pattern)
+      images: {
+        picture: 'picture',
+        img: 'img',
+        lazyImg: 'img[data-src]',
+        bgImage: '[style*="background-image"]'
+      },
+
+      // Picture source media queries (for responsive image detection)
+      sources: {
+        desktop: 'source[media*="1024px"], source[media*="min-width: 1024"]',
+        tablet: 'source[media*="768px"], source[media*="min-width: 768"]',
+        mobile: 'source[media*="575px"], source[media*="max-width: 575"]'
+      },
+
+      // Responsive visibility classes (Tailwind patterns)
+      visibility: {
+        desktopOnly: '[class*="hidden"][class*="md:block"]',
+        mobileOnly: '[class*="md:hidden"]'
+      },
+
+      // Background image classes (when present)
+      backgrounds: {
+        desktop: '[class*="-desktop"], [class*="desktop"]',
+        mobile: '[class*="-mobile"], [class*="mobile"]'
+      },
+
+      // Links
+      link: 'a[href]',
+
+      // Login selectors (same as SKU tester)
+      login: {
+        homePageSignInButton: "a.a-authorBtn",
+        username: "[data-testid='username-input']",
+        password: "[data-testid='password-input']",
+        loginButton: "[data-testid='signIn-button']",
+        errorMessage: "[data-testid='invalidCredential-container']:not(.hidden)"
+      }
+    },
+
+    timeouts: {
+      pageLoad: 30000,
+      loginWait: 10000,
+      screenshotDelay: 2000,
+      betweenSkus: 1000,
+      imageLoad: 15000
+    },
+
+    defaults: {
+      environment: "production",
+      region: "us",
+      culture: "en-US"
     }
   }
 };
@@ -615,6 +671,41 @@ export function validateMixInAdConfig(options) {
 
   if (options.loginEnabled && (!options.username || !options.password)) {
     errors.push('Username and password are required when login is enabled');
+  }
+
+  return errors;
+}
+
+// ============ PDP HELPER FUNCTIONS ============
+
+// Validate PDP configuration
+export function validatePdpConfig(options) {
+  const errors = [];
+
+  if (!config.environments[options.environment]) {
+    errors.push(`Invalid environment: ${options.environment}. Valid: ${Object.keys(config.environments).join(', ')}`);
+  }
+
+  if (!config.regions[options.region]) {
+    errors.push(`Invalid region: ${options.region}. Valid: ${Object.keys(config.regions).join(', ')}`);
+  }
+
+  const validCultures = getCulturesForRegion(options.region);
+  const selectedCultures = Array.isArray(options.cultures) && options.cultures.length > 0
+    ? options.cultures
+    : (options.culture ? [options.culture] : []);
+
+  if (selectedCultures.length === 0) {
+    errors.push('At least one culture must be selected for PDP testing');
+  } else if (validCultures.length > 0) {
+    const invalidCultures = selectedCultures.filter(culture => !validCultures.includes(culture));
+    if (invalidCultures.length > 0) {
+      errors.push(`Invalid culture(s) for region ${options.region}: ${invalidCultures.join(', ')}. Valid: ${validCultures.join(', ')}`);
+    }
+  }
+
+  if (!options.username || !options.password) {
+    errors.push('Username and password are required for PDP testing');
   }
 
   return errors;

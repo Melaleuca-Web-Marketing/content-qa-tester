@@ -428,11 +428,7 @@ export class BannerProcessor extends BaseProcessor {
       const initialWidth = selectedWidths[0] || config.banner.widths[0] || 320;
 
       await this.createContext({
-        viewport: { width: initialWidth, height: config.banner.browser.captureHeight },
-        userAgent: config.banner.browser.userAgent,
-        isMobile: config.banner.browser.isMobile,
-        hasTouch: config.banner.browser.hasTouch,
-        deviceScaleFactor: config.banner.browser.deviceScaleFactor
+        viewport: { width: initialWidth, height: config.banner.browser.captureHeight }
       });
       await this.createPage();
 

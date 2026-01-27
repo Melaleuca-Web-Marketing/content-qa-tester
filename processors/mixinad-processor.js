@@ -798,11 +798,7 @@ export class MixInAdProcessor extends BaseProcessor {
             // Create single context without locale settings (like banner processor)
             // This ensures sc_lang URL parameter is used instead of browser locale
             await this.createContext({
-                viewport: { width: initialWidth, height: config.mixinad.browser.captureHeight },
-                userAgent: config.mixinad.browser.userAgent,
-                isMobile: config.mixinad.browser.isMobile,
-                hasTouch: config.mixinad.browser.hasTouch,
-                deviceScaleFactor: config.mixinad.browser.deviceScaleFactor
+                viewport: { width: initialWidth, height: config.mixinad.browser.captureHeight }
             });
             await this.createPage();
 
