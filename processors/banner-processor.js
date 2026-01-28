@@ -153,6 +153,7 @@ export class BannerProcessor extends BaseProcessor {
       // Load page at desktop width first (matches user workflow: load desktop, then resize)
       // This ensures CSS/JS initializes at desktop width before resizing to test widths
       const desktopWidth = 1920;
+      log('info', `[DESKTOP-FIRST] Loading page at ${desktopWidth}px before resizing to test widths`, { category: job.category });
       await page.setViewportSize({ width: desktopWidth, height: config.banner.browser.captureHeight });
 
       // Navigate to URL once
@@ -161,6 +162,7 @@ export class BannerProcessor extends BaseProcessor {
         timeout: config.banner.timeouts.singleCapture
       });
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
+      log('info', `[DESKTOP-FIRST] Page loaded at ${desktopWidth}px, ready to resize to test widths`, { category: job.category });
 
       // Handle Microsoft authentication once (if needed)
       const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password, page);
@@ -183,6 +185,7 @@ export class BannerProcessor extends BaseProcessor {
 
         try {
           // Set viewport size (triggers responsive banner re-render)
+          log('info', `[DESKTOP-FIRST] Resizing from desktop to ${width}px`, { category: job.category });
           await page.setViewportSize({ width, height: config.banner.browser.captureHeight });
           // Wait for responsive layout to settle
           await page.waitForTimeout(config.banner.timeouts.pageLoad / 2);
