@@ -56,9 +56,18 @@ export class BaseProcessor extends EventEmitter {
 
     // Default to headless (or env override), allow per-call override.
     const headless = options.headless !== undefined ? options.headless : this.defaultHeadless;
+
+    // Default args for consistent font rendering across platforms (Windows/Linux)
+    const defaultArgs = [
+      '--start-maximized',
+      '--font-render-hinting=none',
+      '--disable-font-subpixel-positioning',
+      '--disable-lcd-text'
+    ];
+
     this.browser = await chromium.launch({
       headless,
-      args: options.args || ['--start-maximized']
+      args: options.args || defaultArgs
     });
 
     log('info', 'Browser launched successfully');

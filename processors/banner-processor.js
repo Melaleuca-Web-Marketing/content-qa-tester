@@ -162,7 +162,10 @@ export class BannerProcessor extends BaseProcessor {
         timeout: config.banner.timeouts.singleCapture
       });
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
-      log('info', `[DESKTOP-FIRST] Page loaded at ${desktopWidth}px, ready to resize to test widths`, { category: job.category });
+
+      // Wait for web fonts to load (critical for correct text wrapping)
+      await page.evaluate(() => document.fonts.ready);
+      log('info', `[DESKTOP-FIRST] Page and fonts loaded at ${desktopWidth}px, ready to resize to test widths`, { category: job.category });
 
       // Handle Microsoft authentication once (if needed)
       const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password, page);
@@ -187,8 +190,9 @@ export class BannerProcessor extends BaseProcessor {
           // Set viewport size (triggers responsive banner re-render)
           log('info', `[DESKTOP-FIRST] Resizing from desktop to ${width}px`, { category: job.category });
           await page.setViewportSize({ width, height: config.banner.browser.captureHeight });
-          // Wait for responsive layout to settle
+          // Wait for responsive layout and fonts to settle
           await page.waitForTimeout(config.banner.timeouts.pageLoad / 2);
+          await page.evaluate(() => document.fonts.ready);
 
           // Retry banner detection with exponential backoff
           let bannerInfo = null;
