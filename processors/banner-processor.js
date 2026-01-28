@@ -83,6 +83,26 @@ export class BannerProcessor extends BaseProcessor {
     return await this._detectBannerElement(true);
   }
 
+  async setScrollbarVisibility(hidden) {
+    if (!this.page) return;
+    await this.page.evaluate((hide) => {
+      const styleId = 'banner-hide-scrollbars';
+      const existing = document.getElementById(styleId);
+      if (hide) {
+        if (existing) return;
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+          * { scrollbar-width: none !important; }
+          *::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+        `;
+        document.head.appendChild(style);
+      } else if (existing) {
+        existing.remove();
+      }
+    }, hidden);
+  }
+
   async ensureLoggedIn(job, options, loggedInHosts) {
     if (!options?.loginEnabled) return;
     if (!options.username || !options.password) {
@@ -167,6 +187,8 @@ export class BannerProcessor extends BaseProcessor {
       await page.evaluate(() => document.fonts.ready);
       // Extra wait for any JS layout recalculations after fonts load
       await page.waitForTimeout(1000);
+      await this.setScrollbarVisibility(true);
+      await page.waitForTimeout(100);
       log('info', `[DESKTOP-FIRST] Page and fonts loaded at ${desktopWidth}px, ready to resize to test widths`, { category: job.category });
 
       // Handle Microsoft authentication once (if needed)
@@ -197,6 +219,8 @@ export class BannerProcessor extends BaseProcessor {
           await page.evaluate(() => document.fonts.ready);
           // Extra wait for any JS layout recalculations after resize
           await page.waitForTimeout(500);
+          await this.setScrollbarVisibility(true);
+          await page.waitForTimeout(50);
 
           // Retry banner detection with exponential backoff
           let bannerInfo = null;
@@ -309,6 +333,8 @@ export class BannerProcessor extends BaseProcessor {
 
       // Wait for page to settle
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
+      await this.setScrollbarVisibility(true);
+      await page.waitForTimeout(50);
 
       // Handle Microsoft authentication for stage/UAT environments
       const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(meta.environment, meta.username, meta.password, page);
