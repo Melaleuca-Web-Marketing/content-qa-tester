@@ -150,9 +150,10 @@ export class BannerProcessor extends BaseProcessor {
     log('info', `Capturing banner for ${job.category} at ${widths.length} widths (optimized)`, { url: job.url });
 
     try {
-      // Set initial viewport to first width
-      const firstWidth = widths[0];
-      await page.setViewportSize({ width: firstWidth, height: config.banner.browser.captureHeight });
+      // Load page at desktop width first (matches user workflow: load desktop, then resize)
+      // This ensures CSS/JS initializes at desktop width before resizing to test widths
+      const desktopWidth = 1920;
+      await page.setViewportSize({ width: desktopWidth, height: config.banner.browser.captureHeight });
 
       // Navigate to URL once
       await page.goto(job.url, {
@@ -182,11 +183,9 @@ export class BannerProcessor extends BaseProcessor {
 
         try {
           // Set viewport size (triggers responsive banner re-render)
-          if (i > 0) {
-            await page.setViewportSize({ width, height: config.banner.browser.captureHeight });
-            // Shorter wait since we're already on the page
-            await page.waitForTimeout(config.banner.timeouts.pageLoad / 2);
-          }
+          await page.setViewportSize({ width, height: config.banner.browser.captureHeight });
+          // Wait for responsive layout to settle
+          await page.waitForTimeout(config.banner.timeouts.pageLoad / 2);
 
           // Retry banner detection with exponential backoff
           let bannerInfo = null;
@@ -425,14 +424,14 @@ export class BannerProcessor extends BaseProcessor {
     try {
       // Launch browser
       await this.launchBrowser();
-      const initialWidth = selectedWidths[0] || config.banner.widths[0] || 320;
 
+      // Create context at desktop width (page loads at desktop, then resizes to test widths)
       await this.createContext({
-        viewport: { width: initialWidth, height: config.banner.browser.captureHeight }
+        viewport: { width: 1920, height: config.banner.browser.captureHeight }
       });
       await this.createPage();
 
-      // Note: Using optimized capture - navigates once per banner, resizes viewport for each width
+      // Note: Using optimized capture - navigates once per banner at desktop width, resizes viewport for each test width
 
       const loggedInHosts = new Set();
 
