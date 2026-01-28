@@ -1019,6 +1019,7 @@ function handleStatusUpdate(data) {
     case 'waiting-for-credentials':
       setStatusError('Authentication Failed', data.message || 'Invalid username or password. Update credentials and click Resume.');
       showCredentialErrorAlert(data.error || 'Invalid username or password');
+      notifyCredentialError(data.error || 'Invalid username or password');
       isWaitingForCredentials = true;
       startCaptureBtn.textContent = 'Update & Resume';
       startCaptureBtn.disabled = false;
@@ -1285,6 +1286,75 @@ function notifyJobComplete(title, body, isError) {
   }
 
   playCompletionSound(isError);
+}
+
+// Urgent alarm sound for credential errors - distinct "attention needed!" pattern
+function playCredentialAlertSound() {
+  primeAudio();
+  if (!audioContext) return;
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
+
+  const now = audioContext.currentTime;
+
+  // Create a more urgent, alarm-like sound pattern
+  // Three rapid high-pitched beeps followed by two lower warning tones
+  const pattern = [
+    { freq: 880, start: 0, duration: 0.1 },
+    { freq: 880, start: 0.15, duration: 0.1 },
+    { freq: 880, start: 0.3, duration: 0.1 },
+    { freq: 440, start: 0.5, duration: 0.15 },
+    { freq: 330, start: 0.7, duration: 0.2 }
+  ];
+
+  pattern.forEach(({ freq, start, duration }) => {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    osc.type = 'square';  // Harsher sound for urgency
+    osc.frequency.value = freq;
+
+    gain.gain.setValueAtTime(0.08, now + start);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + start + duration);
+
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+
+    osc.start(now + start);
+    osc.stop(now + start + duration);
+  });
+}
+
+function notifyCredentialError(errorMessage) {
+  if (!isNotificationsEnabled()) return;
+
+  // Play urgent credential alert sound
+  playCredentialAlertSound();
+
+  // Show visual notification
+  if (typeof showVisualNotification === 'function') {
+    showVisualNotification('Authentication Failed', errorMessage || 'Please update your credentials', 'error');
+  }
+
+  // Show desktop notification with click handler to focus this window/tab
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      const notification = new Notification('Banner Tester - Authentication Failed', {
+        body: errorMessage || 'Please update your credentials and click Resume',
+        icon: `${BASE_PATH}/favicon.ico`,
+        tag: 'credential-error',
+        requireInteraction: true
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    } catch {
+      // Ignore notification failures
+    }
+  }
 }
 
 function formatDuration(ms) {

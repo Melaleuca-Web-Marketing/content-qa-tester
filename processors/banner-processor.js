@@ -165,6 +165,8 @@ export class BannerProcessor extends BaseProcessor {
 
       // Wait for web fonts to load (critical for correct text wrapping)
       await page.evaluate(() => document.fonts.ready);
+      // Extra wait for any JS layout recalculations after fonts load
+      await page.waitForTimeout(1000);
       log('info', `[DESKTOP-FIRST] Page and fonts loaded at ${desktopWidth}px, ready to resize to test widths`, { category: job.category });
 
       // Handle Microsoft authentication once (if needed)
@@ -193,6 +195,8 @@ export class BannerProcessor extends BaseProcessor {
           // Wait for responsive layout and fonts to settle
           await page.waitForTimeout(config.banner.timeouts.pageLoad / 2);
           await page.evaluate(() => document.fonts.ready);
+          // Extra wait for any JS layout recalculations after resize
+          await page.waitForTimeout(500);
 
           // Retry banner detection with exponential backoff
           let bannerInfo = null;

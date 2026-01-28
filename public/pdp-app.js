@@ -1,31 +1,4 @@
-// sku-app.js - Frontend JavaScript for SKU Tester UI
-
-// Theme toggle functionality
-function toggleTheme() {
-  const body = document.body;
-  const icon = document.getElementById('theme-icon');
-  const text = document.getElementById('theme-text');
-
-  body.classList.toggle('light-mode');
-  const isLight = body.classList.contains('light-mode');
-
-  icon.innerHTML = isLight ? '&#9790;' : '&#9788;';
-  text.textContent = isLight ? 'Dark' : 'Light';
-
-  localStorage.setItem('testerTheme', isLight ? 'light' : 'dark');
-}
-
-// Check for saved theme preference on load
-(function initTheme() {
-  const savedTheme = localStorage.getItem('testerTheme');
-  if (savedTheme === 'light') {
-    document.body.classList.add('light-mode');
-    const icon = document.getElementById('theme-icon');
-    const text = document.getElementById('theme-text');
-    if (icon) icon.innerHTML = '&#9790;';
-    if (text) text.textContent = 'Dark';
-  }
-})();
+// pdp-app.js - Frontend JavaScript for PDP Tester UI
 
 let configData = null;
 let isCapturing = false;
@@ -34,11 +7,24 @@ let captureErrorMessage = '';
 let jobSummary = '';
 let completionNotified = false;
 let audioContext = null;
+let selectedSound = localStorage.getItem('notificationSound') || 'classic';
 let captureStartTime = null;
+
+// Sound options configuration
+const SOUND_OPTIONS = [
+  { id: 'classic', name: 'Classic', desc: 'Default two-tone alert' },
+  { id: 'iphone', name: 'iPhone Tri-Tone', desc: 'Classic iOS notification' },
+  { id: 'samsung', name: 'Samsung Whistle', desc: 'Classic Samsung notification' },
+  { id: 'chime', name: 'Chime', desc: 'Pleasant bell sound' },
+  { id: 'ping', name: 'Ping', desc: 'Simple soft ping' },
+  { id: 'alert', name: 'Alert', desc: 'Attention-grabbing tone' },
+  { id: 'bubble', name: 'Bubble', desc: 'Soft bubble pop' },
+  { id: 'silent', name: 'Silent', desc: 'No sound' }
+];
 let ws = null;
 let reconnectAttempts = 0;
 let isWaitingForResume = false;
-let activityItems = []; // Activity feed items
+let activityItems = [];
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
@@ -63,12 +49,11 @@ const passwordInput = document.getElementById('password-input');
 const skuInput = document.getElementById('sku-input');
 const skuCount = document.getElementById('sku-count');
 const clearSkusBtn = document.getElementById('clear-skus');
-const fullScreenshotCheck = document.getElementById('full-screenshot');
-const topScreenshotCheck = document.getElementById('top-screenshot');
-const addToCartCheck = document.getElementById('add-to-cart');
+const widthOptions = document.getElementById('width-options');
+const selectAllWidthsBtn = document.getElementById('select-all-widths');
+const deselectAllWidthsBtn = document.getElementById('deselect-all-widths');
 const startCaptureBtn = document.getElementById('start-capture');
 const stopCaptureBtn = document.getElementById('stop-capture');
-const saveReportBtn = document.getElementById('save-report');
 const statusBanner = document.getElementById('status-banner');
 const statusMain = document.getElementById('status-main');
 const statusDetail = document.getElementById('status-detail');
@@ -81,7 +66,7 @@ const progressCulture = document.getElementById('progress-culture');
 const progressSku = document.getElementById('progress-sku');
 const currentSkuInfo = document.getElementById('current-sku-info');
 const currentSkuName = document.getElementById('current-sku-name');
-const currentSkuPrice = document.getElementById('current-sku-price');
+const currentSkuContentType = document.getElementById('current-sku-content-type');
 const currentSkuStatus = document.getElementById('current-sku-status');
 const connectionStatus = document.getElementById('connection-status');
 
@@ -97,11 +82,13 @@ async function init() {
     await loadConfig();
     setupEventListeners();
     renderCultureOptions();
+    renderWidthOptions();
     loadPreferences();
+    initSoundSettings();
     connectWebSocket();
-    loadActivityFromStorage(); // Restore activity feed from session
+    loadActivityFromStorage();
     setStatusRunning('Checking status...', 'Loading job state');
-    await checkStatus(); // Check if a job is already running
+    await checkStatus();
   } catch (err) {
     console.error('Initialization error:', err);
     setStatusError('Initialization failed', err.message);
@@ -110,7 +97,7 @@ async function init() {
 
 async function checkStatus() {
   try {
-    const response = await fetch(api('/api/sku/status'), {
+    const response = await fetch(api('/api/pdp/status'), {
       headers: userId ? { 'X-User-Id': userId } : {}
     });
     const status = await response.json();
@@ -137,14 +124,13 @@ async function checkStatus() {
 
       if (status.statusType === 'waiting-for-auth') {
         isWaitingForResume = true;
-        startCaptureBtn.textContent = 'Resume Capture';
+        startCaptureBtn.textContent = 'Resume Test';
         startCaptureBtn.disabled = false;
         setStatusRunning('Waiting for manual sign-in', status.message || 'Please sign in and click Resume');
       } else if (status.statusType === 'waiting-for-credentials') {
-        // Restore credential error UI state
         setStatusError('Authentication Failed', status.message);
         showCredentialErrorAlert(status.error || 'Invalid username or password');
-        startCaptureBtn.textContent = '🔄 Update & Resume';
+        startCaptureBtn.textContent = 'Update & Resume';
         startCaptureBtn.disabled = false;
         stopCaptureBtn.disabled = false;
         usernameInput.disabled = false;
@@ -157,25 +143,22 @@ async function checkStatus() {
         applyProgressSnapshot(status.progress);
       }
 
-      // Restore activity feed from server-side results (catches SKUs processed while away)
       await restoreActivityFromServer();
     } else if (status.resultsCount > 0) {
-      // Job completed but we may have missed some results - restore from server
       await restoreActivityFromServer();
-      setStatusIdle('Ready to capture', `Previous job completed with ${status.resultsCount} results`);
+      setStatusIdle('Ready to test', `Previous job completed with ${status.resultsCount} results`);
     } else {
-      setStatusIdle('Ready to capture', '');
+      setStatusIdle('Ready to test', '');
     }
   } catch (err) {
     console.error('Failed to check status:', err);
-    setStatusIdle('Ready to capture', '');
+    setStatusIdle('Ready to test', '');
   }
 }
 
-// Restore activity feed from server-side SKU results
 async function restoreActivityFromServer() {
   try {
-    const response = await fetch(api('/api/sku/results'), {
+    const response = await fetch(api('/api/pdp/results'), {
       headers: userId ? { 'X-User-Id': userId } : {}
     });
     const serverResults = await response.json();
@@ -186,18 +169,15 @@ async function restoreActivityFromServer() {
       return;
     }
 
-    // Get existing SKUs in activity feed to avoid duplicates
     const existingSkus = new Set(activityItems.map(item => `${item.sku}-${item.culture}`));
 
-    // Add any missing results from server
     let addedCount = 0;
     for (const result of serverResults) {
       const key = `${result.sku}-${result.culture}`;
       if (existingSkus.has(key)) {
-        continue; // Already have this result
+        continue;
       }
 
-      // For failed results
       if (!result.success) {
         const item = {
           type: 'error',
@@ -212,55 +192,22 @@ async function restoreActivityFromServer() {
         continue;
       }
 
-      // For successful results - compute validation issues (same as handleProgress)
-      const data = result.data || {};
-      const issues = [];
-
-      if (result.addToCartResult && result.addToCartResult.success === false) {
-        issues.push(`Add to cart failed: ${result.addToCartResult.error || 'Unknown error'}`);
-      }
-      if (!data.description) {
-        issues.push('Missing description');
-      }
-      if (data.aboutHasContent === false) {
-        issues.push('Missing About content');
-      }
-      if (data.ingredientsHasContent === false) {
-        issues.push('Missing Ingredients');
-      }
-
-      // Determine item type based on issues
-      const hasErrors = result.addToCartResult && result.addToCartResult.success === false;
-      const hasWarnings = issues.length > 0;
-      const type = hasErrors ? 'error' : (hasWarnings ? 'warning' : 'success');
-      const addToCartError = hasErrors
-        ? (result.addToCartResult.error || 'Add to cart failed')
-        : null;
+      const contentType = result.contentType || 'nothing';
+      const sectionCount = result.sections?.length || 0;
+      const screenshotCount = result.screenshots?.length || 0;
 
       const item = {
-        type,
+        type: 'success',
         sku: result.sku,
         culture: result.culture,
-        name: data.name || `SKU ${result.sku}`,
-        price: data.price,
-        addToCart: result.addToCartResult,
-        issues: issues,
-        error: addToCartError || undefined,
+        contentType,
+        sectionCount,
+        screenshotCount,
         url: result.url,
         timestamp: result.timestamp ? new Date(result.timestamp) : new Date()
       };
 
-      // Add item - errors/warnings at start, success at end
-      if (type === 'error' || type === 'warning') {
-        activityItems.unshift(item);
-      } else {
-        const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
-        if (firstSuccessIndex === -1) {
-          activityItems.push(item);
-        } else {
-          activityItems.splice(firstSuccessIndex, 0, item);
-        }
-      }
+      activityItems.push(item);
       addedCount++;
     }
 
@@ -292,23 +239,16 @@ function setupEventListeners() {
     applySavedCredentials();
     savePreferences();
   });
+
   if (selectAllCulturesBtn && deselectAllCulturesBtn) {
     selectAllCulturesBtn.addEventListener('click', () => toggleAllCultures(true));
     deselectAllCulturesBtn.addEventListener('click', () => toggleAllCultures(false));
   }
-  fullScreenshotCheck.addEventListener('change', () => {
-    if (fullScreenshotCheck.checked) {
-      topScreenshotCheck.checked = false;
-    }
-    savePreferences();
-  });
-  topScreenshotCheck.addEventListener('change', () => {
-    if (topScreenshotCheck.checked) {
-      fullScreenshotCheck.checked = false;
-    }
-    savePreferences();
-  });
-  addToCartCheck.addEventListener('change', savePreferences);
+
+  if (selectAllWidthsBtn && deselectAllWidthsBtn) {
+    selectAllWidthsBtn.addEventListener('click', () => toggleAllWidths(true));
+    deselectAllWidthsBtn.addEventListener('click', () => toggleAllWidths(false));
+  }
 
   skuInput.addEventListener('input', () => {
     updateSkuCount();
@@ -322,7 +262,6 @@ function setupEventListeners() {
   });
 
   startCaptureBtn.addEventListener('click', async () => {
-    // Check if we're in credential update mode
     if (startCaptureBtn.textContent.includes('Update & Resume')) {
       await updateCredentialsAndResume();
     } else if (isWaitingForResume) {
@@ -333,13 +272,11 @@ function setupEventListeners() {
   });
   stopCaptureBtn.addEventListener('click', stopCapture);
 
-  // Activity feed clear button
   if (clearActivityBtn) {
     clearActivityBtn.addEventListener('click', clearActivityFeed);
   }
 
   // Password visibility toggle
-  const passwordInput = document.getElementById('password-input');
   const passwordToggleBtn = document.querySelector('.password-toggle-btn');
 
   if (passwordToggleBtn && passwordInput) {
@@ -398,6 +335,41 @@ function getSelectedCultures() {
   return Array.from(cultureOptions.querySelectorAll('input:checked')).map(cb => cb.value);
 }
 
+function renderWidthOptions() {
+  const widths = configData?.pdp?.screenWidths || [320, 415, 576, 768, 992, 1210];
+  if (!widthOptions) return;
+
+  widthOptions.innerHTML = widths.map(width => `
+    <label class="width-option selected">
+      <input type="checkbox" name="width" value="${width}" checked>
+      <span>${width}px</span>
+    </label>
+  `).join('');
+
+  widthOptions.querySelectorAll('input').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      e.target.closest('.width-option').classList.toggle('selected', e.target.checked);
+      savePreferences();
+    });
+  });
+}
+
+function toggleAllWidths(checked) {
+  if (!widthOptions) return;
+  widthOptions.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = checked;
+    cb.closest('.width-option').classList.toggle('selected', checked);
+  });
+  savePreferences();
+}
+
+function getSelectedWidths() {
+  if (!widthOptions) return [];
+  return Array.from(widthOptions.querySelectorAll('input[name="width"]:checked'))
+    .map(cb => parseInt(cb.value, 10))
+    .filter(Number.isFinite);
+}
+
 function applySavedCredentials() {
   if (!window.CredentialStore) return;
   const env = envSelect.value;
@@ -433,19 +405,17 @@ function savePreferences() {
     environment: envSelect.value,
     region: regionSelect.value,
     cultures: getSelectedCultures(),
+    widths: getSelectedWidths(),
     skus: skuInput.value,
-    fullScreenshot: fullScreenshotCheck.checked,
-    topScreenshot: topScreenshotCheck.checked,
-    addToCart: addToCartCheck.checked,
     username: usernameInput.value.trim() || null,
     password: passwordInput.value || null
   };
-  localStorage.setItem('skuTesterPrefs', JSON.stringify(prefs));
+  localStorage.setItem('pdpTesterPrefs', JSON.stringify(prefs));
 }
 
 function loadPreferences() {
   try {
-    const prefs = JSON.parse(localStorage.getItem('skuTesterPrefs'));
+    const prefs = JSON.parse(localStorage.getItem('pdpTesterPrefs'));
     if (prefs) {
       if (prefs.environment) envSelect.value = prefs.environment;
       if (prefs.region) {
@@ -465,14 +435,14 @@ function loadPreferences() {
           });
         }
       }
-      if (prefs.skus) skuInput.value = prefs.skus;
-      if (typeof prefs.fullScreenshot === 'boolean') fullScreenshotCheck.checked = prefs.fullScreenshot;
-      if (typeof prefs.topScreenshot === 'boolean') {
-        topScreenshotCheck.checked = prefs.topScreenshot;
-        if (prefs.topScreenshot) fullScreenshotCheck.checked = false;
+      if (prefs.widths && widthOptions) {
+        widthOptions.querySelectorAll('input').forEach(cb => {
+          const checked = prefs.widths.includes(parseInt(cb.value, 10));
+          cb.checked = checked;
+          cb.closest('.width-option').classList.toggle('selected', checked);
+        });
       }
-      if (typeof prefs.addToCart === 'boolean') addToCartCheck.checked = prefs.addToCart;
-      // Restore saved credentials
+      if (prefs.skus) skuInput.value = prefs.skus;
       if (prefs.username) usernameInput.value = prefs.username;
       if (prefs.password) passwordInput.value = prefs.password;
       updateSkuCount();
@@ -520,12 +490,11 @@ function connectWebSocket() {
 }
 
 function handleWebSocketMessage(message) {
-  // Only handle SKU-related messages
-  if (message.type === 'sku-progress') {
+  if (message.type === 'pdp-progress') {
     handleProgress(message.data);
-  } else if (message.type === 'sku-status') {
+  } else if (message.type === 'pdp-status') {
     handleStatusUpdate(message.data);
-  } else if (message.type === 'sku-error') {
+  } else if (message.type === 'pdp-error') {
     handleError(message.data);
   }
 }
@@ -545,70 +514,44 @@ function handleProgress(data) {
       setStatusRunning('Logging in...', progress.status);
       break;
 
-    case 'sku-start':
+    case 'pdp-start':
       progressSku.textContent = `SKU: ${progress.sku}`;
       currentSkuInfo.style.display = 'block';
       currentSkuName.textContent = progress.culture
         ? `SKU ${progress.sku} (${progress.culture})`
         : `SKU ${progress.sku}`;
-      currentSkuPrice.textContent = '-';
+      currentSkuContentType.textContent = '-';
       currentSkuStatus.textContent = progress.status;
-      setStatusRunning('Capturing...', `SKU ${progress.sku}: ${progress.status}`);
+      setStatusRunning('Testing...', `SKU ${progress.sku}: ${progress.status}`);
       break;
 
-    case 'sku-status':
+    case 'pdp-status':
+    case 'pdp-screenshot':
       currentSkuStatus.textContent = progress.status;
-      setStatusRunning('Capturing...', `SKU ${progress.sku}: ${progress.status}`);
+      setStatusRunning('Testing...', `SKU ${progress.sku}: ${progress.status}`);
       break;
 
-    case 'sku-complete':
+    case 'pdp-complete':
       if (progress.data) {
-        currentSkuName.textContent = progress.data.name || `SKU ${progress.sku}`;
-        currentSkuPrice.textContent = progress.data.price || '-';
+        currentSkuContentType.textContent = getContentTypeLabel(progress.data.contentType);
       }
       currentSkuStatus.textContent = 'Complete';
       updateProgressBar(progress.current, progress.total);
 
-      // Check for validation issues
-      const data = progress.data || {};
-      const issues = [];
-      if (data.addToCart && data.addToCart.success === false) {
-        issues.push(`Add to cart failed: ${data.addToCart.error || 'Unknown error'}`);
-      }
-      if (!data.description) {
-        issues.push('Missing description');
-      }
-      if (data.aboutHasContent === false) {
-        issues.push('Missing About content');
-      }
-      if (data.ingredientsHasContent === false) {
-        issues.push('Missing Ingredients');
-      }
-
-      // Determine item type based on issues
-      const hasErrors = data.addToCart && data.addToCart.success === false;
-      const hasWarnings = issues.length > 0;
-      const addToCartError = hasErrors
-        ? (data.addToCart.error || 'Add to cart failed')
-        : null;
-
       addActivityItem({
-        type: hasErrors ? 'error' : (hasWarnings ? 'warning' : 'success'),
+        type: 'success',
         sku: progress.sku,
         culture: progress.culture,
-        name: data.name || `SKU ${progress.sku}`,
-        price: data.price,
-        addToCart: data.addToCart,
-        issues: issues,
-        error: addToCartError || undefined,
+        contentType: progress.data?.contentType || 'nothing',
+        sectionCount: progress.data?.sectionCount || 0,
+        screenshotCount: progress.data?.screenshotCount || 0,
         url: progress.url
       });
       break;
 
-    case 'sku-error':
+    case 'pdp-error':
       currentSkuStatus.textContent = `Error: ${progress.error}`;
       updateProgressBar(progress.current, progress.total);
-      // Add to activity feed
       addActivityItem({
         type: 'error',
         sku: progress.sku,
@@ -620,28 +563,36 @@ function handleProgress(data) {
   }
 }
 
+function getContentTypeLabel(contentType) {
+  switch (contentType) {
+    case 'pdp': return 'PDP Content';
+    case 'longDescription': return 'Long Description';
+    case 'nothing': return 'No Content';
+    default: return 'Unknown';
+  }
+}
+
 function handleStatusUpdate(data) {
-    switch (data.type) {
-      case 'started':
-        isCapturing = true;
-        captureHadError = false;
-        captureErrorMessage = '';
-        completionNotified = false;
-        jobSummary = buildJobSummary();
-        requestNotificationPermission();
-        primeAudio();
-        captureStartTime = Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
-        setUICapturing();
-      setStatusRunning('Starting capture...', `${data.skuCount} captures to process`);
-      // Clear and show activity feed
+  switch (data.type) {
+    case 'started':
+      isCapturing = true;
+      captureHadError = false;
+      captureErrorMessage = '';
+      completionNotified = false;
+      jobSummary = buildJobSummary();
+      requestNotificationPermission();
+      primeAudio();
+      captureStartTime = Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
+      setUICapturing();
+      setStatusRunning('Starting test...', `${data.skuCount} SKUs to process`);
       clearActivityFeed();
       activityFeed.style.display = 'block';
       break;
 
     case 'waiting-for-auth':
-      setStatusRunning('Waiting for manual sign-in', data.message || 'Please sign in to the environment in the browser window, then click Resume Capture');
+      setStatusRunning('Waiting for manual sign-in', data.message || 'Please sign in to the environment in the browser window, then click Resume');
       isWaitingForResume = true;
-      startCaptureBtn.textContent = 'Resume Capture';
+      startCaptureBtn.textContent = 'Resume Test';
       startCaptureBtn.disabled = false;
       stopCaptureBtn.disabled = false;
       progressEta.textContent = 'ETR: --:--';
@@ -652,15 +603,13 @@ function handleStatusUpdate(data) {
       showCredentialErrorAlert(data.error || 'Invalid username or password');
       notifyCredentialError(data.error || 'Invalid username or password');
       isWaitingForResume = true;
-      startCaptureBtn.textContent = '🔄 Update & Resume';
+      startCaptureBtn.textContent = 'Update & Resume';
       startCaptureBtn.disabled = false;
       stopCaptureBtn.disabled = false;
       progressEta.textContent = 'ETR: --:--';
-      // Enable credential inputs
       usernameInput.disabled = false;
       passwordInput.disabled = false;
       usernameInput.focus();
-      // Add visual highlight to credential fields
       const loginSection = document.getElementById('login-section');
       if (loginSection) {
         loginSection.classList.add('credential-error');
@@ -668,10 +617,10 @@ function handleStatusUpdate(data) {
       break;
 
     case 'resuming':
-      setStatusRunning('Resuming capture...', 'Continuing with SKU processing');
+      setStatusRunning('Resuming test...', 'Continuing with SKU processing');
       isWaitingForResume = false;
       startCaptureBtn.disabled = true;
-      startCaptureBtn.textContent = 'Start Capture';
+      startCaptureBtn.textContent = 'Start Test';
       break;
 
     case 'stopping':
@@ -683,42 +632,39 @@ function handleStatusUpdate(data) {
       setUIIdle();
       captureStartTime = null;
       const cancelledCount = data.results?.filter(r => r.success).length || 0;
-      setStatusIdle('Capture cancelled', `${cancelledCount} captures completed before cancellation`);
-      if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
+      setStatusIdle('Test cancelled', `${cancelledCount} SKUs completed before cancellation`);
       break;
 
-      case 'completed':
-        isCapturing = false;
-        isWaitingForResume = false;
-        setUIIdle();
-        captureStartTime = null;
+    case 'completed':
+      isCapturing = false;
+      isWaitingForResume = false;
+      setUIIdle();
+      captureStartTime = null;
 
-        const successCount = Number.isFinite(data.successCount) ? data.successCount : 0;
-        const errorCount = Number.isFinite(data.errorCount) ? data.errorCount : 0;
-        const hasErrors = captureHadError || errorCount > 0 || successCount === 0;
+      const successCount = Number.isFinite(data.successCount) ? data.successCount : 0;
+      const errorCount = Number.isFinite(data.errorCount) ? data.errorCount : 0;
+      const hasErrors = captureHadError || errorCount > 0 || successCount === 0;
 
-        if (hasErrors) {
-          if (errorCount > 0) {
-            setStatusError('Capture complete with errors', `${successCount} captures succeeded, ${errorCount} failed`);
-          } else {
-            setStatusError('Capture failed', captureErrorMessage || 'Capture did not complete');
-          }
+      if (hasErrors) {
+        if (errorCount > 0) {
+          setStatusError('Test complete with errors', `${successCount} SKUs succeeded, ${errorCount} failed`);
         } else {
-          setStatusSuccess('Capture complete!', `${successCount} captures completed in ${formatDuration(data.duration)}`);
+          setStatusError('Test failed', captureErrorMessage || 'Test did not complete');
         }
+      } else {
+        setStatusSuccess('Test complete!', `${successCount} SKUs tested in ${formatDuration(data.duration)}`);
+      }
 
-        const resultParts = [];
-        resultParts.push(`${successCount} ok`);
-        if (errorCount > 0) resultParts.push(`${errorCount} failed`);
-        if (data.duration) resultParts.push(formatDuration(data.duration));
-        const body = [jobSummary, resultParts.length ? `Result: ${resultParts.join(', ')}` : '']
-          .filter(Boolean)
-          .join(' | ');
-        const title = hasErrors ? 'SKU capture finished with errors' : 'SKU capture completed';
-        notifyJobComplete(title, body, hasErrors);
-
-        if (saveReportBtn) saveReportBtn.disabled = !data.results?.length;
-        break;
+      const resultParts = [];
+      resultParts.push(`${successCount} ok`);
+      if (errorCount > 0) resultParts.push(`${errorCount} failed`);
+      if (data.duration) resultParts.push(formatDuration(data.duration));
+      const body = [jobSummary, resultParts.length ? `Result: ${resultParts.join(', ')}` : '']
+        .filter(Boolean)
+        .join(' | ');
+      const title = hasErrors ? 'PDP test finished with errors' : 'PDP test completed';
+      notifyJobComplete(title, body, hasErrors);
+      break;
   }
 }
 
@@ -726,14 +672,13 @@ function handleError(data) {
   isCapturing = false;
   setUIIdle();
   captureHadError = true;
-  captureErrorMessage = data.message || 'Capture failed';
+  captureErrorMessage = data.message || 'Test failed';
   setStatusError('Error', data.message);
   const body = [jobSummary, data.message ? `Error: ${data.message}` : 'Error'].filter(Boolean).join(' | ');
-  notifyJobComplete('SKU capture failed', body, true);
+  notifyJobComplete('PDP test failed', body, true);
 }
 
 function showCredentialErrorAlert(errorMessage) {
-  // Create or update alert banner
   let alertBanner = document.getElementById('credential-error-alert');
 
   if (!alertBanner) {
@@ -743,16 +688,14 @@ function showCredentialErrorAlert(errorMessage) {
     document.querySelector('.container').prepend(alertBanner);
   }
 
-  // Safely create alert content to prevent XSS
   alertBanner.innerHTML = `
-    <div class="alert-icon">⚠️</div>
+    <div class="alert-icon">Warning</div>
     <div class="alert-content">
       <div class="alert-title">Authentication Failed</div>
       <div class="alert-message"></div>
       <div class="alert-instructions">Please update your username and password below, then click "Update & Resume"</div>
     </div>
   `;
-  // Set error message as text content to prevent XSS
   const messageDiv = alertBanner.querySelector('.alert-message');
   messageDiv.textContent = errorMessage;
 
@@ -772,7 +715,7 @@ function hideCredentialErrorAlert() {
 
 function resetCredentialPromptState() {
   isWaitingForResume = false;
-  startCaptureBtn.textContent = 'Start Capture';
+  startCaptureBtn.textContent = 'Start Test';
   hideCredentialErrorAlert();
 }
 
@@ -828,10 +771,6 @@ function buildJobSummary() {
   const regionLabel = regionSelect?.options?.[regionSelect.selectedIndex]?.textContent || regionSelect?.value || '-';
   const cultures = getSelectedCultures();
   const skus = parseSkus(skuInput?.value || '');
-  const screenshotMode = topScreenshotCheck?.checked
-    ? 'top'
-    : (fullScreenshotCheck?.checked ? 'full' : 'none');
-  const addToCart = addToCartCheck?.checked ? 'on' : 'off';
   const parts = [
     `Env: ${envSelect?.value || '-'}`,
     `Region: ${regionLabel}`
@@ -839,8 +778,6 @@ function buildJobSummary() {
 
   if (cultures.length > 0) parts.push(`Cultures: ${formatList(cultures, 6)}`);
   if (skus.length > 0) parts.push(`SKUs: ${formatList(skus, 6)} (${skus.length})`);
-  parts.push(`Screenshot: ${screenshotMode}`);
-  parts.push(`Add to cart: ${addToCart}`);
 
   return parts.join(' | ');
 }
@@ -865,27 +802,234 @@ function primeAudio() {
 }
 
 function playCompletionSound(isError) {
+  if (selectedSound === 'silent') return;
   primeAudio();
   if (!audioContext) return;
   if (audioContext.state === 'suspended') {
     audioContext.resume().catch(() => {});
   }
 
-  const now = audioContext.currentTime;
-  const gain = audioContext.createGain();
-  gain.gain.value = 0.12;
-  gain.connect(audioContext.destination);
+  // Play the selected sound
+  const soundPlayer = SOUND_PLAYERS[selectedSound] || SOUND_PLAYERS.classic;
+  soundPlayer(isError);
+}
 
-  const tones = isError ? [220, 180] : [880, 660];
-  tones.forEach((freq, index) => {
+// Individual sound generators
+const SOUND_PLAYERS = {
+  // Classic: Two-tone alert (original)
+  classic: (isError) => {
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.value = 0.12;
+    gain.connect(audioContext.destination);
+    const tones = isError ? [220, 180] : [880, 660];
+    tones.forEach((freq, index) => {
+      const osc = audioContext.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      osc.start(now + index * 0.2);
+      osc.stop(now + index * 0.2 + 0.15);
+    });
+  },
+
+  // iPhone Tri-Tone: Three ascending notes
+  iphone: (isError) => {
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.value = 0.15;
+    gain.connect(audioContext.destination);
+    const tones = isError ? [392, 330, 262] : [1047, 1319, 1568];
+    tones.forEach((freq, index) => {
+      const osc = audioContext.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      osc.start(now + index * 0.12);
+      osc.stop(now + index * 0.12 + 0.1);
+    });
+  },
+
+  // Samsung Whistle: Distinctive whistle pattern
+  samsung: (isError) => {
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.value = 0.12;
+    gain.connect(audioContext.destination);
+    const pattern = isError ? [523, 392, 330] : [784, 1047, 784, 1175, 1047];
+    const durations = isError ? [0.15, 0.15, 0.2] : [0.08, 0.08, 0.08, 0.08, 0.15];
+    let time = now;
+    pattern.forEach((freq, index) => {
+      const osc = audioContext.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      osc.start(time);
+      osc.stop(time + durations[index]);
+      time += durations[index] + 0.02;
+    });
+  },
+
+  // Chime: Pleasant bell-like sound
+  chime: (isError) => {
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+    gain.connect(audioContext.destination);
+    const freq = isError ? 440 : 880;
+    [1, 2, 3, 4].forEach((harmonic) => {
+      const osc = audioContext.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq * harmonic;
+      const hGain = audioContext.createGain();
+      hGain.gain.value = 0.3 / harmonic;
+      osc.connect(hGain);
+      hGain.connect(gain);
+      osc.start(now);
+      osc.stop(now + 0.8);
+    });
+  },
+
+  // Ping: Simple soft ping
+  ping: (isError) => {
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    gain.connect(audioContext.destination);
     const osc = audioContext.createOscillator();
     osc.type = 'sine';
-    osc.frequency.value = freq;
+    osc.frequency.value = isError ? 440 : 1200;
     osc.connect(gain);
-    const start = now + (index * 0.2);
-    const stop = start + 0.15;
-    osc.start(start);
-    osc.stop(stop);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  },
+
+  // Alert: Urgent attention-grabbing tone
+  alert: (isError) => {
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.value = 0.1;
+    gain.connect(audioContext.destination);
+    const baseFreq = isError ? 400 : 800;
+    [0, 0.15, 0.3].forEach((delay) => {
+      const osc = audioContext.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = baseFreq;
+      osc.connect(gain);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.1);
+    });
+  },
+
+  // Bubble: Soft bubble pop sound
+  bubble: (isError) => {
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    gain.connect(audioContext.destination);
+    const osc = audioContext.createOscillator();
+    osc.type = 'sine';
+    const startFreq = isError ? 300 : 600;
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(startFreq * 0.5, now + 0.15);
+    osc.connect(gain);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  },
+
+  // Silent: No sound
+  silent: () => {}
+};
+
+// Play a specific sound for preview
+function playPreviewSound(soundId) {
+  primeAudio();
+  if (!audioContext) return;
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
+  const soundPlayer = SOUND_PLAYERS[soundId] || SOUND_PLAYERS.classic;
+  soundPlayer(false);
+}
+
+// Sound Settings Modal Functions
+function initSoundSettings() {
+  const modal = document.getElementById('sound-settings-modal');
+  const openBtn = document.getElementById('sound-settings-btn');
+  const closeBtn = document.getElementById('sound-settings-close');
+  const optionsList = document.getElementById('sound-options-list');
+
+  if (!modal || !openBtn || !optionsList) return;
+
+  // Render sound options
+  optionsList.innerHTML = SOUND_OPTIONS.map(opt => `
+    <div class="sound-option${opt.id === selectedSound ? ' selected' : ''}" data-sound="${opt.id}">
+      <div class="sound-option-radio"></div>
+      <div class="sound-option-info">
+        <div class="sound-option-name">${opt.name}</div>
+        <div class="sound-option-desc">${opt.desc}</div>
+      </div>
+      <button class="sound-option-play" data-preview="${opt.id}">${opt.id === 'silent' ? '—' : 'Play'}</button>
+    </div>
+  `).join('');
+
+  // Open modal
+  openBtn.addEventListener('click', () => {
+    modal.classList.add('open');
+  });
+
+  // Close modal
+  closeBtn.addEventListener('click', () => {
+    modal.classList.remove('open');
+  });
+
+  // Close on backdrop click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('open');
+    }
+  });
+
+  // Handle option selection
+  optionsList.addEventListener('click', (e) => {
+    const option = e.target.closest('.sound-option');
+    const playBtn = e.target.closest('.sound-option-play');
+
+    if (playBtn) {
+      // Preview sound
+      const soundId = playBtn.dataset.preview;
+      if (soundId && soundId !== 'silent') {
+        playPreviewSound(soundId);
+      }
+      return;
+    }
+
+    if (option) {
+      // Select sound
+      const soundId = option.dataset.sound;
+      selectedSound = soundId;
+      localStorage.setItem('notificationSound', soundId);
+
+      // Update UI
+      optionsList.querySelectorAll('.sound-option').forEach(opt => {
+        opt.classList.toggle('selected', opt.dataset.sound === soundId);
+      });
+
+      // Play preview of selected sound
+      if (soundId !== 'silent') {
+        playPreviewSound(soundId);
+      }
+    }
+  });
+
+  // Close on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('open')) {
+      modal.classList.remove('open');
+    }
   });
 }
 
@@ -902,7 +1046,6 @@ function notifyJobComplete(title, body, isError) {
     }
   }
 
-  // Show visual notification fallback for HTTP environments
   if (typeof showVisualNotification === 'function') {
     showVisualNotification(title, body, isError ? 'error' : 'success');
   }
@@ -962,7 +1105,7 @@ function notifyCredentialError(errorMessage) {
   // Show desktop notification with click handler to focus this window/tab
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      const notification = new Notification('SKU Tester - Authentication Failed', {
+      const notification = new Notification('PDP Tester - Authentication Failed', {
         body: errorMessage || 'Please update your credentials and click Resume',
         icon: `${BASE_PATH}/favicon.ico`,
         tag: 'credential-error',
@@ -1005,6 +1148,7 @@ function formatCultureList(cultures) {
 async function startCapture() {
   const skus = parseSkus(skuInput.value);
   const cultures = getSelectedCultures();
+  const widths = getSelectedWidths();
 
   if (skus.length === 0) {
     setStatusError('No SKUs entered', 'Enter at least one SKU number');
@@ -1016,15 +1160,16 @@ async function startCapture() {
     return;
   }
 
-  const addToCart = addToCartCheck.checked;
+  if (widths.length === 0) {
+    setStatusError('No widths selected', 'Select at least one viewport width');
+    return;
+  }
+
   const username = usernameInput.value.trim();
   const password = passwordInput.value;
-  const topScreenshot = topScreenshotCheck.checked;
-  const fullScreenshot = fullScreenshotCheck.checked && !topScreenshot;
-  const environment = envSelect.value;
 
-  if (addToCart && (!username || !password)) {
-    setStatusError('Credentials required', 'Enter username and password to use Add to Cart');
+  if (!username || !password) {
+    setStatusError('Credentials required', 'Enter username and password for PDP testing');
     return;
   }
 
@@ -1035,14 +1180,12 @@ async function startCapture() {
 
   const options = {
     skus,
-    environment,
+    environment: envSelect.value,
     region: regionSelect.value,
     cultures,
-    fullScreenshot,
-    topScreenshot,
-    addToCart: addToCartCheck.checked,
-    username: usernameInput.value.trim() || null,
-    password: passwordInput.value || null
+    screenWidths: widths,
+    username,
+    password
   };
 
   progressEnv.textContent = `Env: ${options.environment}`;
@@ -1050,7 +1193,7 @@ async function startCapture() {
   progressSku.textContent = `SKUs: ${skus.length} (${cultures.length} cultures)`;
 
   try {
-    const response = await fetch(api('/api/sku/start'), {
+    const response = await fetch(api('/api/pdp/start'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1063,7 +1206,7 @@ async function startCapture() {
 
     if (!response.ok) {
       if (response.status === 409) {
-        alert('A SKU job is already running. Please wait for it to complete or stop it first.');
+        alert('A PDP test is already running. Please wait for it to complete or stop it first.');
         await checkStatus();
       } else {
         setStatusError('Failed to start', result.error || 'Unknown error');
@@ -1078,12 +1221,12 @@ async function startCapture() {
 
 async function stopCapture() {
   try {
-    await fetch(api('/api/sku/stop'), {
+    await fetch(api('/api/pdp/stop'), {
       method: 'POST',
       headers: userId ? { 'X-User-Id': userId } : {}
     });
   } catch (err) {
-    console.error('Error stopping capture:', err);
+    console.error('Error stopping test:', err);
   }
 }
 
@@ -1100,8 +1243,7 @@ async function updateCredentialsAndResume() {
     setStatusRunning('Updating credentials...', 'Sending new credentials to server');
     startCaptureBtn.disabled = true;
 
-    // Send updated credentials to server
-    const updateResponse = await fetch(api('/api/sku/update-credentials'), {
+    const updateResponse = await fetch(api('/api/pdp/update-credentials'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1117,8 +1259,7 @@ async function updateCredentialsAndResume() {
       return;
     }
 
-    // Resume capture
-    const resumeResponse = await fetch(api('/api/sku/resume'), {
+    const resumeResponse = await fetch(api('/api/pdp/resume'), {
       method: 'POST',
       headers: userId ? { 'X-User-Id': userId } : {}
     });
@@ -1130,16 +1271,12 @@ async function updateCredentialsAndResume() {
       return;
     }
 
-    // Hide error alert and remove highlighting
     hideCredentialErrorAlert();
-
-    // Disable credential inputs
     usernameInput.disabled = true;
     passwordInput.disabled = true;
-
     setStatusRunning('Retrying authentication...', 'Logging in with updated credentials');
     isWaitingForResume = false;
-    startCaptureBtn.textContent = 'Start Capture';
+    startCaptureBtn.textContent = 'Start Test';
 
   } catch (err) {
     console.error('Error updating credentials:', err);
@@ -1150,12 +1287,12 @@ async function updateCredentialsAndResume() {
 
 async function resumeCapture() {
   try {
-    setStatusRunning('Resuming...', 'Continuing capture after manual sign-in');
+    setStatusRunning('Resuming...', 'Continuing test after manual sign-in');
     startCaptureBtn.disabled = true;
     requestNotificationPermission();
     primeAudio();
 
-    const response = await fetch(api('/api/sku/resume'), {
+    const response = await fetch(api('/api/pdp/resume'), {
       method: 'POST',
       headers: userId ? { 'X-User-Id': userId } : {}
     });
@@ -1166,7 +1303,7 @@ async function resumeCapture() {
       startCaptureBtn.disabled = false;
     }
   } catch (err) {
-    console.error('Error resuming capture:', err);
+    console.error('Error resuming test:', err);
     setStatusError('Connection error', err.message);
     startCaptureBtn.disabled = false;
   }
@@ -1175,7 +1312,6 @@ async function resumeCapture() {
 function setUICapturing() {
   startCaptureBtn.disabled = true;
   stopCaptureBtn.disabled = false;
-  if (saveReportBtn) saveReportBtn.disabled = true;
   progressContainer.style.display = 'block';
   progressBarInner.style.width = '0%';
   progressCount.textContent = '0 / 0';
@@ -1194,7 +1330,7 @@ function setUIIdle() {
 
 function setStatusIdle(main, detail) {
   statusBanner.className = 'status-banner idle';
-  statusMain.textContent = main || 'Ready to capture';
+  statusMain.textContent = main || 'Ready to test';
   statusDetail.textContent = detail || '';
 }
 
@@ -1233,14 +1369,13 @@ function setConnectionStatus(status) {
 }
 
 // ===== Activity Feed Functions =====
-const ACTIVITY_STORAGE_KEY = 'activityFeed-sku';
+const ACTIVITY_STORAGE_KEY = 'activityFeed-pdp';
 
 function loadActivityFromStorage() {
   try {
     const stored = sessionStorage.getItem(ACTIVITY_STORAGE_KEY);
     if (stored) {
       activityItems = JSON.parse(stored);
-      // Restore Date objects
       activityItems.forEach(item => {
         if (item.timestamp) item.timestamp = new Date(item.timestamp);
       });
@@ -1268,31 +1403,31 @@ function applyProgressSnapshot(progress) {
     case 'login':
       setStatusRunning('Logging in...', progress.status || '');
       break;
-    case 'sku-start':
+    case 'pdp-start':
       if (progress.sku) {
         progressSku.textContent = `SKU: ${progress.sku}`;
       }
       currentSkuInfo.style.display = 'block';
       currentSkuName.textContent = progress.culture ? `SKU ${progress.sku} (${progress.culture})` : `SKU ${progress.sku}`;
-      currentSkuPrice.textContent = '-';
+      currentSkuContentType.textContent = '-';
       currentSkuStatus.textContent = progress.status || 'Starting';
-      setStatusRunning('Capturing...', `SKU ${progress.sku}: ${progress.status || 'Starting'}`);
+      setStatusRunning('Testing...', `SKU ${progress.sku}: ${progress.status || 'Starting'}`);
       break;
-    case 'sku-status':
+    case 'pdp-status':
+    case 'pdp-screenshot':
       currentSkuStatus.textContent = progress.status || '';
-      setStatusRunning('Capturing...', `SKU ${progress.sku}: ${progress.status || 'In progress'}`);
+      setStatusRunning('Testing...', `SKU ${progress.sku}: ${progress.status || 'In progress'}`);
       break;
-    case 'sku-complete':
+    case 'pdp-complete':
       if (progress.data) {
-        currentSkuName.textContent = progress.data.name || `SKU ${progress.sku}`;
-        currentSkuPrice.textContent = progress.data.price || '-';
+        currentSkuContentType.textContent = getContentTypeLabel(progress.data.contentType);
       }
       currentSkuStatus.textContent = 'Complete';
-      setStatusRunning('Capturing...', `SKU ${progress.sku}: Complete`);
+      setStatusRunning('Testing...', `SKU ${progress.sku}: Complete`);
       break;
-    case 'sku-error':
+    case 'pdp-error':
       currentSkuStatus.textContent = `Error: ${progress.error || 'Unknown error'}`;
-      setStatusRunning('Capturing...', `SKU ${progress.sku}: Error`);
+      setStatusRunning('Testing...', `SKU ${progress.sku}: Error`);
       break;
     default: {
       const progressStatus = progress.status || progress.message;
@@ -1319,11 +1454,9 @@ function saveActivityToStorage() {
 function addActivityItem(item) {
   item.timestamp = new Date();
 
-  // Add to array - errors/warnings at start, success at end
-  if (item.type === 'error' || item.type === 'warning') {
+  if (item.type === 'error') {
     activityItems.unshift(item);
   } else {
-    // Find first success index or push to end
     const firstSuccessIndex = activityItems.findIndex(i => i.type === 'success');
     if (firstSuccessIndex === -1) {
       activityItems.push(item);
@@ -1344,11 +1477,10 @@ function clearActivityFeed() {
 
 function renderActivityFeed() {
   const passed = activityItems.filter(i => i.type === 'success').length;
-  const warnings = activityItems.filter(i => i.type === 'warning').length;
   const failed = activityItems.filter(i => i.type === 'error').length;
 
   passedCountEl.textContent = passed;
-  failedCountEl.textContent = failed + warnings; // Count warnings as issues
+  failedCountEl.textContent = failed;
 
   if (activityItems.length === 0) {
     activityList.innerHTML = '<div class="activity-empty">No activity yet</div>';
@@ -1356,9 +1488,9 @@ function renderActivityFeed() {
   }
 
   activityList.innerHTML = activityItems.map(item => {
-    const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
+    const icon = item.type === 'error' ? 'X' : 'OK';
     const timeStr = formatActivityTime(item.timestamp);
-    const itemClass = item.type === 'error' ? 'error' : (item.type === 'warning' ? 'warning' : 'success');
+    const itemClass = item.type === 'error' ? 'error' : 'success';
     const linkMarkup = item.url
       ? `<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`
       : '';
@@ -1376,20 +1508,17 @@ function renderActivityFeed() {
         </div>
       `;
     } else {
-      const details = [];
-      if (item.name && item.name !== `SKU ${item.sku}`) details.push(item.name);
-      if (item.price) details.push(item.price);
-      if (item.addToCart?.success) details.push('Added to Cart ✓');
-
-      // Show issues for warnings
-      const issueText = item.issues && item.issues.length > 0 ? item.issues.join(' • ') : '';
+      const contentTypeLabel = getContentTypeLabel(item.contentType);
+      const details = [`${contentTypeLabel}`];
+      if (item.sectionCount > 0) details.push(`${item.sectionCount} sections`);
+      if (item.screenshotCount > 0) details.push(`${item.screenshotCount} screenshots`);
 
       return `
         <div class="activity-item ${itemClass}">
           <span class="activity-item-icon">${icon}</span>
           <div class="activity-item-content">
             <div class="activity-item-main">SKU ${item.sku}${item.culture ? ` (${item.culture})` : ''}</div>
-            ${issueText ? `<div class="activity-item-detail">${issueText}</div>` : (details.length ? `<div class="activity-item-detail">${details.join(' • ')}</div>` : '')}
+            <div class="activity-item-detail">${details.join(' | ')}</div>
             ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
@@ -1398,8 +1527,7 @@ function renderActivityFeed() {
     }
   }).join('');
 
-  // Auto-scroll to top if there are errors/warnings (they appear at top)
-  if (failed > 0 || warnings > 0) {
+  if (failed > 0) {
     activityList.scrollTop = 0;
   }
 }

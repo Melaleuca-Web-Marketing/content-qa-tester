@@ -13,11 +13,13 @@ import { SkuProcessor } from './processors/sku-processor.js';
 import { BannerProcessor } from './processors/banner-processor.js';
 import { PSLPProcessor } from './processors/pslp-processor.js';
 import { MixInAdProcessor } from './processors/mixinad-processor.js';
+import { PDPProcessor } from './processors/pdp-processor.js';
 import { generateSkuReport } from './report-generators/sku-report.js';
 import { generateBannerReport } from './report-generators/banner-report.js';
 import { generatePslpReport } from './report-generators/pslp-report.js';
 import { generateMixInAdReport } from './report-generators/mixinad-report.js';
-import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, reloadCategories, getCategoriesPath, getCategoriesTemplatePath } from './config.js';
+import { generatePdpReport } from './report-generators/pdp-report.js';
+import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, validatePdpConfig, reloadCategories, getCategoriesPath, getCategoriesTemplatePath } from './config.js';
 import { asyncHandler } from './utils/async-handler.js';
 import { autoGenerateReport } from './utils/auto-generate-report.js';
 import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory, markAsRead } from './utils/history.js';
@@ -194,6 +196,10 @@ function createProcessor(tool, userId) {
     case 'mixinad':
       processor = new MixInAdProcessor();
       reportGenerator = generateMixInAdReport;
+      break;
+    case 'pdp':
+      processor = new PDPProcessor();
+      reportGenerator = generatePdpReport;
       break;
     default:
       return null;
@@ -825,6 +831,109 @@ router.post('/api/mixinad/update-credentials', (req, res) => {
 router.get('/api/mixinad/results', (req, res) => {
   const userId = getUserId(req);
   res.json(getProcessorResults(userId, 'mixinad'));
+});
+
+// ============ PDP API Routes ============
+
+router.get('/api/pdp/status', (req, res) => {
+  const userId = getUserId(req);
+  res.json(getProcessorStatus(userId, 'pdp'));
+});
+
+router.post('/api/pdp/start', asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  console.log(`[API] POST /api/pdp/start | userId: ${userId || 'anonymous'} | SKU count: ${req.body.skus?.length || 0}`);
+  const { skus, environment, region, culture, cultures, username, password } = req.body;
+
+  if (!skus || !Array.isArray(skus) || skus.length === 0) {
+    return res.status(400).json({ error: 'No SKUs provided' });
+  }
+
+  // Prevent excessive SKU counts to avoid memory exhaustion
+  if (skus.length > 500) {
+    return res.status(400).json({
+      error: 'Too many SKUs',
+      message: 'Maximum 500 SKUs allowed per batch. Please split into smaller batches.'
+    });
+  }
+
+  const normalizedCultures = Array.isArray(cultures)
+    ? cultures.map(c => String(c).trim()).filter(Boolean)
+    : (culture ? [String(culture).trim()] : []);
+  const defaultCulture = config.pdp.defaults?.culture || 'en-US';
+  const selectedCultures = normalizedCultures.length > 0
+    ? normalizedCultures
+    : [defaultCulture];
+
+  const options = {
+    skus: skus.map(s => String(s).trim()).filter(Boolean),
+    environment: environment || 'production',
+    region: region || 'us',
+    culture: selectedCultures[0],
+    cultures: selectedCultures,
+    username: username || null,
+    password: password || null
+  };
+
+  const errors = validatePdpConfig(options);
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join(', ') });
+  }
+
+  const pdpProcessor = getProcessor(userId, 'pdp');
+  if (pdpProcessor.getStatus().isRunning) {
+    return res.status(409).json({ error: 'PDP capture already in progress' });
+  }
+
+  pdpProcessor.start(options).catch(err => {
+    console.error('PDP capture error:', err);
+    broadcast({
+      type: 'error',
+      tool: 'pdp',
+      data: { message: err.message, stack: err.stack }
+    }, userId);
+  });
+
+  // Broadcast immediate status update via WebSocket
+  broadcast({ type: 'pdp-status', data: pdpProcessor.getStatus() }, userId);
+
+  res.json({ ok: true, message: 'PDP capture started' });
+}));
+
+router.post('/api/pdp/stop', (req, res) => {
+  const userId = getUserId(req);
+  const pdpProcessor = getProcessor(userId, 'pdp');
+  pdpProcessor.stop();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'pdp-status', data: pdpProcessor.getStatus() }, userId);
+  res.json({ ok: true, message: 'Stop requested' });
+});
+
+router.post('/api/pdp/resume', (req, res) => {
+  const userId = getUserId(req);
+  const pdpProcessor = getProcessor(userId, 'pdp');
+  pdpProcessor.resume();
+  // Broadcast status update via WebSocket
+  broadcast({ type: 'pdp-status', data: pdpProcessor.getStatus() }, userId);
+  res.json({ ok: true, message: 'Resume requested' });
+});
+
+router.post('/api/pdp/update-credentials', (req, res) => {
+  const userId = getUserId(req);
+  const pdpProcessor = getProcessor(userId, 'pdp');
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  pdpProcessor.updateCredentials(username, password);
+  res.json({ ok: true, message: 'Credentials updated' });
+});
+
+router.get('/api/pdp/results', (req, res) => {
+  const userId = getUserId(req);
+  res.json(getProcessorResults(userId, 'pdp'));
 });
 
 // Auto-generate reports on completion (per-user processors are wired on creation)

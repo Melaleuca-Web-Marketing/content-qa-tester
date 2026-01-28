@@ -7,26 +7,101 @@
   <title>Melaleuca Content QA Tester</title>
   <script src="base-path.js"></script>
   <link rel="stylesheet" href="shared.css">
+  <!-- Slick Carousel -->
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.css" />
+  <link rel="stylesheet" type="text/css"
+    href="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick-theme.css" />
   <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
   <script src="excel-validator.js"></script>
   <script src="user-session.js"></script>
   <style>
     .mode-selector {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 24px;
       margin-top: 32px;
+      padding: 30px 50px 48px 50px;
     }
 
-    @media (max-width: 1200px) {
-      .mode-selector {
-        grid-template-columns: repeat(2, 1fr);
-      }
+    .mode-selector .slick-slide {
+      padding: 15px;
+      height: inherit !important;
+    }
+
+    .mode-selector .slick-slide>div {
+      height: 100%;
+      padding: 0 0 12px;
+    }
+
+    .mode-selector .slick-track {
+      display: flex !important;
+    }
+
+    .mode-selector .slick-list {
+      margin: 0 -10px;
+      padding: 24px 0 26px;
+    }
+
+    .mode-selector .slick-dots {
+      bottom: -18px;
+      display: flex !important;
+      justify-content: center;
+      gap: 10px;
+      padding: 0;
+      margin: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+    }
+
+    .mode-selector .slick-prev,
+    .mode-selector .slick-next {
+      width: 40px;
+      height: 40px;
+      background: var(--bg-item);
+      border: 2px solid var(--border-color);
+      border-radius: 50%;
+      z-index: 10;
+      transition: all 0.3s ease;
+    }
+
+    .mode-selector .slick-prev:hover,
+    .mode-selector .slick-next:hover {
+      background: #10b981;
+      border-color: #10b981;
+    }
+
+    .mode-selector .slick-prev:before,
+    .mode-selector .slick-next:before {
+      color: var(--text-primary);
+      font-size: 20px;
+      opacity: 1;
+    }
+
+    .mode-selector .slick-prev:hover:before,
+    .mode-selector .slick-next:hover:before {
+      color: white;
+    }
+
+    .mode-selector .slick-prev {
+      left: -10px;
+    }
+
+    .mode-selector .slick-next {
+      right: -10px;
+    }
+
+    .mode-selector .slick-dots li button:before {
+      color: var(--text-secondary);
+      font-size: 10px;
+      opacity: 0.5;
+    }
+
+    .mode-selector .slick-dots li.slick-active button:before {
+      color: #10b981;
+      opacity: 1;
     }
 
     @media (max-width: 600px) {
       .mode-selector {
-        grid-template-columns: 1fr;
+        padding: 30px 30px 48px 30px;
       }
     }
 
@@ -34,12 +109,19 @@
       background: var(--bg-item);
       border: 2px solid var(--border-color);
       border-radius: 16px;
-      padding: 32px;
+      margin: 0 10px;
       text-align: center;
       cursor: pointer;
       transition: all 0.3s ease;
       text-decoration: none;
       color: inherit;
+      display: flex !important;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .mode-selector .slick-slide a.mode-card {
+      padding: 15px !important;
     }
 
     .mode-card:hover {
@@ -64,27 +146,57 @@
       font-size: 14px;
       color: var(--text-secondary);
       line-height: 1.6;
+      flex: 1;
     }
 
     .mode-card.sku .mode-icon {
       color: #10b981;
     }
 
+    .mode-card.sku {
+      background: linear-gradient(180deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.05)), var(--bg-item);
+    }
+
     .mode-card.banner .mode-icon {
       color: #3b82f6;
+    }
+
+    .mode-card.banner {
+      background: linear-gradient(180deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.05)), var(--bg-item);
     }
 
     .mode-card.pslp .mode-icon {
       color: #8b5cf6;
     }
 
+    .mode-card.pslp {
+      background: linear-gradient(180deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.05)), var(--bg-item);
+    }
+
     .mode-card.mixinad .mode-icon {
       color: #ec4899;
+    }
+
+    .mode-card.mixinad {
+      background: linear-gradient(180deg, rgba(236, 72, 153, 0.18), rgba(236, 72, 153, 0.05)), var(--bg-item);
     }
 
     .mode-card.mixinad:hover {
       border-color: #ec4899;
       box-shadow: 0 20px 40px rgba(236, 72, 153, 0.2);
+    }
+
+    .mode-card.pdp .mode-icon {
+      color: #8b5cf6;
+    }
+
+    .mode-card.pdp {
+      background: linear-gradient(180deg, rgba(139, 92, 246, 0.18), rgba(139, 92, 246, 0.05)), var(--bg-item);
+    }
+
+    .mode-card.pdp:hover {
+      border-color: #8b5cf6;
+      box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
     }
 
     .mode-card.sku:hover {
@@ -107,7 +219,8 @@
       flex-wrap: wrap;
       gap: 8px;
       justify-content: center;
-      margin-top: 16px;
+      margin-top: auto;
+      padding-top: 16px;
     }
 
     .feature-tag {
@@ -199,6 +312,10 @@
 
     .job-card.mixinad {
       border-left: 4px solid #ec4899;
+    }
+
+    .job-card.pdp {
+      border-left: 4px solid #8b5cf6;
     }
 
     .job-card.waiting-auth {
@@ -378,6 +495,10 @@
       background: linear-gradient(90deg, #ec4899, #db2777);
     }
 
+    .job-card.pdp .job-progress-bar {
+      background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+    }
+
     .job-meta {
       display: flex;
       justify-content: space-between;
@@ -448,6 +569,10 @@
 
     .history-item.mixinad {
       border-left: 4px solid #ec4899;
+    }
+
+    .history-item.pdp {
+      border-left: 4px solid #8b5cf6;
     }
 
     /* Unread history items */
@@ -776,6 +901,22 @@
       color: white;
     }
 
+    .excel-details-button {
+      padding: 6px 12px;
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid #3b82f6;
+      color: #60a5fa;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+      margin-right: 8px;
+    }
+
+    .excel-details-button:hover {
+      background: rgba(59, 130, 246, 0.35);
+    }
+
     .excel-preview {
       margin-top: 12px;
       padding: 12px;
@@ -904,13 +1045,14 @@
   </style>
 </head>
 
-<body>
+<body class="dashboard-page">
   <div id="storage-warning" class="storage-warning">
     <span class="storage-warning-icon">⚠️</span>
     <span id="storage-warning-text"></span>
   </div>
   <div class="container">
     <div class="card">
+      <div class="main-column">
       <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">
         <span class="theme-icon" id="theme-icon">&#9788;</span>
         <span id="theme-text">Light</span>
@@ -1012,8 +1154,26 @@
             <span class="feature-tag">Login Support</span>
           </div>
         </a>
+
+        <a href="pdp-tester.html" class="mode-card pdp">
+          <div class="mode-icon">&#128196;</div>
+          <div class="mode-title">Test PDPs</div>
+          <div class="mode-description">
+            Test Product Detail Page content by analyzing the "About This Product" section across viewports.
+          </div>
+          <div class="features">
+            <span class="feature-tag">Content Detection</span>
+            <span class="feature-tag">Section Analysis</span>
+            <span class="feature-tag">6 Viewports</span>
+            <span class="feature-tag">Image/Link Extraction</span>
+            <span class="feature-tag">Login Support</span>
+          </div>
+        </a>
       </div>
 
+      </div>
+
+      <div class="side-column">
       <!-- Running Jobs Dashboard -->
       <div class="dashboard-section" id="dashboard">
         <div class="dashboard-header">
@@ -1028,6 +1188,12 @@
                 <div class="toggle-slider"></div>
               </div>
               <input type="checkbox" id="notifications-toggle-checkbox" style="display: none;">
+              <button class="sound-settings-btn" id="sound-settings-btn" title="Notification Sound Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
             </div>
             <div id="resource-warning" class="resource-warning" style="display: none;">
               ⚠️ Multiple jobs running - High resource usage
@@ -1057,12 +1223,14 @@
           <!-- History items will be dynamically inserted here -->
         </div>
       </div>
+      </div>
     </div>
   </div>
 
   <div class="version">Content QA Tester v1.0.0</div>
 
-  <div class="excel-format-modal" id="excel-format-modal" role="dialog" aria-modal="true" aria-labelledby="excel-format-title" aria-hidden="true">
+  <div class="excel-format-modal" id="excel-format-modal" role="dialog" aria-modal="true"
+    aria-labelledby="excel-format-title" aria-hidden="true">
     <div class="excel-format-dialog">
       <div class="excel-format-title" id="excel-format-title">Confirm Excel Format</div>
       <div class="excel-format-message" id="excel-format-message"></div>
@@ -1206,29 +1374,149 @@
         sku: { name: 'SKU Test', icon: '&#128230;', class: 'sku', page: 'sku-tester.html' },
         banner: { name: 'Banner Test', icon: '&#128444;', class: 'banner', page: 'banner-tester.html' },
         pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp', page: 'pslp-tester.html' },
-        mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad', page: 'mixinad-tester.html' }
+        mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad', page: 'mixinad-tester.html' },
+        pdp: { name: 'PDP Test', icon: '&#128196;', class: 'pdp', page: 'pdp-tester.html' }
       };
 
       let jobStates = {
         sku: null,
         banner: null,
         pslp: null,
-        mixinad: null
+        mixinad: null,
+        pdp: null
       };
 
       let jobStartTimes = {
         sku: null,
         banner: null,
         pslp: null,
-        mixinad: null
+        mixinad: null,
+        pdp: null
       };
 
       let jobEtaCache = {
         sku: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
         banner: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
         pslp: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
-        mixinad: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null }
+        mixinad: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
+        pdp: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null }
       };
+
+      // Track which tools have already notified for credential errors (to avoid duplicates)
+      let credentialErrorNotified = {
+        sku: false,
+        banner: false,
+        pslp: false,
+        mixinad: false,
+        pdp: false
+      };
+
+      // Audio context for notification sounds
+      let dashboardAudioContext = null;
+
+      function primeDashboardAudio() {
+        if (dashboardAudioContext) return;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        try {
+          dashboardAudioContext = new AudioCtx();
+        } catch {
+          dashboardAudioContext = null;
+        }
+      }
+
+      // Urgent alarm sound for credential errors - distinct "attention needed!" pattern
+      function playCredentialAlertSound() {
+        const selectedSound = localStorage.getItem('notificationSound') || 'classic';
+        if (selectedSound === 'silent') return;
+
+        primeDashboardAudio();
+        if (!dashboardAudioContext) return;
+        if (dashboardAudioContext.state === 'suspended') {
+          dashboardAudioContext.resume().catch(() => {});
+        }
+
+        const now = dashboardAudioContext.currentTime;
+
+        // Create a more urgent, alarm-like sound pattern
+        // Three rapid high-pitched beeps followed by two lower warning tones
+        const pattern = [
+          { freq: 880, start: 0, duration: 0.1 },
+          { freq: 880, start: 0.15, duration: 0.1 },
+          { freq: 880, start: 0.3, duration: 0.1 },
+          { freq: 440, start: 0.5, duration: 0.15 },
+          { freq: 330, start: 0.7, duration: 0.2 }
+        ];
+
+        pattern.forEach(({ freq, start, duration }) => {
+          const osc = dashboardAudioContext.createOscillator();
+          const gain = dashboardAudioContext.createGain();
+
+          osc.type = 'square';  // Harsher sound for urgency
+          osc.frequency.value = freq;
+
+          gain.gain.setValueAtTime(0.08, now + start);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + start + duration);
+
+          osc.connect(gain);
+          gain.connect(dashboardAudioContext.destination);
+
+          osc.start(now + start);
+          osc.stop(now + start + duration);
+        });
+      }
+
+      function isNotificationsEnabled() {
+        const stored = localStorage.getItem('qaNotificationsEnabled');
+        return stored === null ? true : stored === 'true';
+      }
+
+      function notifyCredentialErrorForTool(tool, errorMessage) {
+        if (!isNotificationsEnabled()) return;
+        if (credentialErrorNotified[tool]) return;  // Already notified
+
+        credentialErrorNotified[tool] = true;
+
+        const config = toolConfig[tool];
+        if (!config) return;
+
+        // Play urgent credential alert sound
+        playCredentialAlertSound();
+
+        // Show visual notification if available
+        if (typeof showVisualNotification === 'function') {
+          showVisualNotification(
+            `${config.name} - Authentication Failed`,
+            errorMessage || 'Please update your credentials',
+            'error'
+          );
+        }
+
+        // Show desktop notification with click to navigate to tool
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try {
+            const basePath = (window.__BASE_PATH || '').replace(/\/+$/, '');
+            const notification = new Notification(`${config.name} - Authentication Failed`, {
+              body: errorMessage || 'Click to update credentials and resume',
+              icon: `${basePath}/favicon.ico`,
+              tag: `credential-error-${tool}`,
+              requireInteraction: true
+            });
+
+            notification.onclick = () => {
+              // Navigate to the tool page
+              window.location.href = `${basePath}/${config.page}`;
+              notification.close();
+            };
+          } catch {
+            // Ignore notification failures
+          }
+        }
+      }
+
+      function resetCredentialErrorNotified(tool) {
+        credentialErrorNotified[tool] = false;
+      }
 
       function resetEtaCache(tool) {
         jobEtaCache[tool] = { lastKey: null, lastEtaMs: null, lastUpdatedAt: null };
@@ -1301,7 +1589,7 @@
 
       // Fetch status for all processors
       async function updateAllStatuses() {
-        const tools = ['sku', 'banner', 'pslp', 'mixinad'];
+        const tools = ['sku', 'banner', 'pslp', 'mixinad', 'pdp'];
 
         for (const tool of tools) {
           try {
@@ -1573,9 +1861,10 @@
 
           // Check if job completed
           if (data.type === 'completed' || !data.isRunning) {
-            // Job finished - clear state
+            // Job finished - clear state and reset credential error flag
             jobStartTimes[tool] = null;
             resetEtaCache(tool);
+            resetCredentialErrorNotified(tool);
             jobStates[tool] = null;
             console.log(`[Dashboard] Job completed via WebSocket: ${tool}`, {
               'data.type': data.type,
@@ -1584,6 +1873,11 @@
             });
             renderDashboard();
             return;
+          }
+
+          // Check for credential error and notify
+          if (data.type === 'waiting-for-credentials') {
+            notifyCredentialErrorForTool(tool, data.error || data.message);
           }
 
           if (jobStates[tool]) {
@@ -1602,9 +1896,10 @@
                 : jobStates[tool].progress
             };
           } else if (data.isRunning) {
-            // Job just started - initialize state
+            // Job just started - initialize state and reset credential error flag
             jobStartTimes[tool] = Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
             resetEtaCache(tool);
+            resetCredentialErrorNotified(tool);
             jobStates[tool] = {
               ...data,
               statusType: data.type
@@ -1639,7 +1934,8 @@
         sku: { name: 'SKU Test', icon: '&#128230;', class: 'sku' },
         banner: { name: 'Banner Test', icon: '&#128444;', class: 'banner' },
         pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp' },
-        mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad' }
+        mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad' },
+        pdp: { name: 'PDP Test', icon: '&#128196;', class: 'pdp' }
       };
 
       let history = [];
@@ -1905,7 +2201,7 @@
       localStorage.setItem('qaNotificationsEnabled', checkbox.checked);
 
       if (checkbox.checked && 'Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().catch(() => {});
+        Notification.requestPermission().catch(() => { });
       }
     };
 
@@ -2194,13 +2490,20 @@
 
       fileInfoDiv.innerHTML = `
         <div style="flex: 1; min-width: 0;">
-          <div class="excel-file-name">${warningIcon}✅ ${dataToStore.filename}</div>
+          <div class="excel-file-name">${warningIcon}?o. ${dataToStore.filename}</div>
           <div class="excel-file-details">
-            ${p.totalRows} rows • ${summary} • Uploaded ${timeAgo}
+            ${p.totalRows} rows ??? ${summary} ??? Uploaded ${timeAgo}
           </div>
         </div>
+        <button class="excel-details-button" type="button">See details</button>
         <button class="excel-clear-button" onclick="clearExcelFile()">Clear</button>
       `;
+
+      const detailsBtn = fileInfoDiv.querySelector('.excel-details-button');
+      if (detailsBtn) {
+        detailsBtn.addEventListener('click', toggleExcelDetails);
+      }
+      setExcelPreviewVisibility(false);
     }
 
     function displayExcelPreview(dataToStore) {
@@ -2313,13 +2616,33 @@
       }
 
       previewDiv.innerHTML = previewHTML;
-      previewDiv.style.display = 'block';
+      const isVisible = previewDiv.dataset.visible === 'true';
+      previewDiv.style.display = isVisible ? 'block' : 'none';
+    }
+
+    function setExcelPreviewVisibility(visible) {
+      const previewDiv = document.getElementById('excel-preview');
+      if (!previewDiv) return;
+      previewDiv.dataset.visible = visible ? 'true' : 'false';
+      previewDiv.style.display = visible ? 'block' : 'none';
+      const detailsBtn = document.querySelector('.excel-details-button');
+      if (detailsBtn) {
+        detailsBtn.textContent = visible ? 'Hide details' : 'See details';
+      }
+    }
+
+    function toggleExcelDetails() {
+      const previewDiv = document.getElementById('excel-preview');
+      if (!previewDiv) return;
+      const isVisible = previewDiv.dataset.visible === 'true';
+      setExcelPreviewVisibility(!isVisible);
     }
 
     window.clearExcelFile = function () {
       localStorage.removeItem('excelValidationData');
       document.getElementById('excel-file-info').innerHTML = '<span style="color: var(--text-secondary); font-size: 14px;">No file selected</span>';
       document.getElementById('excel-preview').style.display = 'none';
+      document.getElementById('excel-preview').dataset.visible = 'false';
       document.getElementById('excel-errors').style.display = 'none';
       document.getElementById('excel-upload-area').classList.remove('has-file');
     };
@@ -2334,6 +2657,302 @@
 
       return date.toLocaleDateString();
     }
+
+    // Initialize Slick Carousel for mode selector
+    function initModeCarousel() {
+      const $carousel = $('.mode-selector');
+      if ($carousel.length && !$carousel.hasClass('slick-initialized')) {
+        $carousel.slick({
+          dots: true,
+          infinite: true,
+          speed: 300,
+          slidesToShow: 3,
+          slidesToScroll: 1,
+          responsive: [
+            {
+              breakpoint: 1100,
+              settings: {
+                slidesToShow: 2,
+                slidesToScroll: 1
+              }
+            },
+            {
+              breakpoint: 700,
+              settings: {
+                slidesToShow: 1,
+                slidesToScroll: 1
+              }
+            }
+          ]
+        });
+      }
+    }
+  </script>
+  <!-- jQuery (required for Slick) -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <!-- Slick Carousel JS -->
+  <script src="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.min.js"></script>
+  <script>
+    // Initialize carousel after jQuery and Slick are loaded
+    $(document).ready(function () {
+      initModeCarousel();
+    });
+  </script>
+
+  <!-- Sound Settings Modal -->
+  <div class="sound-settings-modal" id="sound-settings-modal">
+    <div class="sound-settings-panel">
+      <div class="sound-settings-header">
+        <div class="sound-settings-title">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+          Notification Sound
+        </div>
+        <button class="sound-settings-close" id="sound-settings-close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="sound-options-list" id="sound-options-list">
+        <!-- Sound options will be populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Sound Settings for Main Dashboard
+    (function() {
+      let audioContext = null;
+      let selectedSound = localStorage.getItem('notificationSound') || 'classic';
+
+      const SOUND_OPTIONS = [
+        { id: 'classic', name: 'Classic', desc: 'Default two-tone alert' },
+        { id: 'iphone', name: 'iPhone Tri-Tone', desc: 'Classic iOS notification' },
+        { id: 'samsung', name: 'Samsung Whistle', desc: 'Classic Samsung notification' },
+        { id: 'chime', name: 'Chime', desc: 'Pleasant bell sound' },
+        { id: 'ping', name: 'Ping', desc: 'Simple soft ping' },
+        { id: 'alert', name: 'Alert', desc: 'Attention-grabbing tone' },
+        { id: 'bubble', name: 'Bubble', desc: 'Soft bubble pop' },
+        { id: 'silent', name: 'Silent', desc: 'No sound' }
+      ];
+
+      const SOUND_PLAYERS = {
+        classic: (isError) => {
+          const now = audioContext.currentTime;
+          const gain = audioContext.createGain();
+          gain.gain.value = 0.12;
+          gain.connect(audioContext.destination);
+          const tones = isError ? [220, 180] : [880, 660];
+          tones.forEach((freq, index) => {
+            const osc = audioContext.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            osc.connect(gain);
+            osc.start(now + index * 0.2);
+            osc.stop(now + index * 0.2 + 0.15);
+          });
+        },
+        iphone: (isError) => {
+          const now = audioContext.currentTime;
+          const gain = audioContext.createGain();
+          gain.gain.value = 0.15;
+          gain.connect(audioContext.destination);
+          const tones = isError ? [392, 330, 262] : [1047, 1319, 1568];
+          tones.forEach((freq, index) => {
+            const osc = audioContext.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            osc.connect(gain);
+            osc.start(now + index * 0.12);
+            osc.stop(now + index * 0.12 + 0.1);
+          });
+        },
+        samsung: (isError) => {
+          const now = audioContext.currentTime;
+          const gain = audioContext.createGain();
+          gain.gain.value = 0.12;
+          gain.connect(audioContext.destination);
+          const pattern = isError ? [523, 392, 330] : [784, 1047, 784, 1175, 1047];
+          const durations = isError ? [0.15, 0.15, 0.2] : [0.08, 0.08, 0.08, 0.08, 0.15];
+          let time = now;
+          pattern.forEach((freq, index) => {
+            const osc = audioContext.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            osc.connect(gain);
+            osc.start(time);
+            osc.stop(time + durations[index]);
+            time += durations[index] + 0.02;
+          });
+        },
+        chime: (isError) => {
+          const now = audioContext.currentTime;
+          const gain = audioContext.createGain();
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+          gain.connect(audioContext.destination);
+          const freq = isError ? 440 : 880;
+          [1, 2, 3, 4].forEach((harmonic) => {
+            const osc = audioContext.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.value = freq * harmonic;
+            const hGain = audioContext.createGain();
+            hGain.gain.value = 0.3 / harmonic;
+            osc.connect(hGain);
+            hGain.connect(gain);
+            osc.start(now);
+            osc.stop(now + 0.8);
+          });
+        },
+        ping: (isError) => {
+          const now = audioContext.currentTime;
+          const gain = audioContext.createGain();
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+          gain.connect(audioContext.destination);
+          const osc = audioContext.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.value = isError ? 440 : 1200;
+          osc.connect(gain);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        },
+        alert: (isError) => {
+          const now = audioContext.currentTime;
+          const gain = audioContext.createGain();
+          gain.gain.value = 0.1;
+          gain.connect(audioContext.destination);
+          const baseFreq = isError ? 400 : 800;
+          [0, 0.15, 0.3].forEach((delay) => {
+            const osc = audioContext.createOscillator();
+            osc.type = 'square';
+            osc.frequency.value = baseFreq;
+            osc.connect(gain);
+            osc.start(now + delay);
+            osc.stop(now + delay + 0.1);
+          });
+        },
+        bubble: (isError) => {
+          const now = audioContext.currentTime;
+          const gain = audioContext.createGain();
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+          gain.connect(audioContext.destination);
+          const osc = audioContext.createOscillator();
+          osc.type = 'sine';
+          const startFreq = isError ? 300 : 600;
+          osc.frequency.setValueAtTime(startFreq, now);
+          osc.frequency.exponentialRampToValueAtTime(startFreq * 0.5, now + 0.15);
+          osc.connect(gain);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        },
+        silent: () => {}
+      };
+
+      function primeAudio() {
+        if (audioContext) return;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        try {
+          audioContext = new AudioCtx();
+        } catch {
+          audioContext = null;
+        }
+      }
+
+      function playPreviewSound(soundId) {
+        primeAudio();
+        if (!audioContext) return;
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().catch(() => {});
+        }
+        const soundPlayer = SOUND_PLAYERS[soundId] || SOUND_PLAYERS.classic;
+        soundPlayer(false);
+      }
+
+      function initSoundSettings() {
+        const modal = document.getElementById('sound-settings-modal');
+        const openBtn = document.getElementById('sound-settings-btn');
+        const closeBtn = document.getElementById('sound-settings-close');
+        const optionsList = document.getElementById('sound-options-list');
+
+        if (!modal || !openBtn || !optionsList) return;
+
+        // Render sound options
+        optionsList.innerHTML = SOUND_OPTIONS.map(opt => `
+          <div class="sound-option${opt.id === selectedSound ? ' selected' : ''}" data-sound="${opt.id}">
+            <div class="sound-option-radio"></div>
+            <div class="sound-option-info">
+              <div class="sound-option-name">${opt.name}</div>
+              <div class="sound-option-desc">${opt.desc}</div>
+            </div>
+            <button class="sound-option-play" data-preview="${opt.id}">${opt.id === 'silent' ? '—' : 'Play'}</button>
+          </div>
+        `).join('');
+
+        // Open modal
+        openBtn.addEventListener('click', () => {
+          modal.classList.add('open');
+        });
+
+        // Close modal
+        closeBtn.addEventListener('click', () => {
+          modal.classList.remove('open');
+        });
+
+        // Close on backdrop click
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            modal.classList.remove('open');
+          }
+        });
+
+        // Handle option selection
+        optionsList.addEventListener('click', (e) => {
+          const option = e.target.closest('.sound-option');
+          const playBtn = e.target.closest('.sound-option-play');
+
+          if (playBtn) {
+            const soundId = playBtn.dataset.preview;
+            if (soundId && soundId !== 'silent') {
+              playPreviewSound(soundId);
+            }
+            return;
+          }
+
+          if (option) {
+            const soundId = option.dataset.sound;
+            selectedSound = soundId;
+            localStorage.setItem('notificationSound', soundId);
+
+            optionsList.querySelectorAll('.sound-option').forEach(opt => {
+              opt.classList.toggle('selected', opt.dataset.sound === soundId);
+            });
+
+            if (soundId !== 'silent') {
+              playPreviewSound(soundId);
+            }
+          }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && modal.classList.contains('open')) {
+            modal.classList.remove('open');
+          }
+        });
+      }
+
+      // Initialize when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSoundSettings);
+      } else {
+        initSoundSettings();
+      }
+    })();
   </script>
 </body>
 
