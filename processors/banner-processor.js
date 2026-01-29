@@ -152,7 +152,11 @@ export class BannerProcessor extends BaseProcessor {
         const fontStatus = document.fonts ? document.fonts.status : 'unsupported';
         const userAgent = navigator.userAgent;
         const platform = navigator.platform;
-        const uaMobile = navigator.userAgentData ? navigator.userAgentData.mobile : null;
+        const uaData = navigator.userAgentData || null;
+        const uaMobile = uaData ? uaData.mobile : null;
+        const uaPlatform = uaData ? uaData.platform : null;
+        const uaBrands = uaData ? uaData.brands : null;
+        const webdriver = navigator.webdriver;
 
         let anchorStyle = null;
         if (anchor) {
@@ -229,12 +233,16 @@ export class BannerProcessor extends BaseProcessor {
                 if (ctx) {
                   ctx.font = fontSpec;
                   measuredWidth = Math.round(ctx.measureText(text).width);
-                  measuredWidthNoChevron = Math.round(ctx.measureText(text.replace('❯', '').trim()).width);
-                  measuredWidthWithArrow = Math.round(ctx.measureText(text.replace('❯', '>')).width);
+                  const chevronChar = "\u276f";
+                  const chevronFallback = "\u00e2\u009d\u00af";
+                  const stripped = text.replace(chevronChar, '').replace(chevronFallback, '').trim();
+                  const replaced = text.replace(chevronChar, '>').replace(chevronFallback, '>');
+                  measuredWidthNoChevron = Math.round(ctx.measureText(stripped).width);
+                  measuredWidthWithArrow = Math.round(ctx.measureText(replaced).width);
                 }
               }
 
-              const chevronChar = '❯';
+              const chevronChar = "\u276f";
               const robotoHasChevron = document.fonts ? document.fonts.check(`16px "Roboto"`, chevronChar) : null;
               const notoHasChevron = document.fonts ? document.fonts.check(`16px "Noto Sans"`, chevronChar) : null;
 
@@ -254,6 +262,7 @@ export class BannerProcessor extends BaseProcessor {
                 letterSpacing: fontLetterSpacing,
                 lineHeight: fontLineHeight,
                 color: fontColor,
+                inlineColor: parent ? parent.style.color || null : null,
                 display: style ? style.display : null,
                 whiteSpace: style ? style.whiteSpace : null,
                 maxWidth: style ? style.maxWidth : null,
@@ -279,7 +288,10 @@ export class BannerProcessor extends BaseProcessor {
           fontStatus,
           userAgent,
           uaMobile,
+          uaPlatform,
+          uaBrands,
           platform,
+          webdriver,
           anchorStyle,
           textSamples
         };
@@ -315,6 +327,10 @@ export class BannerProcessor extends BaseProcessor {
 
     const userAgentEnv = (process.env.BANNER_MOBILE_UA || '').trim();
     const userAgentDefault = (defaults.userAgent || '').trim();
+    const platform = typeof defaults.platform === 'string' ? defaults.platform.trim() : null;
+    const clientHints = defaults.clientHints && typeof defaults.clientHints === 'object'
+      ? defaults.clientHints
+      : null;
 
     return {
       enabled,
@@ -322,7 +338,9 @@ export class BannerProcessor extends BaseProcessor {
       userAgent: userAgentEnv || userAgentDefault || null,
       widths: Array.isArray(defaults.widths) ? defaults.widths : null,
       isMobile: defaults.isMobile ?? false,
-      hasTouch: defaults.hasTouch ?? true
+      hasTouch: defaults.hasTouch ?? true,
+      platform,
+      clientHints
     };
   }
 
@@ -345,6 +363,12 @@ export class BannerProcessor extends BaseProcessor {
     }
 
     const emulation = this.mobileEmulation || this.getMobileEmulationConfig();
+    const emulationHeaders = this.getClientHintHeaders(emulation);
+    const { extraHTTPHeaders: contextHeaders, ...restContextOptions } = contextOptions;
+    const mergedHeaders = {
+      ...(contextHeaders || {}),
+      ...(emulationHeaders || {})
+    };
     const defaultOptions = {
       viewport: { width: 320, height: config.banner.browser.captureHeight },
       isMobile: Boolean(emulation.isMobile),
@@ -358,12 +382,15 @@ export class BannerProcessor extends BaseProcessor {
 
     this.mobileContext = await this.browser.newContext({
       ...defaultOptions,
-      ...contextOptions
+      ...restContextOptions,
+      ...(Object.keys(mergedHeaders).length > 0 ? { extraHTTPHeaders: mergedHeaders } : {})
     });
 
     log('info', 'Mobile emulation context created', {
       deviceScaleFactor: defaultOptions.deviceScaleFactor,
-      userAgent: defaultOptions.userAgent || 'default'
+      userAgent: defaultOptions.userAgent || 'default',
+      platform: emulation.platform || 'default',
+      clientHints: emulationHeaders || {}
     });
 
     return this.mobileContext;
@@ -384,8 +411,108 @@ export class BannerProcessor extends BaseProcessor {
       log('debug', `[MOBILE PAGE ERROR] ${err.message}`);
     });
 
+    await this.applyEmulationOverrides(this.mobilePage, this.mobileEmulation, 'MOBILE-EMU');
+
     log('info', 'Mobile emulation page created successfully');
     return this.mobilePage;
+  }
+
+  getClientHintHeaders(emulation) {
+    if (!emulation?.clientHints) return null;
+    const headers = {};
+    if (emulation.clientHints.mobile) {
+      headers['sec-ch-ua-mobile'] = String(emulation.clientHints.mobile);
+    }
+    if (emulation.clientHints.platform) {
+      headers['sec-ch-ua-platform'] = String(emulation.clientHints.platform);
+    }
+    return Object.keys(headers).length > 0 ? headers : null;
+  }
+
+  buildEmulationOverrides(emulation) {
+    if (!emulation) return null;
+    const overrides = {};
+    if (emulation.platform) {
+      overrides.platform = emulation.platform;
+    }
+    if (emulation.clientHints?.platform) {
+      overrides.uaPlatform = String(emulation.clientHints.platform).replace(/"/g, '');
+    }
+    if (!overrides.uaPlatform && overrides.platform) {
+      overrides.uaPlatform = overrides.platform === 'Win32' ? 'Windows' : overrides.platform;
+    }
+    if (emulation.clientHints?.mobile !== undefined) {
+      const rawMobile = String(emulation.clientHints.mobile).trim().toLowerCase();
+      overrides.uaMobile = rawMobile === '?1' || rawMobile === '1' || rawMobile === 'true';
+    } else {
+      overrides.uaMobile = false;
+    }
+    return Object.keys(overrides).length > 0 ? overrides : null;
+  }
+
+  async applyEmulationOverrides(page, emulation, label = 'MOBILE-EMU') {
+    if (!page || !emulation) return;
+    if (page.__bannerEmulationOverridesApplied) return;
+
+    const overrides = this.buildEmulationOverrides(emulation);
+    if (!overrides) return;
+
+    page.__bannerEmulationOverridesApplied = true;
+
+    await page.addInitScript((data) => {
+      const { platform, uaPlatform, uaMobile } = data || {};
+
+      if (platform) {
+        try {
+          Object.defineProperty(navigator, 'platform', {
+            get: () => platform,
+            configurable: true
+          });
+        } catch {}
+      }
+
+      if (typeof navigator.webdriver !== 'undefined') {
+        try {
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => false,
+            configurable: true
+          });
+        } catch {}
+      }
+
+      if (navigator.userAgentData) {
+        try {
+          const original = navigator.userAgentData;
+          const brands = Array.isArray(original.brands) ? original.brands : [];
+          const mobile = typeof uaMobile === 'boolean' ? uaMobile : original.mobile;
+          const platformValue = uaPlatform || original.platform;
+          const getHighEntropyValues = original.getHighEntropyValues?.bind(original);
+
+          const patched = {
+            brands,
+            mobile,
+            platform: platformValue
+          };
+
+          if (getHighEntropyValues) {
+            patched.getHighEntropyValues = (hints) => {
+              return getHighEntropyValues(hints).then((values) => ({
+                ...values,
+                mobile,
+                platform: platformValue
+              }));
+            };
+          }
+
+          Object.defineProperty(navigator, 'userAgentData', {
+            get: () => patched,
+            configurable: true
+          });
+        } catch {}
+      }
+    }, overrides);
+
+    log('info', `[${label}] Applied emulation overrides`, overrides);
   }
 
   async syncCookiesToMobile() {

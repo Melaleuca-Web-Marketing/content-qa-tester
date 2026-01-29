@@ -245,7 +245,12 @@ export const config = {
       deviceScaleFactor: 2,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
       isMobile: false,
-      hasTouch: true
+      hasTouch: true,
+      platform: 'Win32',
+      clientHints: {
+        mobile: '?0',
+        platform: '"Windows"'
+      }
     },
 
     // Culture code mapping for URL lang parameter
