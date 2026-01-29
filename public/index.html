@@ -2285,6 +2285,7 @@
     function isFormatRelatedError(errors) {
       if (!Array.isArray(errors)) return false;
       return errors.some(err =>
+        String(err).includes('Validation Link') ||
         String(err).includes('Banner Link') ||
         String(err).includes('UKIE Link')
       );

@@ -7,12 +7,12 @@ const BASE_REQUIRED_COLUMNS = [
   'Type',
   'Main Category',
   'Subcategory',
-  'Target',
   'Position',
   'SKUs'
 ];
 
-const US_CA_LINK_COLUMNS = ['Banner Link', 'Link'];
+const TARGET_COLUMNS = ['Link Target', 'Target'];
+const US_CA_LINK_COLUMNS = ['Validation Link', 'Banner Link', 'Link'];
 const EU_LINK_COLUMNS = ['UKIE Link', 'DE Link', 'NL Link', 'PL Link', 'LT Link'];
 const EU_CULTURE_LINK_COLUMNS = {
   uk: 'UKIE Link',
@@ -135,6 +135,16 @@ function resolveLinkColumn(headerMap) {
   return null;
 }
 
+function resolveTargetColumn(headerMap) {
+  for (const column of TARGET_COLUMNS) {
+    const key = normalizeHeaderKey(column);
+    if (headerMap.has(key)) {
+      return headerMap.get(key);
+    }
+  }
+  return null;
+}
+
 function pickDataSheet(sheetNames) {
   if (!Array.isArray(sheetNames) || sheetNames.length === 0) return null;
   const lower = sheetNames.map(name => normalizeHeaderKey(name));
@@ -234,6 +244,7 @@ async function parseExcelFile(file, options = {}) {
 
         const headerMap = buildHeaderMap(headers);
         const linkColumn = resolveLinkColumn(headerMap);
+        const targetColumn = resolveTargetColumn(headerMap);
         const euColumnsFound = detection.euColumnsFound || EU_LINK_COLUMNS.filter(col => headerMap.has(normalizeHeaderKey(col)));
         const linkColumns = format === FORMAT_UK_EU
           ? euColumnsFound
@@ -247,10 +258,14 @@ async function parseExcelFile(file, options = {}) {
           euColumnsFound
         };
         const missingBaseColumns = BASE_REQUIRED_COLUMNS.filter(col => !headerMap.has(normalizeHeaderKey(col)));
-        if (missingBaseColumns.length > 0) {
+        const missingRequiredColumns = [...missingBaseColumns];
+        if (!targetColumn) {
+          missingRequiredColumns.push(TARGET_COLUMNS[0]);
+        }
+        if (missingRequiredColumns.length > 0) {
           resolve({
             success: false,
-            errors: [`Missing required columns: ${missingBaseColumns.join(', ')}`],
+            errors: [`Missing required columns: ${missingRequiredColumns.join(', ')}`],
             ...detectionDetails
           });
           return;
@@ -259,7 +274,7 @@ async function parseExcelFile(file, options = {}) {
         if (format === FORMAT_US_CA && !linkColumn) {
           resolve({
             success: false,
-            errors: ['Missing required columns: Banner Link or Link'],
+            errors: [`Missing required columns: ${US_CA_LINK_COLUMNS[0]}`],
             ...detectionDetails
           });
           return;
@@ -313,7 +328,7 @@ async function parseExcelFile(file, options = {}) {
             subcategory: normalizeText(row['Subcategory']),
             bannerLink: format === FORMAT_US_CA ? normalizeLink(row[linkColumn]) : '',
             linkByCulture: format === FORMAT_UK_EU ? linkByCulture : undefined,
-            target: normalizeTarget(row['Target']),
+            target: normalizeTarget(row[targetColumn]),
             position: row['Position'] ? parseInt(row['Position']) : null,
             skus: normalizeSkuList(row['SKUs']),
             raw: row
@@ -359,8 +374,8 @@ async function parseExcelFile(file, options = {}) {
 
         // Check for unexpected columns
         const allowedColumns = format === FORMAT_UK_EU
-          ? [...BASE_REQUIRED_COLUMNS, ...EU_LINK_COLUMNS, ...US_CA_LINK_COLUMNS, 'Culture']
-          : [...BASE_REQUIRED_COLUMNS, ...US_CA_LINK_COLUMNS, 'Culture'];
+          ? [...BASE_REQUIRED_COLUMNS, ...TARGET_COLUMNS, ...EU_LINK_COLUMNS, ...US_CA_LINK_COLUMNS, 'Culture']
+          : [...BASE_REQUIRED_COLUMNS, ...TARGET_COLUMNS, ...US_CA_LINK_COLUMNS, 'Culture'];
         const allowedKeys = new Set(allowedColumns.map(normalizeHeaderKey));
         const unexpectedColumns = headers.filter(col => col && !allowedKeys.has(normalizeHeaderKey(col)));
         const hasUnexpectedColumns = unexpectedColumns.length > 0;
