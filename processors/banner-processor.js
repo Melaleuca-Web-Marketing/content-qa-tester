@@ -150,6 +150,9 @@ export class BannerProcessor extends BaseProcessor {
         };
 
         const fontStatus = document.fonts ? document.fonts.status : 'unsupported';
+        const userAgent = navigator.userAgent;
+        const platform = navigator.platform;
+        const uaMobile = navigator.userAgentData ? navigator.userAgentData.mobile : null;
 
         let anchorStyle = null;
         if (anchor) {
@@ -160,7 +163,8 @@ export class BannerProcessor extends BaseProcessor {
             fontWeight: style.fontWeight,
             letterSpacing: style.letterSpacing,
             lineHeight: style.lineHeight,
-            textRendering: style.textRendering
+            textRendering: style.textRendering,
+            color: style.color
           };
         }
 
@@ -194,6 +198,46 @@ export class BannerProcessor extends BaseProcessor {
               range.selectNodeContents(node);
               const rects = Array.from(range.getClientRects());
               const style = parent ? getComputedStyle(parent) : null;
+              let parentRect = null;
+              if (parent) {
+                const parentBox = parent.getBoundingClientRect();
+                parentRect = {
+                  width: Math.round(parentBox.width),
+                  height: Math.round(parentBox.height)
+                };
+              }
+
+              const fontFamily = style ? style.fontFamily : null;
+              const fontSize = style ? style.fontSize : null;
+              const fontWeight = style ? style.fontWeight : null;
+              const fontStyle = style ? style.fontStyle : 'normal';
+              const fontLineHeight = style ? style.lineHeight : null;
+              const fontLetterSpacing = style ? style.letterSpacing : null;
+              const fontColor = style ? style.color : null;
+
+              const fontSpec = fontSize && fontFamily
+                ? `${fontStyle} ${fontWeight || '400'} ${fontSize} ${fontFamily}`
+                : null;
+
+              let measuredWidth = null;
+              let measuredWidthNoChevron = null;
+              let measuredWidthWithArrow = null;
+
+              if (fontSpec) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.font = fontSpec;
+                  measuredWidth = Math.round(ctx.measureText(text).width);
+                  measuredWidthNoChevron = Math.round(ctx.measureText(text.replace('❯', '').trim()).width);
+                  measuredWidthWithArrow = Math.round(ctx.measureText(text.replace('❯', '>')).width);
+                }
+              }
+
+              const chevronChar = '❯';
+              const robotoHasChevron = document.fonts ? document.fonts.check(`16px "Roboto"`, chevronChar) : null;
+              const notoHasChevron = document.fonts ? document.fonts.check(`16px "Noto Sans"`, chevronChar) : null;
+
               textSamples.push({
                 text: text.slice(0, 120),
                 textLength: text.length,
@@ -204,11 +248,24 @@ export class BannerProcessor extends BaseProcessor {
                 })),
                 tag: parent ? parent.tagName : null,
                 className: parent ? parent.className : null,
-                fontFamily: style ? style.fontFamily : null,
-                fontSize: style ? style.fontSize : null,
-                fontWeight: style ? style.fontWeight : null,
-                letterSpacing: style ? style.letterSpacing : null,
-                lineHeight: style ? style.lineHeight : null
+                fontFamily,
+                fontSize,
+                fontWeight,
+                letterSpacing: fontLetterSpacing,
+                lineHeight: fontLineHeight,
+                color: fontColor,
+                display: style ? style.display : null,
+                whiteSpace: style ? style.whiteSpace : null,
+                maxWidth: style ? style.maxWidth : null,
+                width: style ? style.width : null,
+                paddingLeft: style ? style.paddingLeft : null,
+                paddingRight: style ? style.paddingRight : null,
+                parentRect,
+                measuredWidth,
+                measuredWidthNoChevron,
+                measuredWidthWithArrow,
+                robotoHasChevron,
+                notoHasChevron
               });
             });
         }
@@ -220,6 +277,9 @@ export class BannerProcessor extends BaseProcessor {
           viewport,
           inputMedia,
           fontStatus,
+          userAgent,
+          uaMobile,
+          platform,
           anchorStyle,
           textSamples
         };
