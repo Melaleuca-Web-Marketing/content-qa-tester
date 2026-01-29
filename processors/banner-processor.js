@@ -99,6 +99,7 @@ export class BannerProcessor extends BaseProcessor {
         style.textContent = `
           * { scrollbar-width: none !important; }
           *::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+          html, body { overflow: hidden !important; }
         `;
         document.head.appendChild(style);
       } else if (existing) {
