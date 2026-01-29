@@ -57,18 +57,24 @@ export class BaseProcessor extends EventEmitter {
     // Default to headless (or env override), allow per-call override.
     const headless = options.headless !== undefined ? options.headless : this.defaultHeadless;
 
-    // Default args for consistent font rendering across platforms (Windows/Linux)
-    const defaultArgs = [
-      '--start-maximized',
-      '--font-render-hinting=none',
-      '--disable-font-subpixel-positioning',
-      '--disable-lcd-text'
-    ];
+    const defaultArgs = ['--start-maximized'];
+    const fontStabilityRaw = process.env.TESTER_FONT_STABLE;
+    const enableFontStability = ['1', 'true', 'yes', 'on'].includes(String(fontStabilityRaw || '').toLowerCase());
+    if (enableFontStability) {
+      defaultArgs.push(
+        '--font-render-hinting=none',
+        '--disable-font-subpixel-positioning',
+        '--disable-lcd-text'
+      );
+    }
 
+    const launchArgs = options.args || defaultArgs;
     this.browser = await chromium.launch({
       headless,
-      args: options.args || defaultArgs
+      args: launchArgs
     });
+
+    log('info', 'Browser launch args', { args: launchArgs });
 
     log('info', 'Browser launched successfully');
     log('info', 'Browser version', await this.browser.version());
