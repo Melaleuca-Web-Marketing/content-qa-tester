@@ -238,6 +238,14 @@ export const config = {
       captureHeight: 1800
     },
 
+    // Mobile emulation defaults (used for small widths to match DevTools)
+    mobileEmulation: {
+      enabled: true,
+      widths: [320, 415],
+      deviceScaleFactor: 2,
+      userAgent: ''
+    },
+
     // Culture code mapping for URL lang parameter
     cultureLangMap: {
       "enus": "en-US",

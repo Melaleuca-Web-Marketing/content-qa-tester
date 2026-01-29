@@ -11,6 +11,9 @@ import { getSingleton } from '../utils/singleton.js';
 export class BannerProcessor extends BaseProcessor {
   constructor() {
     super('Banner');
+    this.mobileContext = null;
+    this.mobilePage = null;
+    this.mobileEmulation = null;
   }
 
   /**
@@ -18,8 +21,9 @@ export class BannerProcessor extends BaseProcessor {
    * @param {boolean} includeScrollOffset - Whether to include pageRect with scroll offsets
    * @returns {Promise<Object>} Banner information object
    */
-  async _detectBannerElement(includeScrollOffset = false) {
-    const result = await this.page.evaluate(({ selector, includeScroll }) => {
+  async _detectBannerElement(includeScrollOffset = false, page = this.page) {
+    if (!page) return { found: false };
+    const result = await page.evaluate(({ selector, includeScroll }) => {
       const el =
         document.querySelector(selector) ||
         document.querySelector('[data-testid="container-fullWidthBanner"]') ||
@@ -80,12 +84,12 @@ export class BannerProcessor extends BaseProcessor {
 
   // Detect banner on page and get its info
   async detectBanner() {
-    return await this._detectBannerElement(true);
+    return await this._detectBannerElement(true, this.page);
   }
 
-  async setScrollbarVisibility(hidden) {
-    if (!this.page) return;
-    await this.page.evaluate((hide) => {
+  async setScrollbarVisibility(hidden, page = this.page) {
+    if (!page) return;
+    await page.evaluate((hide) => {
       const styleId = 'banner-hide-scrollbars';
       const existing = document.getElementById(styleId);
       if (hide) {
@@ -103,8 +107,233 @@ export class BannerProcessor extends BaseProcessor {
     }, hidden);
   }
 
-  async ensureLoggedIn(job, options, loggedInHosts) {
-    if (!options?.loginEnabled) return;
+  shouldLogBannerDiagnostics(width) {
+    const raw = process.env.BANNER_DIAGNOSTICS;
+    if (!raw) return false;
+    const enabled = ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
+    if (!enabled) return false;
+    return typeof width === 'number' ? width <= 415 : true;
+  }
+
+  async logBannerDiagnostics(width, context = {}, page = this.page) {
+    if (!page || !this.shouldLogBannerDiagnostics(width)) return;
+    try {
+      const data = await page.evaluate(({ selector }) => {
+        const bannerEl =
+          document.querySelector(selector) ||
+          document.querySelector('[data-testid="container-fullWidthBanner"]') ||
+          document.querySelector('.m-fwBanner');
+
+        const anchor = bannerEl ? (bannerEl.closest('a') || bannerEl) : null;
+        const bannerRect = bannerEl ? bannerEl.getBoundingClientRect() : null;
+        const anchorRect = anchor ? anchor.getBoundingClientRect() : null;
+
+        const viewport = {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          clientWidth: document.documentElement.clientWidth,
+          clientHeight: document.documentElement.clientHeight,
+          scrollbarWidth: Math.max(0, window.innerWidth - document.documentElement.clientWidth),
+          devicePixelRatio: window.devicePixelRatio || 1,
+          visualViewport: window.visualViewport ? {
+            width: window.visualViewport.width,
+            height: window.visualViewport.height,
+            scale: window.visualViewport.scale
+          } : null
+        };
+
+        const inputMedia = {
+          hover: matchMedia('(hover: none)').matches ? 'none' : 'hover',
+          pointer: matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine',
+          maxTouchPoints: navigator.maxTouchPoints || 0
+        };
+
+        const fontStatus = document.fonts ? document.fonts.status : 'unsupported';
+
+        let anchorStyle = null;
+        if (anchor) {
+          const style = getComputedStyle(anchor);
+          anchorStyle = {
+            fontFamily: style.fontFamily,
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            letterSpacing: style.letterSpacing,
+            lineHeight: style.lineHeight,
+            textRendering: style.textRendering
+          };
+        }
+
+        const textSamples = [];
+        if (anchor) {
+          const walker = document.createTreeWalker(
+            anchor,
+            NodeFilter.SHOW_TEXT,
+            {
+              acceptNode(node) {
+                const text = node.textContent ? node.textContent.trim() : '';
+                if (!text) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+              }
+            }
+          );
+          const nodes = [];
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            const text = node.textContent ? node.textContent.trim() : '';
+            if (!text) continue;
+            nodes.push({ node, text });
+          }
+
+          nodes
+            .sort((a, b) => b.text.length - a.text.length)
+            .slice(0, 3)
+            .forEach(({ node, text }) => {
+              const parent = node.parentElement;
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              const rects = Array.from(range.getClientRects());
+              const style = parent ? getComputedStyle(parent) : null;
+              textSamples.push({
+                text: text.slice(0, 120),
+                textLength: text.length,
+                lineCount: rects.length,
+                rects: rects.map(r => ({
+                  width: Math.round(r.width),
+                  height: Math.round(r.height)
+                })),
+                tag: parent ? parent.tagName : null,
+                className: parent ? parent.className : null,
+                fontFamily: style ? style.fontFamily : null,
+                fontSize: style ? style.fontSize : null,
+                fontWeight: style ? style.fontWeight : null,
+                letterSpacing: style ? style.letterSpacing : null,
+                lineHeight: style ? style.lineHeight : null
+              });
+            });
+        }
+
+        return {
+          bannerFound: !!bannerEl,
+          bannerRect,
+          anchorRect,
+          viewport,
+          inputMedia,
+          fontStatus,
+          anchorStyle,
+          textSamples
+        };
+      }, { selector: config.banner.selector });
+
+      log('info', '[BANNER-DIAG] Layout snapshot', {
+        width,
+        url: page.url(),
+        ...context,
+        ...data
+      });
+    } catch (err) {
+      log('warn', '[BANNER-DIAG] Failed to collect layout snapshot', {
+        width,
+        url: page.url(),
+        error: err.message
+      });
+    }
+  }
+
+  getMobileEmulationConfig() {
+    const defaults = config.banner?.mobileEmulation || {};
+
+    const rawEnabled = process.env.BANNER_MOBILE_EMULATION;
+    const enabled = rawEnabled === undefined
+      ? (defaults.enabled ?? true)
+      : ['1', 'true', 'yes', 'on'].includes(String(rawEnabled).toLowerCase());
+
+    const dprRaw = Number(process.env.BANNER_MOBILE_DPR);
+    const deviceScaleFactor = Number.isFinite(dprRaw) && dprRaw > 0
+      ? dprRaw
+      : (defaults.deviceScaleFactor ?? 2);
+
+    const userAgentEnv = (process.env.BANNER_MOBILE_UA || '').trim();
+    const userAgentDefault = (defaults.userAgent || '').trim();
+
+    return {
+      enabled,
+      deviceScaleFactor,
+      userAgent: userAgentEnv || userAgentDefault || null,
+      widths: Array.isArray(defaults.widths) ? defaults.widths : null
+    };
+  }
+
+  isMobileEmulationWidth(width) {
+    if (typeof width !== 'number') return false;
+    const configured = this.mobileEmulation?.widths;
+    if (Array.isArray(configured) && configured.length > 0) {
+      return configured.includes(width);
+    }
+    const fallback = config.banner?.mobileEmulation?.widths;
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      return fallback.includes(width);
+    }
+    return width <= 415;
+  }
+
+  async createMobileContext(contextOptions = {}) {
+    if (!this.browser) {
+      throw new Error('Browser not initialized');
+    }
+
+    const emulation = this.mobileEmulation || this.getMobileEmulationConfig();
+    const defaultOptions = {
+      viewport: { width: 320, height: config.banner.browser.captureHeight },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: emulation.deviceScaleFactor
+    };
+
+    if (emulation.userAgent) {
+      defaultOptions.userAgent = emulation.userAgent;
+    }
+
+    this.mobileContext = await this.browser.newContext({
+      ...defaultOptions,
+      ...contextOptions
+    });
+
+    log('info', 'Mobile emulation context created', {
+      deviceScaleFactor: defaultOptions.deviceScaleFactor,
+      userAgent: defaultOptions.userAgent || 'default'
+    });
+
+    return this.mobileContext;
+  }
+
+  async createMobilePage() {
+    if (!this.mobileContext) return null;
+    log('info', 'Creating mobile emulation page...');
+    this.mobilePage = await this.mobileContext.newPage();
+
+    this.mobilePage.on('console', msg => {
+      if (msg.type() === 'error') {
+        log('debug', `[MOBILE PAGE CONSOLE ERROR] ${msg.text()}`);
+      }
+    });
+
+    this.mobilePage.on('pageerror', err => {
+      log('debug', `[MOBILE PAGE ERROR] ${err.message}`);
+    });
+
+    log('info', 'Mobile emulation page created successfully');
+    return this.mobilePage;
+  }
+
+  async syncCookiesToMobile() {
+    if (!this.context || !this.mobileContext) return;
+    const cookies = await this.context.cookies();
+    if (!cookies || cookies.length === 0) return;
+    await this.mobileContext.addCookies(cookies);
+  }
+
+  async ensureLoggedIn(job, options, loggedInHosts, page = this.page) {
+    if (!options?.loginEnabled) return false;
     if (!options.username || !options.password) {
       throw new Error('Username and password required for login');
     }
@@ -130,24 +359,32 @@ export class BannerProcessor extends BaseProcessor {
     }
 
     if (loggedInHosts.has(loginOrigin)) {
-      return;
+      return false;
     }
 
-    const loginResult = await this.loginToMelaleuca({
-      baseUrl,
-      environment: options.environment,
-      username: options.username,
-      password: options.password,
-      selectors: config.sku.selectors,
-      timeouts: config.sku.timeouts
-    });
+    const previousPage = this.page;
+    this.page = page;
+    let loginResult;
+    try {
+      loginResult = await this.loginToMelaleuca({
+        baseUrl,
+        environment: options.environment,
+        username: options.username,
+        password: options.password,
+        selectors: config.sku.selectors,
+        timeouts: config.sku.timeouts
+      });
+    } finally {
+      this.page = previousPage;
+    }
 
     if (!loginResult.success) {
       throw new Error(`Login failed: ${loginResult.error}`);
     }
 
     loggedInHosts.add(loginOrigin);
-    await this.page.waitForTimeout(2000);
+    await page.waitForTimeout(2000);
+    return true;
   }
 
   /**
@@ -158,6 +395,129 @@ export class BannerProcessor extends BaseProcessor {
    * @param {Object} options - Options including environment
    * @returns {Promise<Array>} Array of result objects
    */
+  async captureWidthsOnPage(page, widths, job, options = {}, captureLabel = 'DESKTOP', initialWidth = null, desktopFirst = true) {
+    if (!page || !widths || widths.length === 0) return [];
+
+    const results = [];
+    const captureHeight = config.banner.browser.captureHeight;
+    const desktopWidth = 1920;
+    const loadWidth = desktopFirst ? desktopWidth : (initialWidth || widths[0]);
+
+    log('info', `[${captureLabel}] Loading page at ${loadWidth}px before capturing widths`, { category: job.category });
+    await page.setViewportSize({ width: loadWidth, height: captureHeight });
+
+    await page.goto(job.url, {
+      waitUntil: 'load',
+      timeout: config.banner.timeouts.singleCapture
+    });
+    await page.waitForTimeout(config.banner.timeouts.pageLoad);
+
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(1000);
+    await this.setScrollbarVisibility(true, page);
+    await page.waitForTimeout(100);
+    log('info', `[${captureLabel}] Page and fonts loaded at ${loadWidth}px`, { category: job.category });
+
+    const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password, page);
+    if (msAuthHandled) {
+      await page.goto(job.url, {
+        waitUntil: 'load',
+        timeout: config.banner.timeouts.singleCapture
+      });
+      await page.waitForTimeout(config.banner.timeouts.pageLoad);
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(500);
+      await this.setScrollbarVisibility(true, page);
+      await page.waitForTimeout(50);
+    }
+
+    for (let i = 0; i < widths.length; i++) {
+      if (this.shouldStop) break;
+
+      const width = widths[i];
+      log('info', `  [${captureLabel}] Capturing at ${width}px`, { category: job.category });
+
+      try {
+        await page.setViewportSize({ width, height: captureHeight });
+        await page.waitForTimeout(config.banner.timeouts.pageLoad / 2);
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(500);
+        await this.setScrollbarVisibility(true, page);
+        await page.waitForTimeout(50);
+        await this.logBannerDiagnostics(width, { category: job.category, culture: job.culture, mode: captureLabel }, page);
+
+        let bannerInfo = null;
+        const maxAttempts = 3;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          if (attempt > 0) {
+            await page.waitForTimeout(500 * attempt);
+          }
+
+          bannerInfo = await this._detectBannerElement(false, page);
+
+          if (bannerInfo?.found) break;
+        }
+
+        if (!bannerInfo || !bannerInfo.found) {
+          throw new Error('Banner not found after ' + maxAttempts + ' attempts');
+        }
+
+        await page.waitForTimeout(config.banner.timeouts.bannerWait);
+
+        const padX = 8;
+        const padTop = width >= 1020 ? 32 : width >= 992 ? 48 : 24;
+        const padBottom = width >= 1020 ? 12 : width >= 992 ? 12 : 24;
+
+        const clip = {
+          x: Math.max(0, bannerInfo.rect.x - padX),
+          y: Math.max(0, bannerInfo.rect.y - padTop),
+          width: bannerInfo.rect.width + padX * 2,
+          height: bannerInfo.rect.height + padTop + padBottom
+        };
+
+        const screenshotBuffer = await page.screenshot({
+          type: 'jpeg',
+          quality: 80,
+          clip
+        });
+
+        const imageBase64 = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
+
+        results.push({
+          width,
+          image: imageBase64,
+          href: bannerInfo.href,
+          target: bannerInfo.target || '_self',
+          category: job.category || '',
+          culture: job.culture || '',
+          order: job.order ?? null,
+          imageLocale: detectImageLocale(bannerInfo.imageSrc),
+          imageSrc: bannerInfo.imageSrc,
+          imageAlt: bannerInfo.imageAlt || '',
+          mainCategory: job.mainCategory || '',
+          environment: options.environment || 'stage',
+          url: job.url
+        });
+
+      } catch (err) {
+        log('error', `Error capturing at ${width}px`, { error: err.message, category: job.category });
+        results.push({
+          error: true,
+          message: err.message,
+          width,
+          category: job.category || '',
+          culture: job.culture || '',
+          mainCategory: job.mainCategory || '',
+          environment: options.environment || 'stage',
+          url: job.url
+        });
+      }
+    }
+
+    return results;
+  }
+
   async captureJobAtAllWidths(job, widths, options = {}) {
     const page = this.page;
     if (!page) {
@@ -165,141 +525,49 @@ export class BannerProcessor extends BaseProcessor {
     }
 
     const results = [];
-    let authHandledOnce = false;
-
     log('info', `Capturing banner for ${job.category} at ${widths.length} widths (optimized)`, { url: job.url });
 
     try {
-      // Load page at desktop width first (matches user workflow: load desktop, then resize)
-      // This ensures CSS/JS initializes at desktop width before resizing to test widths
-      const desktopWidth = 1920;
-      log('info', `[DESKTOP-FIRST] Loading page at ${desktopWidth}px before resizing to test widths`, { category: job.category });
-      await page.setViewportSize({ width: desktopWidth, height: config.banner.browser.captureHeight });
+      const useMobileEmulation = this.mobileEmulation?.enabled && this.mobilePage;
+      const mobileWidths = useMobileEmulation
+        ? widths.filter((width) => this.isMobileEmulationWidth(width))
+        : [];
+      const desktopWidths = widths.filter((width) => !useMobileEmulation || !this.isMobileEmulationWidth(width));
 
-      // Navigate to URL once
-      await page.goto(job.url, {
-        waitUntil: 'load',
-        timeout: config.banner.timeouts.singleCapture
+      const widthOrder = new Map(widths.map((width, index) => [width, index]));
+
+      const mobileResults = await this.captureWidthsOnPage(
+        this.mobilePage,
+        mobileWidths,
+        job,
+        options,
+        'MOBILE-EMU',
+        mobileWidths[0] || null,
+        false
+      );
+
+      const desktopResults = await this.captureWidthsOnPage(
+        page,
+        desktopWidths,
+        job,
+        options,
+        'DESKTOP',
+        1920,
+        true
+      );
+
+      results.push(...mobileResults, ...desktopResults);
+
+      results.sort((a, b) => {
+        const wa = widthOrder.get(a.width) ?? 999;
+        const wb = widthOrder.get(b.width) ?? 999;
+        return wa - wb;
       });
-      await page.waitForTimeout(config.banner.timeouts.pageLoad);
-
-      // Wait for web fonts to load (critical for correct text wrapping)
-      await page.evaluate(() => document.fonts.ready);
-      // Extra wait for any JS layout recalculations after fonts load
-      await page.waitForTimeout(1000);
-      await this.setScrollbarVisibility(true);
-      await page.waitForTimeout(100);
-      log('info', `[DESKTOP-FIRST] Page and fonts loaded at ${desktopWidth}px, ready to resize to test widths`, { category: job.category });
-
-      // Handle Microsoft authentication once (if needed)
-      const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password, page);
-      if (msAuthHandled) {
-        authHandledOnce = true;
-        // Navigate back to the original URL after auth
-        await page.goto(job.url, {
-          waitUntil: 'load',
-          timeout: config.banner.timeouts.singleCapture
-        });
-        await page.waitForTimeout(config.banner.timeouts.pageLoad);
-      }
-
-      // Capture at each width (no additional navigation needed)
-      for (let i = 0; i < widths.length; i++) {
-        if (this.shouldStop) break;
-
-        const width = widths[i];
-        log('info', `  Capturing at ${width}px`, { category: job.category });
-
-        try {
-          // Set viewport size (triggers responsive banner re-render)
-          log('info', `[DESKTOP-FIRST] Resizing from desktop to ${width}px`, { category: job.category });
-          await page.setViewportSize({ width, height: config.banner.browser.captureHeight });
-          // Wait for responsive layout and fonts to settle
-          await page.waitForTimeout(config.banner.timeouts.pageLoad / 2);
-          await page.evaluate(() => document.fonts.ready);
-          // Extra wait for any JS layout recalculations after resize
-          await page.waitForTimeout(500);
-          await this.setScrollbarVisibility(true);
-          await page.waitForTimeout(50);
-
-          // Retry banner detection with exponential backoff
-          let bannerInfo = null;
-          const maxAttempts = 3;
-
-          for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            if (attempt > 0) {
-              await page.waitForTimeout(500 * attempt);
-            }
-
-            bannerInfo = await this._detectBannerElement(false);
-
-            if (bannerInfo?.found) break;
-          }
-
-          if (!bannerInfo || !bannerInfo.found) {
-            throw new Error('Banner not found after ' + maxAttempts + ' attempts');
-          }
-
-          // Wait for banner to be stable
-          await page.waitForTimeout(config.banner.timeouts.bannerWait);
-
-          // Calculate padding for screenshot
-          const padX = 8;
-          const padTop = width >= 1020 ? 32 : width >= 992 ? 48 : 24;
-          const padBottom = width >= 1020 ? 12 : width >= 992 ? 12 : 24;
-
-          // Capture screenshot with clip
-          const clip = {
-            x: Math.max(0, bannerInfo.rect.x - padX),
-            y: Math.max(0, bannerInfo.rect.y - padTop),
-            width: bannerInfo.rect.width + padX * 2,
-            height: bannerInfo.rect.height + padTop + padBottom
-          };
-
-          const screenshotBuffer = await page.screenshot({
-            type: 'jpeg',
-            quality: 80,
-            clip
-          });
-
-          const imageBase64 = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
-
-          results.push({
-            width,
-            image: imageBase64,
-            href: bannerInfo.href,
-            target: bannerInfo.target || '_self',
-            category: job.category || '',
-            culture: job.culture || '',
-            order: job.order ?? null,
-            imageLocale: detectImageLocale(bannerInfo.imageSrc),
-            imageSrc: bannerInfo.imageSrc,
-            imageAlt: bannerInfo.imageAlt || '',
-            mainCategory: job.mainCategory || '',
-            environment: options.environment || 'stage',
-            url: job.url
-          });
-
-        } catch (err) {
-          log('error', `Error capturing at ${width}px`, { error: err.message, category: job.category });
-          results.push({
-            error: true,
-            message: err.message,
-            width,
-            category: job.category || '',
-            culture: job.culture || '',
-            mainCategory: job.mainCategory || '',
-            environment: options.environment || 'stage',
-            url: job.url
-          });
-        }
-      }
 
       return results;
 
     } catch (err) {
       log('error', `Error in optimized capture for ${job.category}`, { error: err.message });
-      // Return error results for all widths
       return widths.map(width => ({
         error: true,
         message: err.message,
@@ -335,6 +603,7 @@ export class BannerProcessor extends BaseProcessor {
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
       await this.setScrollbarVisibility(true);
       await page.waitForTimeout(50);
+      await this.logBannerDiagnostics(width, { url });
 
       // Handle Microsoft authentication for stage/UAT environments
       const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(meta.environment, meta.username, meta.password, page);
@@ -442,6 +711,11 @@ export class BannerProcessor extends BaseProcessor {
     // Build job list from selections
     const jobs = this.buildJobList(options);
     const selectedWidths = options.widths || config.banner.defaults.widths;
+    this.mobileEmulation = this.getMobileEmulationConfig();
+    const mobileWidths = this.mobileEmulation.enabled
+      ? selectedWidths.filter((width) => this.isMobileEmulationWidth(width))
+      : [];
+    const desktopWidths = selectedWidths.filter((width) => !this.mobileEmulation.enabled || !this.isMobileEmulationWidth(width));
     const totalCaptures = jobs.length * selectedWidths.length;
     const totalBanners = jobs.length;
 
@@ -468,9 +742,22 @@ export class BannerProcessor extends BaseProcessor {
       });
       await this.createPage();
 
+      if (mobileWidths.length > 0 && this.mobileEmulation.enabled) {
+        await this.createMobileContext({
+          viewport: { width: mobileWidths[0], height: config.banner.browser.captureHeight }
+        });
+        await this.createMobilePage();
+        log('info', 'Mobile emulation enabled for banner capture', {
+          widths: mobileWidths,
+          deviceScaleFactor: this.mobileEmulation.deviceScaleFactor,
+          userAgent: this.mobileEmulation.userAgent || 'default'
+        });
+      }
+
       // Note: Using optimized capture - navigates once per banner at desktop width, resizes viewport for each test width
 
       const loggedInHosts = new Set();
+      const loggedInHostsMobile = new Set();
 
       // Process each job (banner) - optimized approach
       let completedBanners = 0;
@@ -478,7 +765,18 @@ export class BannerProcessor extends BaseProcessor {
         const job = jobs[jobIndex];
         if (this.shouldStop) break;
 
-        await this.ensureLoggedIn(job, options, loggedInHosts);
+        let didLoginDesktop = false;
+        if (desktopWidths.length > 0) {
+          didLoginDesktop = await this.ensureLoggedIn(job, options, loggedInHosts, this.page);
+        }
+
+        if (this.mobilePage && mobileWidths.length > 0) {
+          if (desktopWidths.length === 0) {
+            await this.ensureLoggedIn(job, options, loggedInHostsMobile, this.mobilePage);
+          } else if (didLoginDesktop) {
+            await this.syncCookiesToMobile();
+          }
+        }
 
         // Emit initial progress for first width
         this.emitProgress({
@@ -603,6 +901,9 @@ export class BannerProcessor extends BaseProcessor {
       this.emit('error', { message: err.message });
     } finally {
       await this.closeBrowser();
+      this.mobilePage = null;
+      this.mobileContext = null;
+      this.mobileEmulation = null;
 
       this.isRunning = false;
 
