@@ -134,8 +134,9 @@ export class BannerProcessor extends BaseProcessor {
 
         const chevronChar = '\u276f';
         const chevronFallback = '\u00e2\u009d\u00af';
-        const chevronPattern = `(${chevronChar}|${chevronFallback})`;
+        const chevronPattern = `${chevronChar}|${chevronFallback}`;
         const chevronRegex = new RegExp(chevronPattern, 'g');
+        const chevronTokenRegex = new RegExp(`\\u00a0?(?:${chevronPattern})`, 'g');
         const chevronTest = new RegExp(chevronPattern);
         const textNodes = [];
         const walker = document.createTreeWalker(
@@ -163,29 +164,49 @@ export class BannerProcessor extends BaseProcessor {
             const text = node.textContent || '';
             if (!chevronTest.test(text)) return;
 
-            const parts = text.split(chevronRegex);
-            if (parts.length <= 1) return;
+            const matches = Array.from(text.matchAll(chevronTokenRegex));
+            if (matches.length === 0) return;
 
             const frag = document.createDocumentFragment();
-            parts.forEach((part) => {
-              if (!part) return;
-              if (chevronTest.test(part)) {
-                const span = document.createElement('span');
-                span.setAttribute('data-banner-chevron', 'true');
-                span.textContent = part;
-                frag.appendChild(span);
-                chevronCount += 1;
-              } else {
-                frag.appendChild(document.createTextNode(part));
+            let lastIndex = 0;
+            matches.forEach((match) => {
+              const start = match.index || 0;
+              if (start > lastIndex) {
+                frag.appendChild(document.createTextNode(text.slice(lastIndex, start)));
               }
+
+              const token = match[0];
+              const span = document.createElement('span');
+              span.setAttribute('data-banner-chevron', 'true');
+              span.style.whiteSpace = 'nowrap';
+
+              const glyph = document.createElement('span');
+              glyph.setAttribute('data-banner-chevron-glyph', 'true');
+
+              if (token.charCodeAt(0) === 160) {
+                span.appendChild(document.createTextNode('\u00a0'));
+                glyph.textContent = token.slice(1);
+              } else {
+                glyph.textContent = token;
+              }
+
+              span.appendChild(glyph);
+              frag.appendChild(span);
+              chevronCount += 1;
+              lastIndex = start + token.length;
             });
+
+            if (lastIndex < text.length) {
+              frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+            }
 
             parent.replaceChild(frag, node);
           });
         }
 
         const chevronSpans = anchor.querySelectorAll('span[data-banner-chevron="true"]');
-        if (chevronSpans.length === 0) {
+        const chevronGlyphs = anchor.querySelectorAll('span[data-banner-chevron-glyph="true"]');
+        if (chevronGlyphs.length === 0) {
           return { applied: false, reason: 'no-chevron' };
         }
 
@@ -230,7 +251,7 @@ export class BannerProcessor extends BaseProcessor {
           if (!Number.isFinite(scale)) return;
           scale = Math.max(0.6, Math.min(1, scale));
 
-          const spans = parent.querySelectorAll('span[data-banner-chevron="true"]');
+          const spans = parent.querySelectorAll('span[data-banner-chevron-glyph="true"]');
           spans.forEach(span => {
             span.style.display = 'inline-block';
             span.style.transformOrigin = 'left center';
