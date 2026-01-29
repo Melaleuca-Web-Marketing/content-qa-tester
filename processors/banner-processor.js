@@ -116,6 +116,160 @@ export class BannerProcessor extends BaseProcessor {
     return typeof width === 'number' ? width <= 415 : true;
   }
 
+  shouldFixChevronWidth(width) {
+    return typeof width === 'number' ? width <= 415 : false;
+  }
+
+  async applyChevronWidthFix(width, page = this.page, label = 'CAPTURE') {
+    if (!page || !this.shouldFixChevronWidth(width)) return;
+    try {
+      const result = await page.evaluate(({ selector, maxOverflow }) => {
+        const bannerEl =
+          document.querySelector(selector) ||
+          document.querySelector('[data-testid="container-fullWidthBanner"]') ||
+          document.querySelector('.m-fwBanner');
+
+        const anchor = bannerEl ? (bannerEl.closest('a') || bannerEl) : null;
+        if (!anchor) return { applied: false, reason: 'no-banner' };
+
+        const chevronChar = '\u276f';
+        const chevronFallback = '\u00e2\u009d\u00af';
+        const chevronPattern = `(${chevronChar}|${chevronFallback})`;
+        const chevronRegex = new RegExp(chevronPattern, 'g');
+        const chevronTest = new RegExp(chevronPattern);
+        const textNodes = [];
+        const walker = document.createTreeWalker(
+          anchor,
+          NodeFilter.SHOW_TEXT,
+          {
+            acceptNode(node) {
+              const text = node.textContent || '';
+              return chevronTest.test(text) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+            }
+          }
+        );
+        while (walker.nextNode()) {
+          textNodes.push(walker.currentNode);
+        }
+
+        let chevronCount = 0;
+        if (textNodes.length > 0) {
+          textNodes.forEach((node) => {
+            const parent = node.parentNode;
+            if (!parent) return;
+            if (parent.getAttribute && parent.getAttribute('data-banner-chevron') === 'true') return;
+            if (parent.querySelector && parent.querySelector('span[data-banner-chevron="true"]')) return;
+
+            const text = node.textContent || '';
+            if (!chevronTest.test(text)) return;
+
+            const parts = text.split(chevronRegex);
+            if (parts.length <= 1) return;
+
+            const frag = document.createDocumentFragment();
+            parts.forEach((part) => {
+              if (!part) return;
+              if (chevronTest.test(part)) {
+                const span = document.createElement('span');
+                span.setAttribute('data-banner-chevron', 'true');
+                span.textContent = part;
+                frag.appendChild(span);
+                chevronCount += 1;
+              } else {
+                frag.appendChild(document.createTextNode(part));
+              }
+            });
+
+            parent.replaceChild(frag, node);
+          });
+        }
+
+        const chevronSpans = anchor.querySelectorAll('span[data-banner-chevron="true"]');
+        if (chevronSpans.length === 0) {
+          return { applied: false, reason: 'no-chevron' };
+        }
+
+        const targets = new Set();
+        chevronSpans.forEach(span => {
+          if (span.parentElement) targets.add(span.parentElement);
+        });
+
+        let adjustedCount = 0;
+        const adjustments = [];
+
+        targets.forEach((parent) => {
+          const style = getComputedStyle(parent);
+          const fontSpec = style.fontFamily && style.fontSize
+            ? `${style.fontStyle || 'normal'} ${style.fontWeight || '400'} ${style.fontSize} ${style.fontFamily}`
+            : null;
+          if (!fontSpec) return;
+
+          const paddingLeft = parseFloat(style.paddingLeft || '0') || 0;
+          const paddingRight = parseFloat(style.paddingRight || '0') || 0;
+          const rect = parent.getBoundingClientRect();
+          const availableWidth = Math.round(rect.width - paddingLeft - paddingRight);
+
+          const text = parent.textContent || '';
+          if (!chevronTest.test(text)) return;
+
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.font = fontSpec;
+
+          const fullWidth = Math.round(ctx.measureText(text).width);
+          const noChevronText = text.replace(chevronRegex, '');
+          const noChevronWidth = Math.round(ctx.measureText(noChevronText).width);
+          const chevronWidth = Math.max(1, fullWidth - noChevronWidth);
+          const overflow = fullWidth - availableWidth;
+
+          if (overflow <= 0) return;
+          if (overflow > maxOverflow) return;
+
+          let scale = (availableWidth - noChevronWidth) / chevronWidth;
+          if (!Number.isFinite(scale)) return;
+          scale = Math.max(0.6, Math.min(1, scale));
+
+          const spans = parent.querySelectorAll('span[data-banner-chevron="true"]');
+          spans.forEach(span => {
+            span.style.display = 'inline-block';
+            span.style.transformOrigin = 'left center';
+            span.style.transform = `scaleX(${scale})`;
+          });
+
+          adjustedCount += spans.length;
+          adjustments.push({
+            availableWidth,
+            fullWidth,
+            noChevronWidth,
+            chevronWidth,
+            overflow,
+            scale
+          });
+        });
+
+        return {
+          applied: adjustedCount > 0,
+          chevronCount,
+          adjustedCount,
+          adjustments
+        };
+      }, { selector: config.banner.selector, maxOverflow: 6 });
+
+      if (result?.applied) {
+        log('info', `[${label}] Chevron width normalized`, {
+          width,
+          ...result
+        });
+      }
+    } catch (err) {
+      log('warn', `[${label}] Chevron normalization failed`, {
+        width,
+        error: err.message
+      });
+    }
+  }
+
   async logBannerDiagnostics(width, context = {}, page = this.page) {
     if (!page || !this.shouldLogBannerDiagnostics(width)) return;
     try {
@@ -634,6 +788,7 @@ export class BannerProcessor extends BaseProcessor {
         await page.waitForTimeout(500);
         await this.setScrollbarVisibility(true, page);
         await page.waitForTimeout(50);
+        await this.applyChevronWidthFix(width, page, captureLabel);
         await this.logBannerDiagnostics(width, { category: job.category, culture: job.culture, mode: captureLabel }, page);
 
         let bannerInfo = null;
@@ -793,6 +948,7 @@ export class BannerProcessor extends BaseProcessor {
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
       await this.setScrollbarVisibility(true);
       await page.waitForTimeout(50);
+      await this.applyChevronWidthFix(width, page, 'CAPTURE');
       await this.logBannerDiagnostics(width, { url });
 
       // Handle Microsoft authentication for stage/UAT environments
