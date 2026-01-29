@@ -320,7 +320,9 @@ export class BannerProcessor extends BaseProcessor {
       enabled,
       deviceScaleFactor,
       userAgent: userAgentEnv || userAgentDefault || null,
-      widths: Array.isArray(defaults.widths) ? defaults.widths : null
+      widths: Array.isArray(defaults.widths) ? defaults.widths : null,
+      isMobile: defaults.isMobile ?? false,
+      hasTouch: defaults.hasTouch ?? true
     };
   }
 
@@ -345,8 +347,8 @@ export class BannerProcessor extends BaseProcessor {
     const emulation = this.mobileEmulation || this.getMobileEmulationConfig();
     const defaultOptions = {
       viewport: { width: 320, height: config.banner.browser.captureHeight },
-      isMobile: true,
-      hasTouch: true,
+      isMobile: Boolean(emulation.isMobile),
+      hasTouch: Boolean(emulation.hasTouch),
       deviceScaleFactor: emulation.deviceScaleFactor
     };
 
