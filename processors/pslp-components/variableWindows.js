@@ -1,7 +1,18 @@
 // variableWindows.js - Extract Variable Windows data from PSLP
 
+
+const shouldLogPslp = (() => {
+  const raw = process.env.PSLP_DIAGNOSTICS || process.env.TESTER_LOG_LEVEL || process.env.LOG_LEVEL || '';
+  return String(raw).toLowerCase() === 'debug'
+    || ['1', 'true', 'yes', 'on', 'verbose'].includes(String(process.env.PSLP_DIAGNOSTICS || '').toLowerCase());
+})();
+
+const logPslp = (...args) => {
+  if (shouldLogPslp) console.log(...args);
+};
+
 export async function extractVariableWindowsData(page, selectors) {
-  console.log('Extracting Variable Windows data...');
+  logPslp('Extracting Variable Windows data...');
   const windowsData = [];
   const sel = selectors.variableWindows;
   const baseUrl = new URL(page.url()).origin;

@@ -2,6 +2,46 @@
 
 import { config } from '../config.js';
 
+const LOG_LEVELS = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3
+};
+
+function shouldLogExcel(level) {
+  const currentRaw = process.env.EXCEL_VALIDATION_LOG_LEVEL
+    || process.env.TESTER_LOG_LEVEL
+    || process.env.LOG_LEVEL
+    || 'info';
+  const current = String(currentRaw).toLowerCase();
+  const normalized = String(level || 'info').toLowerCase();
+  const currentLevel = LOG_LEVELS[current] ?? LOG_LEVELS.info;
+  const messageLevel = LOG_LEVELS[normalized] ?? LOG_LEVELS.info;
+  return messageLevel <= currentLevel;
+}
+
+function logExcel(level, message, data = null) {
+  if (!shouldLogExcel(level)) return;
+  if (data) {
+    console.log(`${message}`, JSON.stringify(data, null, 2));
+  } else {
+    console.log(message);
+  }
+}
+
+const validationCache = new WeakMap();
+
+function getValidationCache(excelData) {
+  if (!excelData || !Array.isArray(excelData)) return null;
+  let cache = validationCache.get(excelData);
+  if (!cache) {
+    cache = { byType: new Map(), match: new Map() };
+    validationCache.set(excelData, cache);
+  }
+  return cache;
+}
+
 /**
  * Normalize text fields (category names, etc.)
  */
@@ -185,27 +225,44 @@ function compareSkus(actual, expected) {
 function findMatchingRow(result, excelData, type = 'category-banner') {
   const resultMainCat = normalizeText(result.mainCategory || '');
   const resultSubcat = normalizeText(result.category || result.subcategory || '');
+  const cache = getValidationCache(excelData);
+  const positionKey = type === 'mix-in-ad' ? String(result.position ?? '') : '';
+  const matchKey = `${type}|${resultMainCat}|${resultSubcat}|${positionKey}`;
 
-  console.log(`[Excel Validation] Looking for match: Main="${resultMainCat}", Sub="${resultSubcat}"`);
+  if (cache && cache.match.has(matchKey)) {
+    return cache.match.get(matchKey) || null;
+  }
 
-  // Filter by type first
-  const candidateRows = excelData.filter(row => row.type === type);
-  console.log(`[Excel Validation] Found ${candidateRows.length} candidate rows of type "${type}"`);
+  logExcel('debug', `[Excel Validation] Looking for match: Main="${resultMainCat}", Sub="${resultSubcat}"`);
+
+  // Filter by type first (cached)
+  let candidateRows = cache ? cache.byType.get(type) : null;
+  if (!candidateRows) {
+    candidateRows = excelData.filter(row => row.type === type);
+    if (cache) {
+      cache.byType.set(type, candidateRows);
+    }
+  }
+  logExcel('debug', `[Excel Validation] Found ${candidateRows.length} candidate rows of type "${type}"`);
 
   // For mix-in ads, also match by position
   if (type === 'mix-in-ad' && result.position !== undefined) {
-    return candidateRows.find(row =>
+    const match = candidateRows.find(row =>
       row.mainCategory === resultMainCat &&
       row.subcategory === resultSubcat &&
       row.position === result.position
     );
+    if (cache) cache.match.set(matchKey, match || null);
+    return match;
   }
 
   // For category banners, just match by category
-  return candidateRows.find(row =>
+  const match = candidateRows.find(row =>
     row.mainCategory === resultMainCat &&
     row.subcategory === resultSubcat
   );
+  if (cache) cache.match.set(matchKey, match || null);
+  return match;
 }
 
 /**
@@ -284,7 +341,7 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
     return capturedResults;
   }
 
-  console.log(`[Excel Validation] Validating ${capturedResults.length} results against ${excelData.length} Excel rows (type: ${type})`);
+  logExcel('info', `[Excel Validation] Validating ${capturedResults.length} results against ${excelData.length} Excel rows (type: ${type})`);
 
   return capturedResults.map(result => {
     const culture = result.culture || '';
@@ -295,7 +352,7 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
     if (!match) {
       const resultMainCat = normalizeText(result.mainCategory || '');
       const resultSubcat = normalizeText(result.category || result.subcategory || '');
-      console.log(`[Excel Validation] ❌ NOT FOUND - Main: "${resultMainCat}", Sub: "${resultSubcat}", Culture: ${culture}`);
+      logExcel('warn', `[Excel Validation] ❌ NOT FOUND - Main: "${resultMainCat}", Sub: "${resultSubcat}", Culture: ${culture}`);
       return {
         ...result,
         validation: {
@@ -341,16 +398,16 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
     const status = allMatch ? 'PASS' : 'FAIL';
 
     // Log comparison results
-    console.log(`[Excel Validation] ${status === 'PASS' ? '✅' : '❌'} ${status} - ${result.category} (${result.mainCategory})`);
+    logExcel('debug', `[Excel Validation] ${status === 'PASS' ? '✅' : '❌'} ${status} - ${result.category} (${result.mainCategory})`);
     if (!allMatch) {
       Object.entries(comparisons).forEach(([field, comp]) => {
         if (!comp.match) {
           if (comp.domainError) {
-            console.log(`  ❌ ${field}: ${comp.domainError}`);
-            console.log(`     Actual: "${comp.actual}" (domain: ${comp.actualDomain})`);
-            console.log(`     Expected: "${comp.expected}"`);
+            logExcel('debug', `  ❌ ${field}: ${comp.domainError}`);
+            logExcel('debug', `     Actual: "${comp.actual}" (domain: ${comp.actualDomain})`);
+            logExcel('debug', `     Expected: "${comp.expected}"`);
           } else {
-            console.log(`  ❌ ${field}: "${comp.actual}" !== "${comp.expected}"`);
+            logExcel('debug', `  ❌ ${field}: "${comp.actual}" !== "${comp.expected}"`);
           }
         }
       });

@@ -1,7 +1,18 @@
 // heroCarousel.js - Extract Hero Carousel data from PSLP
 
+
+const shouldLogPslp = (() => {
+  const raw = process.env.PSLP_DIAGNOSTICS || process.env.TESTER_LOG_LEVEL || process.env.LOG_LEVEL || '';
+  return String(raw).toLowerCase() === 'debug'
+    || ['1', 'true', 'yes', 'on', 'verbose'].includes(String(process.env.PSLP_DIAGNOSTICS || '').toLowerCase());
+})();
+
+const logPslp = (...args) => {
+  if (shouldLogPslp) console.log(...args);
+};
+
 export async function extractHeroCarouselData(page, selectors) {
-  console.log('Extracting Hero Carousel data...');
+  logPslp('Extracting Hero Carousel data...');
   const carouselData = [];
   const sel = selectors.heroCarousel;
   const baseUrl = new URL(page.url()).origin;

@@ -1,8 +1,19 @@
 // monthlySpecials.js - Extract Monthly Specials data from PSLP
 
+
+const shouldLogPslp = (() => {
+  const raw = process.env.PSLP_DIAGNOSTICS || process.env.TESTER_LOG_LEVEL || process.env.LOG_LEVEL || '';
+  return String(raw).toLowerCase() === 'debug'
+    || ['1', 'true', 'yes', 'on', 'verbose'].includes(String(process.env.PSLP_DIAGNOSTICS || '').toLowerCase());
+})();
+
+const logPslp = (...args) => {
+  if (shouldLogPslp) console.log(...args);
+};
+
 export async function extractMonthlySpecialsData(page, selectors) {
-  console.log('========================================');
-  console.log('Extracting Monthly Specials data...');
+  logPslp('========================================');
+  logPslp('Extracting Monthly Specials data...');
   const monthlySpecialsData = [];
 
   if (!selectors || !selectors.monthlySpecials) {
@@ -11,7 +22,7 @@ export async function extractMonthlySpecialsData(page, selectors) {
   }
 
   const sel = selectors.monthlySpecials;
-  console.log('Using Monthly Specials selectors:', JSON.stringify(sel, null, 2));
+  logPslp('Using Monthly Specials selectors:', JSON.stringify(sel, null, 2));
 
   const baseUrl = new URL(page.url()).origin;
   const seenKeys = new Set();
@@ -19,10 +30,10 @@ export async function extractMonthlySpecialsData(page, selectors) {
   // Check if monthly specials component exists
   const componentExists = await page.$('.o-monthlySpecial, .preComponentLoader.-monthlySpecial');
   if (!componentExists) {
-    console.log('Monthly Specials component not found on page');
+    logPslp('Monthly Specials component not found on page');
     return monthlySpecialsData;
   }
-  console.log('Monthly Specials component found on page');
+  logPslp('Monthly Specials component found on page');
 
   const componentRoot = await page.$('.o-monthlySpecial') || componentExists;
   try {
@@ -42,7 +53,7 @@ export async function extractMonthlySpecialsData(page, selectors) {
   const cardSelector = sel.card;
   const imageSelector = sel.image;
 
-  console.log('Monthly Specials selectors resolved:', {
+  logPslp('Monthly Specials selectors resolved:', {
     slideSelector,
     dotSelector,
     cardSelector,
@@ -53,9 +64,9 @@ export async function extractMonthlySpecialsData(page, selectors) {
     const cardFound = await page.waitForSelector(cardSelector, { timeout: 8000 })
       .then(() => true)
       .catch(() => false);
-    console.log(`Card selector "${cardSelector}" present: ${cardFound} `);
+    logPslp(`Card selector "${cardSelector}" present: ${cardFound} `);
   } else {
-    console.log('Card selector is empty or undefined.');
+    logPslp('Card selector is empty or undefined.');
   }
 
   const debugSnapshot = await page.evaluate((data) => {
@@ -122,7 +133,7 @@ export async function extractMonthlySpecialsData(page, selectors) {
     ]
   });
 
-  console.log('Monthly Specials DOM snapshot', JSON.stringify(debugSnapshot, null, 2));
+  logPslp('Monthly Specials DOM snapshot', JSON.stringify(debugSnapshot, null, 2));
 
   const extractCardData = async (cardElement, slideIndex) => {
     let imageElement = null;
@@ -171,7 +182,7 @@ export async function extractMonthlySpecialsData(page, selectors) {
         sku = match[1];
       }
     } else {
-      console.log(`  No image element found for card on slide ${slideIndex} `);
+      logPslp(`  No image element found for card on slide ${slideIndex} `);
     }
 
     const key = `${slideIndex || ''}| ${sku || ''}| ${imageUrl || ''}| ${linkDirection || ''} `;
@@ -185,11 +196,11 @@ export async function extractMonthlySpecialsData(page, selectors) {
 
   const collectCards = async (rootElement, fallbackIndex) => {
     if (!rootElement) {
-      console.log('  No root element provided to collectCards');
+      logPslp('  No root element provided to collectCards');
       return;
     }
     const productCards = cardSelector ? await rootElement.$$(cardSelector) : [];
-    console.log(`  Found ${productCards.length} product cards in slide ${fallbackIndex} `);
+    logPslp(`  Found ${productCards.length} product cards in slide ${fallbackIndex} `);
     if (productCards.length === 0) {
       const slideDebug = await rootElement.evaluate((el) => ({
         className: el.className || '',
@@ -201,7 +212,7 @@ export async function extractMonthlySpecialsData(page, selectors) {
         htmlSnippet: el.outerHTML ? el.outerHTML.slice(0, 300) : null
       })).catch(() => null);
       if (slideDebug) {
-        console.log('  Slide debug', JSON.stringify(slideDebug, null, 2));
+        logPslp('  Slide debug', JSON.stringify(slideDebug, null, 2));
       }
       return;
     }
@@ -209,22 +220,22 @@ export async function extractMonthlySpecialsData(page, selectors) {
     const slideIndex = await rootElement.$eval('[data-slide-index]', (el) => el.getAttribute('data-slide-index'))
       .catch(() => null)
       || (fallbackIndex ? String(fallbackIndex) : null);
-    console.log(`  Slide index: ${slideIndex} `);
+    logPslp(`  Slide index: ${slideIndex} `);
 
     for (const cardElement of productCards) {
       await extractCardData(cardElement, slideIndex);
     }
   };
 
-  console.log(`Looking for slides with selector: ${slideSelector} `);
+  logPslp(`Looking for slides with selector: ${slideSelector} `);
   const slides = await page.$$(slideSelector);
-  console.log(`Found ${slides.length} total slides`);
+  logPslp(`Found ${slides.length} total slides`);
 
   // Log slide visibility
   for (let i = 0; i < slides.length; i++) {
     const isVisible = await slides[i].isVisible().catch(() => false);
     const ariaHidden = await slides[i].getAttribute('aria-hidden');
-    console.log(`  Slide ${i + 1}: aria - hidden="${ariaHidden}", isVisible = ${isVisible} `);
+    logPslp(`  Slide ${i + 1}: aria - hidden="${ariaHidden}", isVisible = ${isVisible} `);
   }
 
   // Check if stacking CSS is applied (all slides visible)
@@ -232,13 +243,13 @@ export async function extractMonthlySpecialsData(page, selectors) {
     const stackingStyle = document.getElementById('pslp-carousel-stack');
     return stackingStyle !== null;
   });
-  console.log(`Stacking CSS applied: ${isStacked} `);
+  logPslp(`Stacking CSS applied: ${isStacked} `);
 
   const dots = await page.$$(dotSelector);
-  console.log(`Found ${dots.length} dots using selector: ${dotSelector}`);
+  logPslp(`Found ${dots.length} dots using selector: ${dotSelector}`);
 
   if (dots.length > 0) {
-    console.log(`Processing ${dots.length} dots to render each slide`);
+    logPslp(`Processing ${dots.length} dots to render each slide`);
     for (let i = 0; i < dots.length; i++) {
       const dot = dots[i];
       const dotMeta = await dot.evaluate((el) => ({
@@ -248,14 +259,14 @@ export async function extractMonthlySpecialsData(page, selectors) {
         dataActive: el.getAttribute('data-active'),
         className: el.className || ''
       })).catch(() => ({}));
-      console.log(`Clicking dot ${i + 1}/${dots.length}`, JSON.stringify(dotMeta));
+      logPslp(`Clicking dot ${i + 1}/${dots.length}`, JSON.stringify(dotMeta));
 
       await dot.evaluate((el) => el.click()).catch(() => { });
       await page.waitForTimeout(700);
 
       const activeSlide = await page.$(`${slideSelector}[aria-hidden="false"]`);
       if (!activeSlide) {
-        console.log(`  No active slide found after clicking dot ${i + 1}`);
+        logPslp(`  No active slide found after clicking dot ${i + 1}`);
         continue;
       }
 
@@ -266,20 +277,20 @@ export async function extractMonthlySpecialsData(page, selectors) {
         dataTestId: el.getAttribute('data-testid'),
         htmlSnippet: el.outerHTML ? el.outerHTML.slice(0, 200) : null
       })).catch(() => ({}));
-      console.log(`  Active slide after click`, JSON.stringify(activeMeta));
+      logPslp(`  Active slide after click`, JSON.stringify(activeMeta));
 
       const fallbackIndex = dotMeta.dataIndex ? String(Number(dotMeta.dataIndex) + 1) : String(i + 1);
       await collectCards(activeSlide, fallbackIndex);
     }
   } else if (slides.length > 0) {
-    console.log('No dots found; processing slides directly');
+    logPslp('No dots found; processing slides directly');
     for (let i = 0; i < slides.length; i++) {
       await collectCards(slides[i], i + 1);
     }
   }
 
-  console.log(`Extracted ${monthlySpecialsData.length} monthly specials products total`);
-  console.log('========================================');
+  logPslp(`Extracted ${monthlySpecialsData.length} monthly specials products total`);
+  logPslp('========================================');
   return monthlySpecialsData;
 }
 
