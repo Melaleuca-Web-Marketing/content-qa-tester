@@ -1,6 +1,6 @@
 // banner-processor.js - Playwright Banner processing engine
 
-import { BaseProcessor, log } from './base-processor.js';
+import { BaseProcessor, log, summarizeOptions } from './base-processor.js';
 import { config, buildBannerUrl } from '../config.js';
 import { detectImageLocale } from '../utils/image-utils.js';
 import { MEMORY } from '../utils/constants.js';
@@ -1096,7 +1096,7 @@ export class BannerProcessor extends BaseProcessor {
     log('info', '========================================');
     log('info', 'STARTING BANNER CAPTURE PROCESS');
     log('info', '========================================');
-    log('info', 'Options received', options);
+    log('info', 'Options received', summarizeOptions(options));
 
     if (this.isRunning) {
       log('error', 'Capture already in progress');

@@ -3,33 +3,46 @@
 import { chromium } from 'playwright';
 import { EventEmitter } from 'events';
 import { TIMEOUTS } from '../utils/constants.js';
+import { log, redact } from '../utils/logger.js';
 
-// Logging helper
-const LOG_LEVELS = {
-  error: 0,
-  warn: 1,
-  info: 2,
-  debug: 3
-};
+export { log };
 
-function shouldLog(level) {
-  const currentRaw = process.env.TESTER_LOG_LEVEL || process.env.LOG_LEVEL || 'info';
-  const current = String(currentRaw).toLowerCase();
-  const normalized = String(level || 'info').toLowerCase();
-  const currentLevel = LOG_LEVELS[current] ?? LOG_LEVELS.info;
-  const messageLevel = LOG_LEVELS[normalized] ?? LOG_LEVELS.info;
-  return messageLevel <= currentLevel;
+function sanitizeOptions(options) {
+  if (!options || typeof options !== 'object') return options;
+  const sanitized = redact(options);
+  if (sanitized.excelValidation && typeof sanitized.excelValidation === 'object') {
+    const dataCount = Array.isArray(sanitized.excelValidation.data) ? sanitized.excelValidation.data.length : null;
+    sanitized.excelValidation = {
+      ...sanitized.excelValidation,
+      data: undefined,
+      dataCount
+    };
+  }
+  return sanitized;
 }
 
-export function log(level, message, data = null) {
-  if (!shouldLog(level)) return;
-  const timestamp = new Date().toISOString();
-  const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
-  if (data) {
-    console.log(`${prefix} ${message}`, JSON.stringify(data, null, 2));
-  } else {
-    console.log(`${prefix} ${message}`);
-  }
+export function summarizeOptions(options) {
+  if (!options || typeof options !== 'object') return options;
+  const culturesCount = Array.isArray(options.cultures)
+    ? options.cultures.length
+    : (options.culture ? 1 : 0);
+  const widthsCount = Array.isArray(options.widths) ? options.widths.length : null;
+  const categoriesCount = Array.isArray(options.categories) ? options.categories.length : null;
+  const skuCount = Array.isArray(options.skus) ? options.skus.length : null;
+  const excelValidationCount = Array.isArray(options.excelValidation?.data)
+    ? options.excelValidation.data.length
+    : null;
+
+  return {
+    environment: options.environment || null,
+    region: options.region || null,
+    culturesCount,
+    widthsCount,
+    categoriesCount,
+    skuCount,
+    loginEnabled: options.loginEnabled === true,
+    excelValidationCount
+  };
 }
 
 export class BaseProcessor extends EventEmitter {
@@ -665,10 +678,11 @@ export class BaseProcessor extends EventEmitter {
 
   // Get current status
   getStatus() {
+    const resultsCount = Array.isArray(this.results) ? this.results.length : 0;
     return {
       isRunning: this.isRunning,
-      resultsCount: this.results.length,
-      options: this.currentOptions,
+      resultsCount,
+      options: sanitizeOptions(this.currentOptions),
       statusType: this.currentStatusType,
       message: this.currentStatusMessage,
       progress: this.currentProgress, // Include current progress for dashboard polling

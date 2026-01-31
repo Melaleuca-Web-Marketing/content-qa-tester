@@ -1,6 +1,6 @@
 // sku-processor.js - Playwright SKU processing engine
 
-import { BaseProcessor, log } from './base-processor.js';
+import { BaseProcessor, log, summarizeOptions } from './base-processor.js';
 import { config, buildPdpUrl } from '../config.js';
 import { getSingleton } from '../utils/singleton.js';
 
@@ -789,7 +789,7 @@ export class SkuProcessor extends BaseProcessor {
     log('info', '========================================');
     log('info', 'STARTING SKU CAPTURE PROCESS');
     log('info', '========================================');
-    log('info', 'Options received', options);
+    log('info', 'Options received', summarizeOptions(options));
 
     if (this.isRunning) {
       log('error', 'Capture already in progress');

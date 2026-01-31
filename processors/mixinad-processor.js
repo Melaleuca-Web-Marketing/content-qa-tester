@@ -1,6 +1,6 @@
 // mixinad-processor.js - Playwright Mix-In Ad processing engine
 
-import { BaseProcessor, log } from './base-processor.js';
+import { BaseProcessor, log, summarizeOptions } from './base-processor.js';
 import { config, buildBannerUrl } from '../config.js';
 import { detectImageLocale } from '../utils/image-utils.js';
 import { MEMORY } from '../utils/constants.js';
@@ -754,7 +754,7 @@ export class MixInAdProcessor extends BaseProcessor {
         log('info', '========================================');
         log('info', 'STARTING MIX-IN AD CAPTURE PROCESS');
         log('info', '========================================');
-        log('info', 'Options received', options);
+        log('info', 'Options received', summarizeOptions(options));
 
         if (this.isRunning) {
             log('error', 'Capture already in progress');

@@ -1,6 +1,6 @@
 // pslp-processor.js - PSLP (Product Store Landing Page) testing engine
 
-import { BaseProcessor, log } from './base-processor.js';
+import { BaseProcessor, log, summarizeOptions } from './base-processor.js';
 import { config, getBaseUrl, buildPslpUrl, validatePslpConfig } from '../config.js';
 import { SCREEN } from '../utils/constants.js';
 import { getSingleton } from '../utils/singleton.js';
@@ -37,14 +37,10 @@ export class PSLPProcessor extends BaseProcessor {
   }
 
   getStatus() {
+    const baseStatus = super.getStatus();
     return {
-      isRunning: this.isRunning,
-      resultsCount: Array.isArray(this.activityResults) ? this.activityResults.length : 0,
-      options: this.currentOptions,
-      statusType: this.currentStatusType,
-      message: this.currentStatusMessage,
-      progress: this.currentProgress,
-      startedAt: this.startedAt
+      ...baseStatus,
+      resultsCount: Array.isArray(this.activityResults) ? this.activityResults.length : 0
     };
   }
 
@@ -52,7 +48,7 @@ export class PSLPProcessor extends BaseProcessor {
     log('info', '========================================');
     log('info', 'STARTING PSLP TEST PROCESS');
     log('info', '========================================');
-    log('info', 'Options received', options);
+    log('info', 'Options received', summarizeOptions(options));
 
     if (this.isRunning) {
       log('error', 'Test already in progress');

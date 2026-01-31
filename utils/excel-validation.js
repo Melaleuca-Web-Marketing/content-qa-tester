@@ -1,6 +1,7 @@
 // excel-validation.js - Backend Excel Validation Utility for Reports
 
 import { config } from '../config.js';
+import { redact } from './logger.js';
 
 const LOG_LEVELS = {
   error: 0,
@@ -24,7 +25,7 @@ function shouldLogExcel(level) {
 function logExcel(level, message, data = null) {
   if (!shouldLogExcel(level)) return;
   if (data) {
-    console.log(`${message}`, JSON.stringify(data, null, 2));
+    console.log(`${message}`, JSON.stringify(redact(data), null, 2));
   } else {
     console.log(message);
   }
