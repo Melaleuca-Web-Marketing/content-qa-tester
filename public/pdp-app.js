@@ -46,6 +46,10 @@ const selectAllCulturesBtn = document.getElementById('select-all-cultures');
 const deselectAllCulturesBtn = document.getElementById('deselect-all-cultures');
 const usernameInput = document.getElementById('username-input');
 const passwordInput = document.getElementById('password-input');
+const loginFields = document.getElementById('login-fields');
+if (loginFields && loginFields.tagName === 'FORM') {
+  loginFields.addEventListener('submit', (event) => event.preventDefault());
+}
 const skuInput = document.getElementById('sku-input');
 const skuCount = document.getElementById('sku-count');
 const clearSkusBtn = document.getElementById('clear-skus');
@@ -382,9 +386,6 @@ function applySavedCredentials() {
   if (entry.username !== null && entry.username !== undefined) {
     usernameInput.value = entry.username || '';
   }
-  if (entry.password !== null && entry.password !== undefined) {
-    passwordInput.value = entry.password || '';
-  }
 }
 
 function parseSkus(input) {
@@ -407,8 +408,7 @@ function savePreferences() {
     cultures: getSelectedCultures(),
     widths: getSelectedWidths(),
     skus: skuInput.value,
-    username: usernameInput.value.trim() || null,
-    password: passwordInput.value || null
+    username: usernameInput.value.trim() || null
   };
   localStorage.setItem('pdpTesterPrefs', JSON.stringify(prefs));
 }
@@ -417,6 +417,10 @@ function loadPreferences() {
   try {
     const prefs = JSON.parse(localStorage.getItem('pdpTesterPrefs'));
     if (prefs) {
+      if (Object.prototype.hasOwnProperty.call(prefs, 'password')) {
+        delete prefs.password;
+        localStorage.setItem('pdpTesterPrefs', JSON.stringify(prefs));
+      }
       if (prefs.environment) envSelect.value = prefs.environment;
       if (prefs.region) {
         regionSelect.value = prefs.region;
@@ -444,7 +448,6 @@ function loadPreferences() {
       }
       if (prefs.skus) skuInput.value = prefs.skus;
       if (prefs.username) usernameInput.value = prefs.username;
-      if (prefs.password) passwordInput.value = prefs.password;
       updateSkuCount();
     }
   } catch (e) {

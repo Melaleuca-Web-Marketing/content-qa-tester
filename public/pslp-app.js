@@ -60,6 +60,10 @@ const selectAllCulturesBtn = document.getElementById('select-all-cultures');
 const deselectAllCulturesBtn = document.getElementById('deselect-all-cultures');
 const usernameInput = document.getElementById('username-input');
 const passwordInput = document.getElementById('password-input');
+const loginFields = document.getElementById('login-fields');
+if (loginFields && loginFields.tagName === 'FORM') {
+  loginFields.addEventListener('submit', (event) => event.preventDefault());
+}
 const widthOptions = document.getElementById('width-options');
 const componentsGrid = document.getElementById('components-grid');
 const componentCount = document.getElementById('component-count');
@@ -516,9 +520,6 @@ function applySavedCredentials() {
   if (entry.username !== null && entry.username !== undefined) {
     usernameInput.value = entry.username || '';
   }
-  if (entry.password !== null && entry.password !== undefined) {
-    passwordInput.value = entry.password || '';
-  }
 }
 
 function renderWidthOptions() {
@@ -574,8 +575,7 @@ function savePreferences() {
     cultures,
     widths: getSelectedWidths(),
     components: getSelectedComponents(),
-    username: usernameInput.value.trim() || null,
-    password: passwordInput.value || null
+    username: usernameInput.value.trim() || null
   };
   localStorage.setItem('pslpTesterPrefs', JSON.stringify(prefs));
 }
@@ -584,6 +584,10 @@ function loadPreferences() {
   try {
     const prefs = JSON.parse(localStorage.getItem('pslpTesterPrefs'));
     if (prefs) {
+      if (Object.prototype.hasOwnProperty.call(prefs, 'password')) {
+        delete prefs.password;
+        localStorage.setItem('pslpTesterPrefs', JSON.stringify(prefs));
+      }
       if (prefs.environment) envSelect.value = prefs.environment;
       const selectedCultures = Array.isArray(prefs.cultures)
         ? prefs.cultures
@@ -616,7 +620,6 @@ function loadPreferences() {
         });
       }
       if (prefs.username) usernameInput.value = prefs.username;
-      if (prefs.password) passwordInput.value = prefs.password;
       updateComponentCount();
     }
   } catch (e) {

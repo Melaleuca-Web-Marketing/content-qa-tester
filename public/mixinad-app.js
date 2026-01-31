@@ -62,6 +62,9 @@ const cultureOptions = document.getElementById('culture-options');
 const loginToggle = document.getElementById('login-toggle');
 const loginSection = document.getElementById('login-section');
 const loginFields = document.getElementById('login-fields');
+if (loginFields && loginFields.tagName === 'FORM') {
+  loginFields.addEventListener('submit', (event) => event.preventDefault());
+}
 const usernameInput = document.getElementById('username-input');
 const passwordInput = document.getElementById('password-input');
 const widthOptions = document.getElementById('width-options');
@@ -700,9 +703,6 @@ function applySavedCredentials() {
   if (entry.username !== null && entry.username !== undefined) {
     usernameInput.value = entry.username || '';
   }
-  if (entry.password !== null && entry.password !== undefined) {
-    passwordInput.value = entry.password || '';
-  }
 }
 
 function getSelectedWidths() {
@@ -721,8 +721,7 @@ function savePreferences() {
     widths: getSelectedWidths(),
     categories: getSelectedCategories(),
     loginEnabled: loginToggle ? loginToggle.checked : false,
-    username: usernameInput ? usernameInput.value.trim() || null : null,
-    password: passwordInput ? passwordInput.value || null : null
+    username: usernameInput ? usernameInput.value.trim() || null : null
   };
   localStorage.setItem('mixinadTesterPrefs', JSON.stringify(prefs));
 }
@@ -731,6 +730,10 @@ function loadPreferences() {
   try {
     const prefs = JSON.parse(localStorage.getItem('mixinadTesterPrefs'));
     if (prefs) {
+      if (Object.prototype.hasOwnProperty.call(prefs, 'password')) {
+        delete prefs.password;
+        localStorage.setItem('mixinadTesterPrefs', JSON.stringify(prefs));
+      }
       if (prefs.environment) envSelect.value = prefs.environment;
       if (loginToggle && typeof prefs.loginEnabled === 'boolean') {
         loginToggle.checked = prefs.loginEnabled;
@@ -758,7 +761,6 @@ function loadPreferences() {
         });
       }
       if (prefs.username && usernameInput) usernameInput.value = prefs.username;
-      if (prefs.password && passwordInput) passwordInput.value = prefs.password;
     }
   } catch (e) {
     console.debug('Could not load preferences:', e);

@@ -7,7 +7,11 @@
     const base = { entries: {} };
     if (!raw || typeof raw !== 'object') return base;
     if (raw.entries && typeof raw.entries === 'object') {
-      base.entries = raw.entries;
+      Object.entries(raw.entries).forEach(([key, entry]) => {
+        base.entries[key] = {
+          username: entry && entry.username ? entry.username : null
+        };
+      });
     }
     // Note: envSignIn storage removed for security - users must manually sign in to Stage/UAT
     return base;
@@ -18,7 +22,20 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return normalizeStore(null);
       const parsed = JSON.parse(raw);
-      return normalizeStore(parsed);
+      const normalized = normalizeStore(parsed);
+      // Strip any stored passwords from prior versions
+      if (parsed && parsed.entries && typeof parsed.entries === 'object') {
+        let hadPassword = false;
+        Object.values(parsed.entries).forEach((entry) => {
+          if (entry && entry.password) {
+            hadPassword = true;
+          }
+        });
+        if (hadPassword) {
+          writeStore(normalized);
+        }
+      }
+      return normalized;
     } catch (e) {
       return normalizeStore(null);
     }
@@ -42,8 +59,7 @@
     if (!environment || !culture) return;
     const store = readStore();
     store.entries[makeKey(environment, culture)] = {
-      username: entry.username || null,
-      password: entry.password || null
+      username: entry.username || null
     };
     writeStore(store);
   }
@@ -63,7 +79,7 @@
         key,
         environment,
         culture,
-        ...entry
+        username: entry.username || null
       };
     });
   }

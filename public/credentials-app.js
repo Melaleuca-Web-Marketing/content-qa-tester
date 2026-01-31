@@ -12,6 +12,10 @@ const envSelect = document.getElementById('cred-env');
 const cultureSelect = document.getElementById('cred-culture');
 const loginUsernameInput = document.getElementById('login-username-input');
 const loginPasswordInput = document.getElementById('login-password-input');
+const credentialsForm = document.getElementById('credentials-login-form');
+if (credentialsForm && credentialsForm.tagName === 'FORM') {
+  credentialsForm.addEventListener('submit', (event) => event.preventDefault());
+}
 const saveBtn = document.getElementById('save-credentials');
 const clearBtn = document.getElementById('clear-credentials');
 const deleteBtn = document.getElementById('delete-credentials');
@@ -181,10 +185,17 @@ function setupEventListeners() {
   const passwordToggleBtn = document.querySelector('.password-toggle-btn');
 
   if (passwordToggleBtn && passwordInput) {
+    const updatePasswordToggle = () => {
+      const isVisible = passwordInput.type === 'text';
+      passwordToggleBtn.classList.toggle('is-visible', isVisible);
+      passwordToggleBtn.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+    };
+
+    updatePasswordToggle();
     passwordToggleBtn.addEventListener('click', () => {
       const isPassword = passwordInput.type === 'password';
       passwordInput.type = isPassword ? 'text' : 'password';
-      passwordToggleBtn.querySelector('.eye-icon').textContent = isPassword ? '🙈' : '👁️';
+      updatePasswordToggle();
     });
   }
 }
@@ -204,7 +215,7 @@ function loadSelectedEntry(preferredCulture) {
   activeStoredCulture = result.culture;
   const entry = result.entry;
   loginUsernameInput.value = entry.username || '';
-  loginPasswordInput.value = entry.password || '';
+  loginPasswordInput.value = '';
 }
 
 function saveCredentials() {
@@ -213,16 +224,10 @@ function saveCredentials() {
   const environment = envSelect.value;
   const selectedCulture = cultureSelect.value;
   const username = loginUsernameInput.value.trim();
-  const password = loginPasswordInput.value;
-  const hasLogin = username || password;
-
-  if (hasLogin && (!username || !password)) {
-    setStatus('Provide both login username and password.', true);
-    return;
-  }
+  const hasLogin = !!username;
 
   if (!hasLogin) {
-    setStatus('Enter credentials to save.', true);
+    setStatus('Enter a username to save.', true);
     return;
   }
 
@@ -231,10 +236,7 @@ function saveCredentials() {
     return;
   }
 
-  window.CredentialStore?.setEntry(environment, selectedCulture, {
-    username,
-    password
-  });
+  window.CredentialStore?.setEntry(environment, selectedCulture, { username });
 
   if (activeStoredCulture && activeStoredCulture !== selectedCulture) {
     const activeCanonical = getCanonicalCulture(activeStoredCulture);
@@ -245,7 +247,7 @@ function saveCredentials() {
 
   activeStoredCulture = selectedCulture;
   renderSavedEntries();
-  setStatus('Login credentials saved.');
+  setStatus('Login username saved. Passwords are not stored.');
 }
 
 function deleteCredentials() {
@@ -359,3 +361,4 @@ function escapeHtml(str) {
 }
 
 init();
+
