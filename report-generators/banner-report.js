@@ -82,6 +82,17 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
   });
 
   const groups = Object.values(groupedItems);
+  const failedItems = groups
+    .map((group, index) => {
+      if (!group.validation || group.validation.status !== 'fail') return null;
+      const categoryPath = group.mainCategory ? `${group.mainCategory} > ${group.category}` : group.category;
+      return {
+        id: `banner-${index + 1}`,
+        label: `${String(group.culture || '').toUpperCase()} - ${categoryPath}`
+      };
+    })
+    .filter(Boolean);
+  const hasValidationFailures = failedItems.length > 0;
   if (excelValidation && excelValidation.enabled && excelValidation.data) {
     validationSummary = buildGroupValidationSummary(groups);
     console.log('[Banner Report] Validation complete. Summary:', validationSummary);
@@ -99,7 +110,7 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Banner Test Report - ${new Date(timestamp).toLocaleString()}</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg-primary:${isDark ? '#0f172a' : '#f0f2f5'};--bg-card:${isDark ? '#1e293b' : 'white'};--bg-card-header:${isDark ? '#334155' : '#f8fafc'};--bg-screenshot:${isDark ? '#334155' : '#f8fafc'};--text-primary:${isDark ? '#f1f5f9' : '#1a1a2e'};--text-secondary:${isDark ? '#94a3b8' : '#64748b'};--text-heading:${isDark ? '#f8fafc' : '#1e293b'};--border-color:${isDark ? '#475569' : '#e2e8f0'};--border-light:${isDark ? '#334155' : '#f1f5f9'};--mono-bg:${isDark ? '#475569' : '#f1f5f9'}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg-primary);color:var(--text-primary);line-height:1.6;padding:20px}.container{max-width:1400px;margin:0 auto}.header{background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:#fff;padding:30px 40px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(59,130,246,.3)}.header h1{font-size:28px;font-weight:700;margin-bottom:12px}.header-meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;opacity:.95}.header-meta span{display:flex;align-items:center;gap:6px}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}.summary-card{background:var(--bg-card);padding:12px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'});text-align:center}.summary-card h3{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.summary-card .value{font-size:18px;font-weight:700}.summary-card .value.total{color:#3b82f6}.summary-card .value.success{color:#10b981}.summary-card .value.error{color:#ef4444}.summary-card .value.time{color:#8b5cf6;font-size:14px}.banner-card{background:var(--bg-card);border-radius:16px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'})}.banner-header{padding:20px 24px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}.banner-header h2{font-size:20px;font-weight:600;color:var(--text-heading)}.banner-header .culture-badge{background:#dbeafe;color:#1d4ed8;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:600}.status-badge{padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.status-badge.success{background:#d1fae5;color:#059669}.status-badge.error{background:#fee2e2;color:#dc2626}.status-badge.partial{background:#fef3c7;color:#d97706}.banner-body{padding:24px}.error-message{background:${isDark ? '#3b1f1f' : '#fef2f2'};border:1px solid ${isDark ? '#7f1d1d' : '#fecaca'};color:${isDark ? '#f87171' : '#dc2626'};padding:16px 20px;border-radius:10px;margin-bottom:20px;font-weight:500}.banner-info{margin-bottom:24px}.banner-info table{width:100%;border-collapse:collapse}.banner-info th,.banner-info td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--border-light)}.banner-info th{width:130px;color:var(--text-secondary);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.3px}.banner-info td{color:var(--text-heading)}.banner-info td a{color:#3b82f6;text-decoration:none;word-break:break-all}.banner-info td a:hover{text-decoration:underline}.banner-info .mono{font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;background:var(--mono-bg);padding:2px 6px;border-radius:4px}.btn-copy{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(59,130,246,.3)}.btn-copy:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(59,130,246,.4)}.btn-copy:active{transform:translateY(0)}.btn-copy.copied{background:linear-gradient(135deg,#10b981 0%,#059669 100%)}.screenshots-section{border-top:1px solid var(--border-color);padding-top:24px}.screenshots-section h3{font-size:14px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}.screenshots-stack{display:flex;flex-direction:column;gap:20px}.screenshot-item{background:var(--bg-screenshot);border:1px solid var(--border-color);border-radius:12px;overflow:hidden}.screenshot-item.size-mobile{width:33.333%}.screenshot-item.size-tablet{width:66.666%}.screenshot-item.size-desktop{width:100%}.screenshot-item.error{border-color:${isDark ? '#7f1d1d' : '#fecaca'};background:${isDark ? '#3b1f1f' : '#fef2f2'}}.screenshot-header{padding:12px 16px;background:var(--bg-card);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center}.screenshot-item.error .screenshot-header{background:${isDark ? '#3b1f1f' : '#fef2f2'};border-bottom-color:${isDark ? '#7f1d1d' : '#fecaca'}}.screenshot-width{font-size:14px;font-weight:600;color:var(--text-heading)}.screenshot-error{padding:20px 16px;color:${isDark ? '#f87171' : '#dc2626'};font-size:13px;text-align:center}.screenshot-image{padding:12px}.screenshot-image img{width:100%;border-radius:8px;display:block}.footer{text-align:center;padding:24px;color:var(--text-secondary);font-size:13px}@media(max-width:768px){.header{padding:24px}.header h1{font-size:24px}.header-meta{gap:12px}.banner-header{flex-direction:column;align-items:flex-start}.screenshot-item.size-mobile,.screenshot-item.size-tablet{width:100%}}</style>
+  <style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg-primary:${isDark ? '#0f172a' : '#f0f2f5'};--bg-card:${isDark ? '#1e293b' : 'white'};--bg-card-header:${isDark ? '#334155' : '#f8fafc'};--bg-screenshot:${isDark ? '#334155' : '#f8fafc'};--text-primary:${isDark ? '#f1f5f9' : '#1a1a2e'};--text-secondary:${isDark ? '#94a3b8' : '#64748b'};--text-heading:${isDark ? '#f8fafc' : '#1e293b'};--border-color:${isDark ? '#475569' : '#e2e8f0'};--border-light:${isDark ? '#334155' : '#f1f5f9'};--mono-bg:${isDark ? '#475569' : '#f1f5f9'}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg-primary);color:var(--text-primary);line-height:1.6;padding:20px}.container{max-width:1400px;margin:0 auto}.header{background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:#fff;padding:30px 40px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(59,130,246,.3)}.header h1{font-size:28px;font-weight:700;margin-bottom:12px}.header-meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;opacity:.95}.header-meta span{display:flex;align-items:center;gap:6px}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}.summary-card{background:var(--bg-card);padding:12px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'});text-align:center}.summary-card h3{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.summary-card .value{font-size:18px;font-weight:700}.summary-card .value.total{color:#3b82f6}.summary-card .value.success{color:#10b981}.summary-card .value.error{color:#ef4444}.summary-card .value.time{color:#8b5cf6;font-size:14px}.summary-card.summary-action{border:2px solid #ef4444;background:var(--bg-card);cursor:pointer;transition:transform .1s,box-shadow .2s}.summary-card.summary-action:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(239,68,68,.2)}.summary-card.summary-action:focus{outline:2px solid #ef4444;outline-offset:2px}.summary-action-note{font-size:11px;color:var(--text-secondary)}.banner-card{background:var(--bg-card);border-radius:16px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'})}.banner-header{padding:20px 24px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}.banner-header h2{font-size:20px;font-weight:600;color:var(--text-heading)}.banner-header .culture-badge{background:#dbeafe;color:#1d4ed8;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:600}.status-badge{padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.status-badge.success{background:#d1fae5;color:#059669}.status-badge.error{background:#fee2e2;color:#dc2626}.status-badge.partial{background:#fef3c7;color:#d97706}.banner-body{padding:24px}.error-message{background:${isDark ? '#3b1f1f' : '#fef2f2'};border:1px solid ${isDark ? '#7f1d1d' : '#fecaca'};color:${isDark ? '#f87171' : '#dc2626'};padding:16px 20px;border-radius:10px;margin-bottom:20px;font-weight:500}.banner-info{margin-bottom:24px}.banner-info table{width:100%;border-collapse:collapse}.banner-info th,.banner-info td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--border-light)}.banner-info th{width:130px;color:var(--text-secondary);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.3px}.banner-info td{color:var(--text-heading)}.banner-info td a{color:#3b82f6;text-decoration:none;word-break:break-all}.banner-info td a:hover{text-decoration:underline}.banner-info .mono{font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;background:var(--mono-bg);padding:2px 6px;border-radius:4px}.btn-copy{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(59,130,246,.3)}.btn-copy:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(59,130,246,.4)}.btn-copy:active{transform:translateY(0)}.btn-copy.copied{background:linear-gradient(135deg,#10b981 0%,#059669 100%)}.screenshots-section{border-top:1px solid var(--border-color);padding-top:24px}.screenshots-section h3{font-size:14px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}.screenshots-stack{display:flex;flex-direction:column;gap:20px}.screenshot-item{background:var(--bg-screenshot);border:1px solid var(--border-color);border-radius:12px;overflow:hidden}.screenshot-item.size-mobile{width:33.333%}.screenshot-item.size-tablet{width:66.666%}.screenshot-item.size-desktop{width:100%}.screenshot-item.error{border-color:${isDark ? '#7f1d1d' : '#fecaca'};background:${isDark ? '#3b1f1f' : '#fef2f2'}}.screenshot-header{padding:12px 16px;background:var(--bg-card);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center}.screenshot-item.error .screenshot-header{background:${isDark ? '#3b1f1f' : '#fef2f2'};border-bottom-color:${isDark ? '#7f1d1d' : '#fecaca'}}.screenshot-width{font-size:14px;font-weight:600;color:var(--text-heading)}.screenshot-error{padding:20px 16px;color:${isDark ? '#f87171' : '#dc2626'};font-size:13px;text-align:center}.screenshot-image{padding:12px}.screenshot-image img{width:100%;border-radius:8px;display:block}.validation-panel{position:fixed;top:16px;right:16px;width:300px;max-height:60vh;background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:none;z-index:1000}.validation-panel.show{display:block}.validation-panel-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border-color);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary)}.validation-panel-close{background:none;border:none;color:var(--text-secondary);font-size:16px;cursor:pointer}.validation-panel-list{list-style:none;margin:0;padding:8px 12px;max-height:calc(60vh - 44px);overflow:auto;display:flex;flex-direction:column;gap:6px}.validation-panel-list a{color:#3b82f6;text-decoration:none;font-size:12px}.validation-panel-list a:hover{text-decoration:underline}.anchor-target{scroll-margin-top:120px}.back-to-top{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;border:none;padding:10px 16px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.3);opacity:0;pointer-events:none;transition:opacity .2s ease}.back-to-top.show{opacity:1;pointer-events:auto}.footer{text-align:center;padding:24px;color:var(--text-secondary);font-size:13px}@media(max-width:768px){.header{padding:24px}.header h1{font-size:24px}.header-meta{gap:12px}.banner-header{flex-direction:column;align-items:flex-start}.screenshot-item.size-mobile,.screenshot-item.size-tablet{width:100%}.validation-panel{left:16px;right:16px;width:auto}}</style>
 </head>
 <body>
   <div class="container">
@@ -135,10 +146,18 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
         <h3 style="color: #10b981;">Validation Passed</h3>
         <div class="value success">${validationSummary.passed}</div>
       </div>
+      ${validationSummary.failed > 0 ? `
+      <button class="summary-card summary-action" id="open-validation-panel" type="button">
+        <h3 style="color: #ef4444;">Validation Failed</h3>
+        <div class="value error">${validationSummary.failed}</div>
+        <div class="summary-action-note">Review failed items</div>
+      </button>
+      ` : `
       <div class="summary-card" style="border: 2px solid #ef4444;">
         <h3 style="color: #ef4444;">Validation Failed</h3>
         <div class="value error">${validationSummary.failed}</div>
       </div>
+      `}
       <div class="summary-card" style="border: 2px solid #f59e0b;">
         <h3 style="color: #f59e0b;">Not Found in Excel</h3>
         <div class="value" style="color: #f59e0b;">${validationSummary.notFound}</div>
@@ -150,6 +169,18 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
       ` : ''}
     </div>
 
+    ${hasValidationFailures ? `
+    <div class="validation-panel" id="validation-panel" aria-hidden="true">
+      <div class="validation-panel-header">
+        <span>Failed Items (${failedItems.length})</span>
+        <button class="validation-panel-close" id="validation-panel-close" type="button" aria-label="Close">X</button>
+      </div>
+      <ul class="validation-panel-list">
+        ${failedItems.map((item) => `<li><a href="#${item.id}">${escapeHtml(item.label)}</a></li>`).join('')}
+      </ul>
+    </div>
+    ` : ''}
+
     ${groups.map((group, groupIdx) => {
     const allErrors = group.items.every(i => i.error);
     const hasErrors = group.items.some(i => i.error) || isValidationFailure(group.validation);
@@ -157,9 +188,10 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
     const statusText = allErrors ? 'Failed' : hasErrors ? 'Partial' : 'Success';
     const targetText = group.target && group.target.toLowerCase() === '_blank' ? 'New Tab' : 'Same Tab';
     const linkDisplay = stripDomain(group.href);
+    const anchorId = `banner-${groupIdx + 1}`;
 
     return `
-    <div class="banner-card">
+    <div class="banner-card anchor-target" id="${anchorId}">
       <div class="banner-header">
         <div>
           <h2>${escapeHtml(group.category)} ${group.mainCategory ? `<span style="color: var(--text-secondary); font-weight: 400;">(${escapeHtml(group.mainCategory)})</span>` : ''}</h2>
@@ -224,12 +256,6 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
               <th>Image Locale</th>
               <td>
                 ${escapeHtml(group.imageLocale)}
-                ${group.validation && group.validation.comparisons && group.validation.comparisons.imageLocale && !group.validation.comparisons.imageLocale.match ? `
-                <div style="margin-top: 8px; padding: 8px 12px; background: ${isDark ? '#3b1f1f' : '#fef2f2'}; border-radius: 6px;">
-                  <div style="font-size: 12px; color: ${isDark ? '#f87171' : '#dc2626'}; font-weight: 600;">Expected:</div>
-                  <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">${escapeHtml(group.validation.comparisons.imageLocale.expected)}</div>
-                </div>
-                ` : ''}
               </td>
             </tr>
             ` : ''}
@@ -284,6 +310,7 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
       Generated by Melaleuca Unified Tester
     </div>
   </div>
+  <button class="back-to-top" id="back-to-top" type="button">Top</button>
 
   <script>
     function canUseClipboardImage() {
@@ -413,6 +440,30 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
       } else {
         showError(button);
       }
+    }
+
+    const validationButton = document.getElementById('open-validation-panel');
+    const validationPanel = document.getElementById('validation-panel');
+    const validationClose = document.getElementById('validation-panel-close');
+    if (validationButton && validationPanel && validationClose) {
+      validationButton.addEventListener('click', () => {
+        validationPanel.classList.add('show');
+        validationPanel.setAttribute('aria-hidden', 'false');
+      });
+      validationClose.addEventListener('click', () => {
+        validationPanel.classList.remove('show');
+        validationPanel.setAttribute('aria-hidden', 'true');
+      });
+    }
+
+    const backToTop = document.getElementById('back-to-top');
+    if (backToTop) {
+      window.addEventListener('scroll', () => {
+        backToTop.classList.toggle('show', window.scrollY > 400);
+      });
+      backToTop.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
     }
   </script>
 </body>

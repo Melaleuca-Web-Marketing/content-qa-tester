@@ -21,6 +21,19 @@ export function generatePslpReport(results, duration, theme = 'dark', excelValid
     ? 'N/A'
     : (cultureList.length === 1 ? cultureList[0] : `Multiple (${cultureList.join(', ')})`);
   const showCultureLabel = runSummaries.length > 1;
+  const failedItems = [];
+  runSummaries.forEach((summary, summaryIndex) => {
+    const reports = Array.isArray(summary.componentReports) ? summary.componentReports : [];
+    reports.forEach((report, reportIndex) => {
+      const validationEntry = getComponentValidation(report.name, summary.validationContext);
+      if (hasValidationIssues(validationEntry)) {
+        const anchorId = `pslp-${summaryIndex + 1}-${reportIndex + 1}`;
+        const label = `${summary.cultureLabel || 'N/A'} - ${formatComponentName(report.name)}`;
+        failedItems.push({ id: anchorId, label });
+      }
+    });
+  });
+  const hasValidationFailures = failedItems.length > 0;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -28,7 +41,7 @@ export function generatePslpReport(results, duration, theme = 'dark', excelValid
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PSLP Test Report - ${new Date(timestamp).toLocaleString()}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg-primary:${isDark ? '#0f172a' : '#f0f2f5'};--bg-card:${isDark ? '#1e293b' : 'white'};--bg-card-header:${isDark ? '#334155' : '#f8fafc'};--bg-screenshot:${isDark ? '#334155' : '#f8fafc'};--text-primary:${isDark ? '#f1f5f9' : '#1a1a2e'};--text-secondary:${isDark ? '#94a3b8' : '#64748b'};--text-heading:${isDark ? '#f8fafc' : '#1e293b'};--border-color:${isDark ? '#475569' : '#e2e8f0'};--border-light:${isDark ? '#334155' : '#f1f5f9'}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg-primary);color:var(--text-primary);line-height:1.6;padding:20px}.container{max-width:1400px;margin:0 auto}.header{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;padding:30px 40px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(16,185,129,.3)}.header h1{font-size:28px;font-weight:700;margin-bottom:12px}.header-meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;opacity:.95}.header-meta span{display:flex;align-items:center;gap:6px}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}.summary-card{background:var(--bg-card);padding:12px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'});text-align:center}.summary-card h3{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.summary-card .value{font-size:16px;font-weight:700}.summary-card .value.passed{color:#10b981}.summary-card .value.failed{color:#ef4444}.summary-card .value.count{color:#3b82f6}.section{background:var(--bg-card);border-radius:16px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'})}.section-header{padding:20px 24px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color)}.section-header h2{font-size:20px;font-weight:600;color:var(--text-heading)}.section-body{padding:24px}.screenshot-stack{display:flex;flex-direction:column;gap:16px}.screenshot-item{border:1px solid var(--border-color);border-radius:12px;background:var(--bg-card);overflow:hidden}.screenshot-item.size-mobile{width:33.333%}.screenshot-item.size-tablet{width:66.666%}.screenshot-item.size-desktop{width:100%}.screenshot-item summary{padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;background:var(--bg-card-header);color:var(--text-heading)}.screenshot-item[open] summary{border-bottom:1px solid var(--border-color)}.screenshot-content{padding:16px;display:flex;justify-content:center}.screenshot-content img{width:100%;border-radius:8px;border:1px solid var(--border-color)}@media(max-width:900px){.screenshot-item.size-mobile,.screenshot-item.size-tablet{width:100%}}.component-card{border:1px solid var(--border-color);border-radius:12px;margin-bottom:20px;overflow:hidden}.component-header{padding:16px 20px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center}.component-header h3{font-size:16px;font-weight:600;color:var(--text-heading)}.component-body{padding:16px 20px}.status-pill{padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.status-pill.passed{background:#d1fae5;color:#059669}.status-pill.failed{background:#fee2e2;color:#dc2626}.data-table{width:100%;border-collapse:collapse;font-size:13px}.data-table th,.data-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border-light);vertical-align:top}.data-table th{width:160px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.4px}.validation-row td{background:var(--bg-card-header)}.validation-cell{display:flex;flex-direction:column;gap:6px;font-size:12px}.validation-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}.validation-badge.pass{background:#d1fae5;color:#059669}.validation-badge.fail{background:#fee2e2;color:#dc2626}.validation-badge.missing{background:#fef3c7;color:#b45309}.validation-badge.extra{background:#ede9fe;color:#7c3aed}.validation-detail{color:var(--text-secondary)}.validation-inline{margin-top:6px}.cell-stack{display:flex;flex-direction:column;gap:6px}.cell-stack img{max-width:180px;border-radius:8px;border:1px solid var(--border-color)}.url-link{color:#3b82f6;text-decoration:none;word-break:break-all}.url-link:hover{text-decoration:underline}.badge-list{display:flex;flex-wrap:wrap;gap:6px}.badge{background:${isDark ? '#475569' : '#e2e8f0'};color:${isDark ? '#e2e8f0' : '#475569'};padding:4px 10px;border-radius:999px;font-size:12px}.alt-text{color:var(--text-secondary);font-size:12px}.monthly-group{margin-bottom:16px}.monthly-group:last-child{margin-bottom:0}.monthly-group-header{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:8px}.monthly-group-title{font-size:13px;font-weight:600;color:var(--text-heading)}.monthly-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.monthly-card{border:1px solid var(--border-color);border-radius:12px;padding:12px;background:var(--bg-card-header)}.monthly-card img{width:64px;height:auto;border-radius:6px;border:1px solid var(--border-color);margin-bottom:8px}.monthly-sku{font-size:13px;font-weight:700;color:var(--text-heading);margin-bottom:6px}.monthly-name{font-size:12px;color:var(--text-secondary);margin-bottom:6px}.monthly-alt{font-size:11px;color:var(--text-secondary);margin-bottom:8px}@media(max-width:1100px){.monthly-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:720px){.monthly-grid{grid-template-columns:repeat(1,minmax(0,1fr))}}.featured-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.featured-card{border:1px solid var(--border-color);border-radius:12px;padding:12px;background:var(--bg-card-header);text-align:center}.featured-card img{width:50%;max-width:120px;height:auto;border-radius:8px;border:1px solid var(--border-color);margin:0 auto 8px;display:block}.featured-alt{font-size:11px;color:var(--text-secondary);margin-bottom:8px}.featured-card a{display:block;color:#3b82f6;font-size:12px;font-weight:600;text-decoration:none;word-break:break-word}.featured-card a:hover{text-decoration:underline}@media(max-width:1100px){.featured-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:720px){.featured-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}.back-to-top{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;border:none;padding:10px 16px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.3);opacity:0;pointer-events:none;transition:opacity .2s ease}.back-to-top.show{opacity:1;pointer-events:auto}.empty-state{color:var(--text-secondary);font-size:13px}.footer{text-align:center;padding:24px;color:var(--text-secondary);font-size:13px}</style>
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg-primary:${isDark ? '#0f172a' : '#f0f2f5'};--bg-card:${isDark ? '#1e293b' : 'white'};--bg-card-header:${isDark ? '#334155' : '#f8fafc'};--bg-screenshot:${isDark ? '#334155' : '#f8fafc'};--text-primary:${isDark ? '#f1f5f9' : '#1a1a2e'};--text-secondary:${isDark ? '#94a3b8' : '#64748b'};--text-heading:${isDark ? '#f8fafc' : '#1e293b'};--border-color:${isDark ? '#475569' : '#e2e8f0'};--border-light:${isDark ? '#334155' : '#f1f5f9'}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg-primary);color:var(--text-primary);line-height:1.6;padding:20px}.container{max-width:1400px;margin:0 auto}.header{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;padding:30px 40px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(16,185,129,.3)}.header h1{font-size:28px;font-weight:700;margin-bottom:12px}.header-meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;opacity:.95}.header-meta span{display:flex;align-items:center;gap:6px}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}.summary-card{background:var(--bg-card);padding:12px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'});text-align:center}.summary-card h3{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.summary-card .value{font-size:16px;font-weight:700}.summary-card .value.passed{color:#10b981}.summary-card .value.failed{color:#ef4444}.summary-card .value.count{color:#3b82f6}.summary-card.summary-action{border:2px solid #ef4444;background:var(--bg-card);cursor:pointer;transition:transform .1s,box-shadow .2s}.summary-card.summary-action:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(239,68,68,.2)}.summary-card.summary-action:focus{outline:2px solid #ef4444;outline-offset:2px}.summary-action-note{font-size:11px;color:var(--text-secondary)}.section{background:var(--bg-card);border-radius:16px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'})}.section-header{padding:20px 24px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color)}.section-header h2{font-size:20px;font-weight:600;color:var(--text-heading)}.section-body{padding:24px}.screenshot-stack{display:flex;flex-direction:column;gap:16px}.screenshot-item{border:1px solid var(--border-color);border-radius:12px;background:var(--bg-card);overflow:hidden}.screenshot-item.size-mobile{width:33.333%}.screenshot-item.size-tablet{width:66.666%}.screenshot-item.size-desktop{width:100%}.screenshot-item summary{padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;background:var(--bg-card-header);color:var(--text-heading)}.screenshot-item[open] summary{border-bottom:1px solid var(--border-color)}.screenshot-content{padding:16px;display:flex;justify-content:center}.screenshot-content img{width:100%;border-radius:8px;border:1px solid var(--border-color)}@media(max-width:900px){.screenshot-item.size-mobile,.screenshot-item.size-tablet{width:100%}}.component-card{border:1px solid var(--border-color);border-radius:12px;margin-bottom:20px;overflow:hidden}.component-header{padding:16px 20px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center}.component-header h3{font-size:16px;font-weight:600;color:var(--text-heading)}.component-body{padding:16px 20px}.status-pill{padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.status-pill.passed{background:#d1fae5;color:#059669}.status-pill.failed{background:#fee2e2;color:#dc2626}.data-table{width:100%;border-collapse:collapse;font-size:13px}.data-table th,.data-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border-light);vertical-align:top}.data-table th{width:160px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.4px}.validation-row td{background:var(--bg-card-header)}.validation-cell{display:flex;flex-direction:column;gap:6px;font-size:12px}.validation-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}.validation-badge.pass{background:#d1fae5;color:#059669}.validation-badge.fail{background:#fee2e2;color:#dc2626}.validation-badge.missing{background:#fef3c7;color:#b45309}.validation-badge.extra{background:#ede9fe;color:#7c3aed}.validation-detail{color:var(--text-secondary)}.validation-inline{margin-top:6px}.cell-stack{display:flex;flex-direction:column;gap:6px}.cell-stack img{max-width:180px;border-radius:8px;border:1px solid var(--border-color)}.url-link{color:#3b82f6;text-decoration:none;word-break:break-all}.url-link:hover{text-decoration:underline}.badge-list{display:flex;flex-wrap:wrap;gap:6px}.badge{background:${isDark ? '#475569' : '#e2e8f0'};color:${isDark ? '#e2e8f0' : '#475569'};padding:4px 10px;border-radius:999px;font-size:12px}.alt-text{color:var(--text-secondary);font-size:12px}.monthly-group{margin-bottom:16px}.monthly-group:last-child{margin-bottom:0}.monthly-group-header{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:8px}.monthly-group-title{font-size:13px;font-weight:600;color:var(--text-heading)}.monthly-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.monthly-card{border:1px solid var(--border-color);border-radius:12px;padding:12px;background:var(--bg-card-header)}.monthly-card img{width:64px;height:auto;border-radius:6px;border:1px solid var(--border-color);margin-bottom:8px}.monthly-sku{font-size:13px;font-weight:700;color:var(--text-heading);margin-bottom:6px}.monthly-name{font-size:12px;color:var(--text-secondary);margin-bottom:6px}.monthly-alt{font-size:11px;color:var(--text-secondary);margin-bottom:8px}@media(max-width:1100px){.monthly-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:720px){.monthly-grid{grid-template-columns:repeat(1,minmax(0,1fr))}}.featured-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.featured-card{border:1px solid var(--border-color);border-radius:12px;padding:12px;background:var(--bg-card-header);text-align:center}.featured-card img{width:50%;max-width:120px;height:auto;border-radius:8px;border:1px solid var(--border-color);margin:0 auto 8px;display:block}.featured-alt{font-size:11px;color:var(--text-secondary);margin-bottom:8px}.featured-card a{display:block;color:#3b82f6;font-size:12px;font-weight:600;text-decoration:none;word-break:break-word}.featured-card a:hover{text-decoration:underline}@media(max-width:1100px){.featured-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:720px){.featured-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}.validation-panel{position:fixed;top:16px;right:16px;width:300px;max-height:60vh;background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:none;z-index:1000}.validation-panel.show{display:block}.validation-panel-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border-color);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary)}.validation-panel-close{background:none;border:none;color:var(--text-secondary);font-size:16px;cursor:pointer}.validation-panel-list{list-style:none;margin:0;padding:8px 12px;max-height:calc(60vh - 44px);overflow:auto;display:flex;flex-direction:column;gap:6px}.validation-panel-list a{color:#3b82f6;text-decoration:none;font-size:12px}.validation-panel-list a:hover{text-decoration:underline}.anchor-target{scroll-margin-top:120px}.back-to-top{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;border:none;padding:10px 16px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.3);opacity:0;pointer-events:none;transition:opacity .2s ease}.back-to-top.show{opacity:1;pointer-events:auto}.empty-state{color:var(--text-secondary);font-size:13px}.footer{text-align:center;padding:24px;color:var(--text-secondary);font-size:13px}@media(max-width:720px){.validation-panel{left:16px;right:16px;width:auto}}</style>
 </head>
 <body>
 <div class="container">
@@ -66,10 +79,18 @@ ${validationSummary ? `
 <h3 style="color: #10b981;">Validation Passed</h3>
 <div class="value passed">${validationSummary.passed}</div>
 </div>
+${validationSummary.failed > 0 ? `
+<button class="summary-card summary-action" id="open-validation-panel" type="button">
+<h3 style="color: #ef4444;">Validation Failed</h3>
+<div class="value failed">${validationSummary.failed}</div>
+<div class="summary-action-note">Review failed items</div>
+</button>
+` : `
 <div class="summary-card" style="border: 2px solid #ef4444;">
 <h3 style="color: #ef4444;">Validation Failed</h3>
 <div class="value failed">${validationSummary.failed}</div>
 </div>
+`}
 <div class="summary-card" style="border: 2px solid #f59e0b;">
 <h3 style="color: #f59e0b;">Not Found in Excel</h3>
 <div class="value" style="color: #f59e0b;">${validationSummary.notFound}</div>
@@ -81,7 +102,19 @@ ${validationSummary ? `
 ` : ''}
 </div>
 
-${runSummaries.map((summary) => `
+${hasValidationFailures ? `
+<div class="validation-panel" id="validation-panel" aria-hidden="true">
+<div class="validation-panel-header">
+<span>Failed Items (${failedItems.length})</span>
+<button class="validation-panel-close" id="validation-panel-close" type="button" aria-label="Close">X</button>
+</div>
+<ul class="validation-panel-list">
+${failedItems.map((item) => `<li><a href="#${item.id}">${escapeHtml(item.label)}</a></li>`).join('')}
+</ul>
+</div>
+` : ''}
+
+${runSummaries.map((summary, summaryIndex) => `
 <div class="section">
 <div class="section-header"><h2>Screenshots${showCultureLabel ? ` - ${escapeHtml(summary.cultureLabel)}` : ''}</h2></div>
 <div class="section-body">
@@ -106,7 +139,10 @@ ${summary.screenshots.map((s) => {
 <div class="section-body">
 ${summary.componentReports.length === 0
   ? '<div class="empty-state">No components were selected for testing.</div>'
-  : summary.componentReports.map((report) => renderComponentSection(report, isDark, summary.validationContext)).join('')}
+  : summary.componentReports.map((report, reportIndex) => {
+    const anchorId = `pslp-${summaryIndex + 1}-${reportIndex + 1}`;
+    return renderComponentSection(report, isDark, summary.validationContext, anchorId);
+  }).join('')}
 </div>
 </div>
 `).join('')}
@@ -114,7 +150,20 @@ ${summary.componentReports.length === 0
 <div class="footer">Generated by Melaleuca Unified Tester</div>
 </div>
 <button class="back-to-top" id="back-to-top" type="button">Top</button>
-<script>const b=document.getElementById('back-to-top');window.addEventListener('scroll',()=>{b.classList.toggle('show',window.scrollY>400)});b.addEventListener('click',()=>{window.scrollTo({top:0,behavior:'smooth'})})</script>
+<script>
+const backToTop=document.getElementById('back-to-top');
+if(backToTop){
+  window.addEventListener('scroll',()=>{backToTop.classList.toggle('show',window.scrollY>400)});
+  backToTop.addEventListener('click',()=>{window.scrollTo({top:0,behavior:'smooth'})});
+}
+const validationButton=document.getElementById('open-validation-panel');
+const validationPanel=document.getElementById('validation-panel');
+const validationClose=document.getElementById('validation-panel-close');
+if(validationButton&&validationPanel&&validationClose){
+  validationButton.addEventListener('click',()=>{validationPanel.classList.add('show');validationPanel.setAttribute('aria-hidden','false')});
+  validationClose.addEventListener('click',()=>{validationPanel.classList.remove('show');validationPanel.setAttribute('aria-hidden','true')});
+}
+</script>
 </body>
 </html>`;
 
@@ -251,7 +300,7 @@ function hasValidationIssues(validation) {
   return failed > 0 || missing > 0 || extras > 0;
 }
 
-function renderComponentSection(report, isDark, validation) {
+function renderComponentSection(report, isDark, validation, anchorId = '') {
   const name = report?.name || 'Unknown Component';
   const data = report?.data;
   const itemCount = getItemCount(data);
@@ -262,7 +311,7 @@ function renderComponentSection(report, isDark, validation) {
   const statusLabel = isPassing ? 'Passed' : 'Failed';
 
   return `
-<div class="component-card">
+<div class="component-card anchor-target" id="${anchorId}">
 <div class="component-header">
 <h3>${escapeHtml(formatComponentName(name))}</h3>
 <span class="status-pill ${statusClass}">${statusLabel}</span>

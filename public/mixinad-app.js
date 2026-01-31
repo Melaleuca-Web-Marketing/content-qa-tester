@@ -211,8 +211,7 @@ function buildMixInAdActivityItems(results, options = {}) {
         url: result.url || '',
         missing: {
           href: false,
-          target: false,
-          imageLocale: false
+          target: false
         },
         timestamp: result.timestamp || Date.now()
       };
@@ -237,7 +236,6 @@ function buildMixInAdActivityItems(results, options = {}) {
     } else if (!result.error && !result.noAdsFound) {
       if (!result.href) group.missing.href = true;
       if (!result.target) group.missing.target = true;
-      if (!result.imageLocale) group.missing.imageLocale = true;
     }
 
     if (result.addToCartResult && !group.addToCartResult) {
@@ -263,7 +261,6 @@ function buildMixInAdActivityItems(results, options = {}) {
           if (failure === 'link') issues.add('Link mismatch');
           if (failure === 'target') issues.add('Target mismatch');
           if (failure === 'position') issues.add('Position mismatch');
-          if (failure === 'imageLocale') issues.add('Image locale mismatch');
           if (failure === 'sku') issues.add('SKU mismatch');
         });
       } else if (validation.status === 'not-found') {
@@ -282,7 +279,6 @@ function buildMixInAdActivityItems(results, options = {}) {
     if (group.validations.length === 0) {
       if (group.missing.href) issues.add('Missing link');
       if (group.missing.target) issues.add('Missing target');
-      if (group.missing.imageLocale) issues.add('Missing image locale');
     }
 
     let type = 'success';

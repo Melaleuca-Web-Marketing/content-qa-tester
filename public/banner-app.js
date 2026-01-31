@@ -263,9 +263,6 @@ async function restoreActivityFromServer() {
             if (f === 'target' && !bannerGroups[key].issues.includes('Target mismatch')) {
               bannerGroups[key].issues.push('Target mismatch');
             }
-            if (f === 'imageLocale' && !bannerGroups[key].issues.includes('Image locale mismatch')) {
-              bannerGroups[key].issues.push('Image locale mismatch');
-            }
           });
         } else if (validation.status === 'not-found' && !bannerGroups[key].issues.includes('Not in Excel')) {
           bannerGroups[key].issues.push('Not in Excel');
@@ -276,9 +273,6 @@ async function restoreActivityFromServer() {
           }
           if (!result.target && !bannerGroups[key].issues.includes('Missing target')) {
             bannerGroups[key].issues.push('Missing target');
-          }
-          if (!result.imageLocale && !bannerGroups[key].issues.includes('Missing image locale')) {
-            bannerGroups[key].issues.push('Missing image locale');
           }
         }
       }
@@ -882,7 +876,6 @@ function handleProgress(data) {
           w.validation.failures.forEach(f => {
             if (f === 'link') validationIssues.push('Link mismatch');
             if (f === 'target') validationIssues.push('Target mismatch');
-            if (f === 'imageLocale') validationIssues.push('Image locale mismatch');
           });
         } else if (w.validation.status === 'not-found') {
           validationIssues.push('Not in Excel');
@@ -891,7 +884,6 @@ function handleProgress(data) {
         // Fallback to basic missing field checks when no Excel data
         if (!w.href) validationIssues.push('Missing link');
         if (!w.target) validationIssues.push('Missing target');
-        if (!w.imageLocale) validationIssues.push('Missing image locale');
       }
     });
     // Deduplicate issues
