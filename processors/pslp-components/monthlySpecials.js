@@ -177,12 +177,19 @@ export async function extractMonthlySpecialsData(page, selectors) {
       altText = imageInfo.alt?.trim() || null;
       name = altText;
 
-      const match = imageUrl ? imageUrl.match(/global\/products\/(\d+)h-0*1/i) : null;
+      const match = imageUrl ? imageUrl.match(/global\/products\/(\d+)h-\d+/i) : null;
       if (match && match[1]) {
         sku = match[1];
       }
     } else {
       logPslp(`  No image element found for card on slide ${slideIndex} `);
+    }
+
+    if (!sku && linkDirection) {
+      const linkMatch = linkDirection.match(/(\d{4,})(?:\D|$)/);
+      if (linkMatch && linkMatch[1]) {
+        sku = linkMatch[1];
+      }
     }
 
     const key = `${slideIndex || ''}| ${sku || ''}| ${imageUrl || ''}| ${linkDirection || ''} `;
