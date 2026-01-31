@@ -5,7 +5,24 @@ import { EventEmitter } from 'events';
 import { TIMEOUTS } from '../utils/constants.js';
 
 // Logging helper
+const LOG_LEVELS = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3
+};
+
+function shouldLog(level) {
+  const currentRaw = process.env.TESTER_LOG_LEVEL || process.env.LOG_LEVEL || 'info';
+  const current = String(currentRaw).toLowerCase();
+  const normalized = String(level || 'info').toLowerCase();
+  const currentLevel = LOG_LEVELS[current] ?? LOG_LEVELS.info;
+  const messageLevel = LOG_LEVELS[normalized] ?? LOG_LEVELS.info;
+  return messageLevel <= currentLevel;
+}
+
 export function log(level, message, data = null) {
+  if (!shouldLog(level)) return;
   const timestamp = new Date().toISOString();
   const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
   if (data) {

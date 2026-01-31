@@ -38,6 +38,19 @@ const normalizedBase = rawBasePath === '/' ? '' : `/${rawBasePath.replace(/^\/+|
 const BASE_PATH = normalizedBase === '/' ? '' : normalizedBase;
 const DATA_DIR = process.env.TESTER_DATA_DIR || __dirname;
 const REPORTS_DIR = join(DATA_DIR, 'reports');
+const parsePositiveInt = (value, fallback) => {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const DEFAULT_TOOL_CONCURRENCY = parsePositiveInt(process.env.TESTER_TOOL_CONCURRENCY, 2);
+const TOOL_QUEUE_LIMIT = parsePositiveInt(process.env.TESTER_TOOL_QUEUE_LIMIT, 50);
+const TOOL_CONCURRENCY = {
+  banner: parsePositiveInt(process.env.TESTER_BANNER_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
+  mixinad: parsePositiveInt(process.env.TESTER_MIXINAD_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
+  pslp: parsePositiveInt(process.env.TESTER_PSLP_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
+  sku: parsePositiveInt(process.env.TESTER_SKU_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
+  pdp: parsePositiveInt(process.env.TESTER_PDP_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY)
+};
 
 const app = express();
 const server = createServer(app);
@@ -127,6 +140,122 @@ router.use(express.static(join(__dirname, 'public')));
 
 // Per-user processor registry
 const userProcessors = new Map();
+const toolQueues = new Map();
+const toolRunning = new Map();
+const queuedJobs = new Map();
+
+function getToolQueue(tool) {
+  if (!toolQueues.has(tool)) {
+    toolQueues.set(tool, []);
+  }
+  return toolQueues.get(tool);
+}
+
+function getToolLimit(tool) {
+  return TOOL_CONCURRENCY[tool] ?? DEFAULT_TOOL_CONCURRENCY;
+}
+
+function getToolRunning(tool) {
+  return toolRunning.get(tool) || 0;
+}
+
+function setToolRunning(tool, count) {
+  toolRunning.set(tool, Math.max(0, count));
+}
+
+function getQueueKey(userId, tool) {
+  return `${userId || 'anonymous'}:${tool}`;
+}
+
+function processToolQueue(tool) {
+  const queue = getToolQueue(tool);
+  const limit = getToolLimit(tool);
+  let running = getToolRunning(tool);
+
+  while (running < limit && queue.length > 0) {
+    const job = queue.shift();
+    queuedJobs.delete(job.key);
+    running += 1;
+    setToolRunning(tool, running);
+    job.start()
+      .catch(err => {
+        console.error(`[Queue] ${tool} job failed`, err);
+      })
+      .finally(() => {
+        setToolRunning(tool, getToolRunning(tool) - 1);
+        processToolQueue(tool);
+      });
+  }
+}
+
+function enqueueToolJob({ tool, userId, processor, options, startFn }) {
+  const queue = getToolQueue(tool);
+  const running = getToolRunning(tool);
+  const limit = getToolLimit(tool);
+  const key = getQueueKey(userId, tool);
+
+  if (queuedJobs.has(key)) {
+    return { queued: true, alreadyQueued: true };
+  }
+
+  if (queue.length >= TOOL_QUEUE_LIMIT) {
+    return { queued: false, rejected: true, reason: 'queue-full' };
+  }
+
+  if (running < limit && queue.length === 0) {
+    setToolRunning(tool, running + 1);
+    startFn()
+      .catch(err => {
+        console.error(`[Queue] ${tool} job failed`, err);
+      })
+      .finally(() => {
+        setToolRunning(tool, getToolRunning(tool) - 1);
+        processToolQueue(tool);
+      });
+    return { queued: false, started: true, running: running + 1, limit };
+  }
+
+  const position = queue.length + 1;
+  queue.push({
+    key,
+    userId,
+    tool,
+    processor,
+    options,
+    start: startFn
+  });
+  queuedJobs.set(key, { key, tool, userId, processor });
+
+  if (processor && typeof processor.emitStatus === 'function') {
+    processor.emitStatus({
+      type: 'queued',
+      message: `Queued (position ${position} of ${queue.length})`,
+      queuePosition: position,
+      queueSize: queue.length
+    });
+  }
+
+  processToolQueue(tool);
+  return { queued: true, position, queueSize: queue.length, running, limit };
+}
+
+function cancelQueuedJob(userId, tool) {
+  const key = getQueueKey(userId, tool);
+  if (!queuedJobs.has(key)) return false;
+  const queue = getToolQueue(tool);
+  const index = queue.findIndex(job => job.key === key);
+  if (index >= 0) {
+    const [removed] = queue.splice(index, 1);
+    queuedJobs.delete(key);
+    if (removed?.processor && typeof removed.processor.emitStatus === 'function') {
+      removed.processor.emitStatus({
+        type: 'cancelled',
+        message: 'Removed from queue'
+      });
+    }
+  }
+  return true;
+}
 
 function normalizeUserId(value) {
   if (!value) return null;
@@ -420,6 +549,7 @@ router.get('/api/sku/status', (req, res) => {
 
 router.post('/api/sku/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
+  const effectiveUserId = userId || 'anonymous';
   console.log(`[API] POST /api/sku/start | userId: ${userId || 'anonymous'} | SKU count: ${req.body.skus?.length || 0}`);
   const { skus, environment, region, culture, cultures, fullScreenshot, topScreenshot, addToCart, username, password } = req.body;
 
@@ -462,29 +592,60 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: errors.join(', ') });
   }
 
-  const skuProcessor = getProcessor(userId, 'sku');
+  const skuProcessor = getProcessor(effectiveUserId, 'sku');
   if (skuProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'SKU capture already in progress' });
   }
+  if (queuedJobs.has(getQueueKey(effectiveUserId, 'sku'))) {
+    return res.status(409).json({ error: 'SKU capture already queued' });
+  }
 
-  skuProcessor.start(options).catch(err => {
-    console.error('SKU capture error:', err);
-    broadcast({
-      type: 'error',
-      tool: 'sku',
-      data: { message: err.message, stack: err.stack }
-    }, userId);
+  const queueResult = enqueueToolJob({
+    tool: 'sku',
+    userId: effectiveUserId,
+    processor: skuProcessor,
+    options,
+    startFn: () => skuProcessor.start(options).catch(err => {
+      console.error('SKU capture error:', err);
+      broadcast({
+        type: 'error',
+        tool: 'sku',
+        data: { message: err.message, stack: err.stack }
+      }, userId);
+      throw err;
+    })
   });
+
+  if (queueResult.rejected) {
+    return res.status(429).json({
+      error: 'Queue is full',
+      message: 'Too many captures are queued. Please try again later.'
+    });
+  }
 
   // Broadcast immediate status update via WebSocket
   broadcast({ type: 'sku-status', data: skuProcessor.getStatus() }, userId);
+
+  if (queueResult.queued) {
+    return res.json({
+      ok: true,
+      queued: true,
+      position: queueResult.position,
+      message: 'SKU capture queued'
+    });
+  }
 
   res.json({ ok: true, message: 'SKU capture started' });
 }));
 
 router.post('/api/sku/stop', (req, res) => {
   const userId = getUserId(req);
-  const skuProcessor = getProcessor(userId, 'sku');
+  const effectiveUserId = userId || 'anonymous';
+  const skuProcessor = getProcessor(effectiveUserId, 'sku');
+  if (cancelQueuedJob(effectiveUserId, 'sku')) {
+    broadcast({ type: 'sku-status', data: skuProcessor.getStatus() }, userId);
+    return res.json({ ok: true, message: 'Removed from queue' });
+  }
   skuProcessor.stop();
   // Broadcast status update via WebSocket
   broadcast({ type: 'sku-status', data: skuProcessor.getStatus() }, userId);
@@ -525,6 +686,7 @@ router.get('/api/banner/status', (req, res) => {
 
 router.post('/api/banner/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
+  const effectiveUserId = userId || 'anonymous';
   const { environment, region, cultures, widths, categories, excelValidation, loginEnabled, username, password } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
@@ -551,9 +713,12 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Too many categories', message: 'Maximum 100 categories allowed' });
   }
 
-  const bannerProcessor = getProcessor(userId, 'banner');
+  const bannerProcessor = getProcessor(effectiveUserId, 'banner');
   if (bannerProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Banner capture already in progress' });
+  }
+  if (queuedJobs.has(getQueueKey(effectiveUserId, 'banner'))) {
+    return res.status(409).json({ error: 'Banner capture already queued' });
   }
 
   const options = {
@@ -577,20 +742,48 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     options.excelValidation = excelValidation;
   }
 
-  bannerProcessor.start(options).catch(err => {
-    console.error('Banner capture error:', err);
-    broadcast({ type: 'banner-error', data: { message: err.message } }, userId);
+  const queueResult = enqueueToolJob({
+    tool: 'banner',
+    userId: effectiveUserId,
+    processor: bannerProcessor,
+    options,
+    startFn: () => bannerProcessor.start(options).catch(err => {
+      console.error('Banner capture error:', err);
+      broadcast({ type: 'banner-error', data: { message: err.message } }, userId);
+      throw err;
+    })
   });
+
+  if (queueResult.rejected) {
+    return res.status(429).json({
+      error: 'Queue is full',
+      message: 'Too many captures are queued. Please try again later.'
+    });
+  }
 
   // Broadcast immediate status update via WebSocket
   broadcast({ type: 'banner-status', data: bannerProcessor.getStatus() }, userId);
+
+  if (queueResult.queued) {
+    return res.json({
+      ok: true,
+      queued: true,
+      position: queueResult.position,
+      message: 'Banner capture queued'
+    });
+  }
 
   res.json({ ok: true, message: 'Banner capture started' });
 }));
 
 router.post('/api/banner/stop', (req, res) => {
   const userId = getUserId(req);
-  const bannerProcessor = getProcessor(userId, 'banner');
+  const effectiveUserId = userId || 'anonymous';
+  const bannerProcessor = getProcessor(effectiveUserId, 'banner');
+  if (cancelQueuedJob(effectiveUserId, 'banner')) {
+    broadcast({ type: 'banner-status', data: bannerProcessor.getStatus() }, userId);
+    return res.json({ ok: true, message: 'Removed from queue' });
+  }
   bannerProcessor.stop();
   // Broadcast status update via WebSocket
   broadcast({ type: 'banner-status', data: bannerProcessor.getStatus() }, userId);
@@ -633,6 +826,7 @@ router.get('/api/pslp/status', (req, res) => {
 
 router.post('/api/pslp/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
+  const effectiveUserId = userId || 'anonymous';
   const { environment, region, culture, cultures, components, widths, screenWidths, username, password, excelValidation } = req.body;
 
   const normalizedCultures = Array.isArray(cultures)
@@ -653,9 +847,12 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Too many screen widths', message: 'Maximum 20 screen widths allowed' });
   }
 
-  const pslpProcessor = getProcessor(userId, 'pslp');
+  const pslpProcessor = getProcessor(effectiveUserId, 'pslp');
   if (pslpProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'PSLP capture already in progress' });
+  }
+  if (queuedJobs.has(getQueueKey(effectiveUserId, 'pslp'))) {
+    return res.status(409).json({ error: 'PSLP capture already queued' });
   }
 
   const options = {
@@ -678,20 +875,48 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
     options.excelValidation = excelValidation;
   }
 
-  pslpProcessor.start(options).catch(err => {
-    console.error('PSLP capture error:', err);
-    broadcast({ type: 'pslp-error', data: { message: err.message } }, userId);
+  const queueResult = enqueueToolJob({
+    tool: 'pslp',
+    userId: effectiveUserId,
+    processor: pslpProcessor,
+    options,
+    startFn: () => pslpProcessor.start(options).catch(err => {
+      console.error('PSLP capture error:', err);
+      broadcast({ type: 'pslp-error', data: { message: err.message } }, userId);
+      throw err;
+    })
   });
+
+  if (queueResult.rejected) {
+    return res.status(429).json({
+      error: 'Queue is full',
+      message: 'Too many captures are queued. Please try again later.'
+    });
+  }
 
   // Broadcast immediate status update via WebSocket
   broadcast({ type: 'pslp-status', data: pslpProcessor.getStatus() }, userId);
+
+  if (queueResult.queued) {
+    return res.json({
+      ok: true,
+      queued: true,
+      position: queueResult.position,
+      message: 'PSLP capture queued'
+    });
+  }
 
   res.json({ ok: true, message: 'PSLP capture started' });
 }));
 
 router.post('/api/pslp/stop', (req, res) => {
   const userId = getUserId(req);
-  const pslpProcessor = getProcessor(userId, 'pslp');
+  const effectiveUserId = userId || 'anonymous';
+  const pslpProcessor = getProcessor(effectiveUserId, 'pslp');
+  if (cancelQueuedJob(effectiveUserId, 'pslp')) {
+    broadcast({ type: 'pslp-status', data: pslpProcessor.getStatus() }, userId);
+    return res.json({ ok: true, message: 'Removed from queue' });
+  }
   pslpProcessor.stop();
   // Broadcast status update via WebSocket
   broadcast({ type: 'pslp-status', data: pslpProcessor.getStatus() }, userId);
@@ -734,6 +959,7 @@ router.get('/api/mixinad/status', (req, res) => {
 
 router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
+  const effectiveUserId = userId || 'anonymous';
   const { environment, region, cultures, widths, categories, excelValidation, loginEnabled, username, password } = req.body;
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
@@ -760,9 +986,12 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Too many categories', message: 'Maximum 100 categories allowed' });
   }
 
-  const mixinAdProcessor = getProcessor(userId, 'mixinad');
+  const mixinAdProcessor = getProcessor(effectiveUserId, 'mixinad');
   if (mixinAdProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Mix-In Ad capture already in progress' });
+  }
+  if (queuedJobs.has(getQueueKey(effectiveUserId, 'mixinad'))) {
+    return res.status(409).json({ error: 'Mix-In Ad capture already queued' });
   }
 
   const options = {
@@ -786,20 +1015,48 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     options.excelValidation = excelValidation;
   }
 
-  mixinAdProcessor.start(options).catch(err => {
-    console.error('Mix-In Ad capture error:', err);
-    broadcast({ type: 'mixinad-error', data: { message: err.message } }, userId);
+  const queueResult = enqueueToolJob({
+    tool: 'mixinad',
+    userId: effectiveUserId,
+    processor: mixinAdProcessor,
+    options,
+    startFn: () => mixinAdProcessor.start(options).catch(err => {
+      console.error('Mix-In Ad capture error:', err);
+      broadcast({ type: 'mixinad-error', data: { message: err.message } }, userId);
+      throw err;
+    })
   });
+
+  if (queueResult.rejected) {
+    return res.status(429).json({
+      error: 'Queue is full',
+      message: 'Too many captures are queued. Please try again later.'
+    });
+  }
 
   // Broadcast immediate status update via WebSocket
   broadcast({ type: 'mixinad-status', data: mixinAdProcessor.getStatus() }, userId);
+
+  if (queueResult.queued) {
+    return res.json({
+      ok: true,
+      queued: true,
+      position: queueResult.position,
+      message: 'Mix-In Ad capture queued'
+    });
+  }
 
   res.json({ ok: true, message: 'Mix-In Ad capture started' });
 }));
 
 router.post('/api/mixinad/stop', (req, res) => {
   const userId = getUserId(req);
-  const mixinAdProcessor = getProcessor(userId, 'mixinad');
+  const effectiveUserId = userId || 'anonymous';
+  const mixinAdProcessor = getProcessor(effectiveUserId, 'mixinad');
+  if (cancelQueuedJob(effectiveUserId, 'mixinad')) {
+    broadcast({ type: 'mixinad-status', data: mixinAdProcessor.getStatus() }, userId);
+    return res.json({ ok: true, message: 'Removed from queue' });
+  }
   mixinAdProcessor.stop();
   // Broadcast status update via WebSocket
   broadcast({ type: 'mixinad-status', data: mixinAdProcessor.getStatus() }, userId);
@@ -842,6 +1099,7 @@ router.get('/api/pdp/status', (req, res) => {
 
 router.post('/api/pdp/start', asyncHandler(async (req, res) => {
   const userId = getUserId(req);
+  const effectiveUserId = userId || 'anonymous';
   console.log(`[API] POST /api/pdp/start | userId: ${userId || 'anonymous'} | SKU count: ${req.body.skus?.length || 0}`);
   const { skus, environment, region, culture, cultures, username, password } = req.body;
 
@@ -880,29 +1138,60 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: errors.join(', ') });
   }
 
-  const pdpProcessor = getProcessor(userId, 'pdp');
+  const pdpProcessor = getProcessor(effectiveUserId, 'pdp');
   if (pdpProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'PDP capture already in progress' });
   }
+  if (queuedJobs.has(getQueueKey(effectiveUserId, 'pdp'))) {
+    return res.status(409).json({ error: 'PDP capture already queued' });
+  }
 
-  pdpProcessor.start(options).catch(err => {
-    console.error('PDP capture error:', err);
-    broadcast({
-      type: 'error',
-      tool: 'pdp',
-      data: { message: err.message, stack: err.stack }
-    }, userId);
+  const queueResult = enqueueToolJob({
+    tool: 'pdp',
+    userId: effectiveUserId,
+    processor: pdpProcessor,
+    options,
+    startFn: () => pdpProcessor.start(options).catch(err => {
+      console.error('PDP capture error:', err);
+      broadcast({
+        type: 'error',
+        tool: 'pdp',
+        data: { message: err.message, stack: err.stack }
+      }, userId);
+      throw err;
+    })
   });
+
+  if (queueResult.rejected) {
+    return res.status(429).json({
+      error: 'Queue is full',
+      message: 'Too many captures are queued. Please try again later.'
+    });
+  }
 
   // Broadcast immediate status update via WebSocket
   broadcast({ type: 'pdp-status', data: pdpProcessor.getStatus() }, userId);
+
+  if (queueResult.queued) {
+    return res.json({
+      ok: true,
+      queued: true,
+      position: queueResult.position,
+      message: 'PDP capture queued'
+    });
+  }
 
   res.json({ ok: true, message: 'PDP capture started' });
 }));
 
 router.post('/api/pdp/stop', (req, res) => {
   const userId = getUserId(req);
-  const pdpProcessor = getProcessor(userId, 'pdp');
+  const effectiveUserId = userId || 'anonymous';
+  const pdpProcessor = getProcessor(effectiveUserId, 'pdp');
+  if (cancelQueuedJob(effectiveUserId, 'pdp')) {
+    broadcast({ type: 'pdp-status', data: pdpProcessor.getStatus() }, userId);
+    return res.json({ ok: true, message: 'Removed from queue' });
+  }
   pdpProcessor.stop();
   // Broadcast status update via WebSocket
   broadcast({ type: 'pdp-status', data: pdpProcessor.getStatus() }, userId);

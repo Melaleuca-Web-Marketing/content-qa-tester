@@ -108,11 +108,18 @@ export class BannerProcessor extends BaseProcessor {
     }, hidden);
   }
 
-  shouldLogBannerDiagnostics(width) {
+  getBannerDiagnosticsMode() {
     const raw = process.env.BANNER_DIAGNOSTICS;
-    if (!raw) return false;
-    const enabled = ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
-    if (!enabled) return false;
+    if (!raw) return 'off';
+    const value = String(raw).toLowerCase();
+    if (['1', 'true', 'yes', 'on', 'summary'].includes(value)) return 'summary';
+    if (['full', 'verbose', '2'].includes(value)) return 'full';
+    return 'off';
+  }
+
+  shouldLogBannerDiagnostics(width) {
+    const mode = this.getBannerDiagnosticsMode();
+    if (mode === 'off') return false;
     return typeof width === 'number' ? width <= 415 : true;
   }
 
@@ -293,8 +300,10 @@ export class BannerProcessor extends BaseProcessor {
 
   async logBannerDiagnostics(width, context = {}, page = this.page) {
     if (!page || !this.shouldLogBannerDiagnostics(width)) return;
+    const diagMode = this.getBannerDiagnosticsMode();
+    const includeTextSamples = diagMode === 'full';
     try {
-      const data = await page.evaluate(({ selector }) => {
+      const data = await page.evaluate(({ selector, includeTextSamples }) => {
         const bannerEl =
           document.querySelector(selector) ||
           document.querySelector('[data-testid="container-fullWidthBanner"]') ||
@@ -348,7 +357,7 @@ export class BannerProcessor extends BaseProcessor {
         }
 
         const textSamples = [];
-        if (anchor) {
+        if (includeTextSamples && anchor) {
           const walker = document.createTreeWalker(
             anchor,
             NodeFilter.SHOW_TEXT,
@@ -468,16 +477,42 @@ export class BannerProcessor extends BaseProcessor {
           platform,
           webdriver,
           anchorStyle,
-          textSamples
+          textSamples: includeTextSamples ? textSamples : null
         };
-      }, { selector: config.banner.selector });
+      }, { selector: config.banner.selector, includeTextSamples });
 
-      log('info', '[BANNER-DIAG] Layout snapshot', {
-        width,
-        url: page.url(),
-        ...context,
-        ...data
-      });
+      const payload = diagMode === 'full'
+        ? {
+          width,
+          url: page.url(),
+          ...context,
+          ...data
+        }
+        : {
+          width,
+          url: page.url(),
+          ...context,
+          bannerFound: data.bannerFound,
+          bannerRect: data.bannerRect,
+          anchorRect: data.anchorRect,
+          viewport: data.viewport ? {
+            innerWidth: data.viewport.innerWidth,
+            innerHeight: data.viewport.innerHeight,
+            clientWidth: data.viewport.clientWidth,
+            clientHeight: data.viewport.clientHeight,
+            scrollbarWidth: data.viewport.scrollbarWidth,
+            devicePixelRatio: data.viewport.devicePixelRatio
+          } : null,
+          inputMedia: data.inputMedia,
+          fontStatus: data.fontStatus,
+          userAgent: data.userAgent,
+          uaMobile: data.uaMobile,
+          uaPlatform: data.uaPlatform,
+          platform: data.platform,
+          anchorStyle: data.anchorStyle
+        };
+
+      log('info', '[BANNER-DIAG] Layout snapshot', payload);
     } catch (err) {
       log('warn', '[BANNER-DIAG] Failed to collect layout snapshot', {
         width,
