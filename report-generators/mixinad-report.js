@@ -119,7 +119,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mix-In Ad Test Report - ${new Date(timestamp).toLocaleString()}</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg-primary:${isDark ? '#0f172a' : '#f0f2f5'};--bg-card:${isDark ? '#1e293b' : 'white'};--bg-card-header:${isDark ? '#334155' : '#f8fafc'};--bg-screenshot:${isDark ? '#334155' : '#f8fafc'};--text-primary:${isDark ? '#f1f5f9' : '#1a1a2e'};--text-secondary:${isDark ? '#94a3b8' : '#64748b'};--text-heading:${isDark ? '#f8fafc' : '#1e293b'};--border-color:${isDark ? '#475569' : '#e2e8f0'};--border-light:${isDark ? '#334155' : '#f1f5f9'};--mono-bg:${isDark ? '#475569' : '#f1f5f9'}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg-primary);color:var(--text-primary);line-height:1.6;padding:20px}.container{max-width:1600px;margin:0 auto}.header{background:linear-gradient(135deg,#ec4899 0%,#db2777 100%);color:#fff;padding:30px 40px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(236,72,153,.3)}.header h1{font-size:28px;font-weight:700;margin-bottom:12px}.header-meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;opacity:.95}.header-meta span{display:flex;align-items:center;gap:6px}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}.summary-card{background:var(--bg-card);padding:12px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'});text-align:center}.summary-card h3{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.summary-card .value{font-size:18px;font-weight:700}.summary-card .value.total{color:#ec4899}.summary-card .value.success{color:#10b981}.summary-card .value.error{color:#ef4444}.summary-card .value.none{color:#f59e0b}.summary-card .value.time{color:#8b5cf6;font-size:14px}.summary-card.summary-action{border:2px solid #ef4444;background:var(--bg-card);cursor:pointer;transition:transform .1s,box-shadow .2s}.summary-card.summary-action:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(239,68,68,.2)}.summary-card.summary-action:focus{outline:2px solid #ef4444;outline-offset:2px}.summary-action-note{font-size:11px;color:var(--text-secondary)}.ad-card{background:var(--bg-card);border-radius:16px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'})}.ad-header{padding:20px 24px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}.ad-header h2{font-size:20px;font-weight:600;color:var(--text-heading)}.ad-header .culture-badge{background:#fbcfe8;color:#9f1239;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:600}.status-badge{padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.status-badge.success{background:#d1fae5;color:#059669}.status-badge.error{background:#fee2e2;color:#dc2626}.status-badge.none-found{background:#fef3c7;color:#d97706}.status-badge.partial{background:#fef3c7;color:#d97706}.ad-body{padding:24px}.info-message{background:${isDark ? '#3b2817' : '#fefce8'};border:1px solid ${isDark ? '#78350f' : '#fef08a'};color:${isDark ? '#fbbf24' : '#a16207'};padding:16px 20px;border-radius:10px;margin-bottom:20px;font-weight:500}.error-message{background:${isDark ? '#3b1f1f' : '#fef2f2'};border:1px solid ${isDark ? '#7f1d1d' : '#fecaca'};color:${isDark ? '#f87171' : '#dc2626'};padding:16px 20px;border-radius:10px;margin-bottom:20px;font-weight:500}.ad-info{margin-bottom:24px}.ad-info table{width:100%;border-collapse:collapse}.ad-info th,.ad-info td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--border-light)}.ad-info th{width:130px;color:var(--text-secondary);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.3px}.ad-info td{color:var(--text-heading)}.ad-info td a{color:#ec4899;text-decoration:none;word-break:break-all}.ad-info td a:hover{text-decoration:underline}.ad-info .mono{font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;background:var(--mono-bg);padding:2px 6px;border-radius:4px}.cart-result{margin-top:20px;padding:16px 20px;border-radius:10px;display:flex;align-items:center;gap:12px}.cart-result.success{background:#d1fae5;color:#059669}.cart-result.error{background:#fee2e2;color:#dc2626}.cart-result strong{font-weight:600}.cart-result .cart-sku{font-weight:600}.btn-copy{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#ec4899 0%,#db2777 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(236,72,153,.3)}.btn-copy:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(236,72,153,.4)}.btn-copy:active{transform:translateY(0)}.btn-copy.copied{background:linear-gradient(135deg,#10b981 0%,#059669 100%)}.screenshots-section{border-top:1px solid var(--border-color);padding-top:24px}.screenshots-section h3{font-size:14px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}.screenshots-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}.screenshot-item{background:var(--bg-screenshot);border:1px solid var(--border-color);border-radius:12px;overflow:hidden}.screenshot-item.error{border-color:${isDark ? '#7f1d1d' : '#fecaca'};background:${isDark ? '#3b1f1f' : '#fef2f2'}}.screenshot-header{padding:10px 12px;background:var(--bg-card);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-direction:column;gap:8px}.screenshot-item.error .screenshot-header{background:${isDark ? '#3b1f1f' : '#fef2f2'};border-bottom-color:${isDark ? '#7f1d1d' : '#fecaca'}}.screenshot-width{font-size:13px;font-weight:600;color:var(--text-heading)}.screenshot-error{padding:20px 12px;color:${isDark ? '#f87171' : '#dc2626'};font-size:12px;text-align:center}.screenshot-image{padding:8px}.screenshot-image img{width:100%;border-radius:8px;display:block}.validation-panel{position:fixed;top:16px;right:16px;width:300px;max-height:60vh;background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:none;z-index:1000}.validation-panel.show{display:block}.validation-panel-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border-color);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary)}.validation-panel-close{background:none;border:none;color:var(--text-secondary);font-size:16px;cursor:pointer}.validation-panel-list{list-style:none;margin:0;padding:8px 12px;max-height:calc(60vh - 44px);overflow:auto;display:flex;flex-direction:column;gap:6px}.validation-panel-list a{color:#ec4899;text-decoration:none;font-size:12px}.validation-panel-list a:hover{text-decoration:underline}.anchor-target{scroll-margin-top:120px}.back-to-top{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;border:none;padding:10px 16px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.3);opacity:0;pointer-events:none;transition:opacity .2s ease}.back-to-top.show{opacity:1;pointer-events:auto}.footer{text-align:center;padding:24px;color:var(--text-secondary);font-size:13px}@media(max-width:992px){.screenshots-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:600px){.header{padding:24px}.header h1{font-size:24px}.header-meta{gap:12px}.ad-header{flex-direction:column;align-items:flex-start}.screenshots-grid{grid-template-columns:1fr}.validation-panel{left:16px;right:16px;width:auto}}</style>
+  <style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg-primary:${isDark ? '#0f172a' : '#f0f2f5'};--bg-card:${isDark ? '#1e293b' : 'white'};--bg-card-header:${isDark ? '#334155' : '#f8fafc'};--bg-screenshot:${isDark ? '#334155' : '#f8fafc'};--text-primary:${isDark ? '#f1f5f9' : '#1a1a2e'};--text-secondary:${isDark ? '#94a3b8' : '#64748b'};--text-heading:${isDark ? '#f8fafc' : '#1e293b'};--border-color:${isDark ? '#475569' : '#e2e8f0'};--border-light:${isDark ? '#334155' : '#f1f5f9'};--mono-bg:${isDark ? '#475569' : '#f1f5f9'}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg-primary);color:var(--text-primary);line-height:1.6;padding:20px}.container{max-width:1600px;margin:0 auto}.header{background:linear-gradient(135deg,#ec4899 0%,#db2777 100%);color:#fff;padding:30px 40px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(236,72,153,.3)}.header h1{font-size:28px;font-weight:700;margin-bottom:12px}.header-meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;opacity:.95}.header-meta span{display:flex;align-items:center;gap:6px}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}.summary-card{background:var(--bg-card);padding:12px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'});text-align:center}.summary-card h3{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.summary-card .value{font-size:18px;font-weight:700}.summary-card .value.total{color:#ec4899}.summary-card .value.success{color:#10b981}.summary-card .value.error{color:#ef4444}.summary-card .value.none{color:#f59e0b}.summary-card .value.time{color:#8b5cf6;font-size:14px}.summary-card.summary-action{border:2px solid #ef4444;background:var(--bg-card);cursor:pointer;transition:transform .1s,box-shadow .2s}.summary-card.summary-action:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(239,68,68,.2)}.summary-card.summary-action:focus{outline:2px solid #ef4444;outline-offset:2px}.summary-action-note{font-size:11px;color:var(--text-secondary)}.ad-card{background:var(--bg-card);border-radius:16px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'})}.ad-header{padding:20px 24px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}.ad-header h2{font-size:20px;font-weight:600;color:var(--text-heading)}.ad-header .culture-badge{background:#fbcfe8;color:#9f1239;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:600}.status-badge{padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.status-badge.success{background:#d1fae5;color:#059669}.status-badge.error{background:#fee2e2;color:#dc2626}.status-badge.none-found{background:#fef3c7;color:#d97706}.status-badge.partial{background:#fef3c7;color:#d97706}.ad-body{padding:24px}.info-message{background:${isDark ? '#3b2817' : '#fefce8'};border:1px solid ${isDark ? '#78350f' : '#fef08a'};color:${isDark ? '#fbbf24' : '#a16207'};padding:16px 20px;border-radius:10px;margin-bottom:20px;font-weight:500}.error-message{background:${isDark ? '#3b1f1f' : '#fef2f2'};border:1px solid ${isDark ? '#7f1d1d' : '#fecaca'};color:${isDark ? '#f87171' : '#dc2626'};padding:16px 20px;border-radius:10px;margin-bottom:20px;font-weight:500}.ad-info{margin-bottom:24px}.ad-info table{width:100%;border-collapse:collapse}.ad-info th,.ad-info td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--border-light)}.ad-info th{width:130px;color:var(--text-secondary);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.3px}.ad-info td{color:var(--text-heading)}.ad-info td a{color:#ec4899;text-decoration:none;word-break:break-all}.ad-info td a:hover{text-decoration:underline}.ad-info .mono{font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;background:var(--mono-bg);padding:2px 6px;border-radius:4px}.cart-result{margin-top:20px;padding:16px 20px;border-radius:10px;display:flex;align-items:center;gap:12px}.cart-result.success{background:#d1fae5;color:#059669}.cart-result.error{background:#fee2e2;color:#dc2626}.cart-result strong{font-weight:600}.cart-result .cart-sku{font-weight:600}.btn-copy{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#ec4899 0%,#db2777 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(236,72,153,.3)}.btn-copy:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(236,72,153,.4)}.btn-copy:active{transform:translateY(0)}.btn-copy.copied{background:linear-gradient(135deg,#10b981 0%,#059669 100%)}.btn-fix{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(245,158,11,.3);margin-left:8px}.btn-fix:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(245,158,11,.4)}.fix-modal{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;z-index:2000;opacity:0;visibility:hidden;transition:opacity .2s,visibility .2s}.fix-modal.open{opacity:1;visibility:visible}.fix-modal-panel{background:var(--bg-card);border:1px solid var(--border-color);border-radius:16px;padding:20px 22px;width:560px;max-width:92vw;box-shadow:0 20px 50px -20px rgba(15,23,42,.7);transform:translateY(8px) scale(.98);transition:transform .2s}.fix-modal.open .fix-modal-panel{transform:translateY(0) scale(1)}.fix-modal-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--border-color)}.fix-modal-title{font-size:18px;font-weight:700;color:var(--text-primary)}.fix-modal-close{background:transparent;border:none;color:var(--text-secondary);font-size:22px;line-height:1;padding:2px 6px;border-radius:6px;cursor:pointer}.fix-modal-close:hover{color:var(--text-primary);background:var(--bg-card-header)}.fix-modal-body{display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--text-secondary)}.fix-modal-location{color:var(--text-primary);font-weight:600}.fix-modal-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.fix-modal-label{text-transform:uppercase;letter-spacing:.4px;font-size:11px;color:var(--text-secondary);margin-bottom:6px}.fix-modal-value{background:var(--mono-bg);border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:12px;color:var(--text-primary);word-break:break-all}.fix-modal-note{color:var(--text-secondary);font-size:12px}.fix-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.fix-modal-actions .btn-copy{margin-left:0}.screenshots-section{border-top:1px solid var(--border-color);padding-top:24px}.screenshots-section h3{font-size:14px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}.screenshots-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}.screenshot-item{background:var(--bg-screenshot);border:1px solid var(--border-color);border-radius:12px;overflow:hidden}.screenshot-item.error{border-color:${isDark ? '#7f1d1d' : '#fecaca'};background:${isDark ? '#3b1f1f' : '#fef2f2'}}.screenshot-header{padding:10px 12px;background:var(--bg-card);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-direction:column;gap:8px}.screenshot-item.error .screenshot-header{background:${isDark ? '#3b1f1f' : '#fef2f2'};border-bottom-color:${isDark ? '#7f1d1d' : '#fecaca'}}.screenshot-width{font-size:13px;font-weight:600;color:var(--text-heading)}.screenshot-error{padding:20px 12px;color:${isDark ? '#f87171' : '#dc2626'};font-size:12px;text-align:center}.screenshot-image{padding:8px}.screenshot-image img{width:100%;border-radius:8px;display:block}.validation-panel{position:fixed;top:16px;right:16px;width:300px;max-height:60vh;background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:none;z-index:1000}.validation-panel.show{display:block}.validation-panel-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border-color);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary)}.validation-panel-close{background:none;border:none;color:var(--text-secondary);font-size:16px;cursor:pointer}.validation-panel-list{list-style:none;margin:0;padding:8px 12px;max-height:calc(60vh - 44px);overflow:auto;display:flex;flex-direction:column;gap:6px}.validation-panel-list a{color:#ec4899;text-decoration:none;font-size:12px}.validation-panel-list a:hover{text-decoration:underline}.anchor-target{scroll-margin-top:120px}.back-to-top{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;border:none;padding:10px 16px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.3);opacity:0;pointer-events:none;transition:opacity .2s ease}.back-to-top.show{opacity:1;pointer-events:auto}.footer{text-align:center;padding:24px;color:var(--text-secondary);font-size:13px}@media(max-width:992px){.screenshots-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:600px){.header{padding:24px}.header h1{font-size:24px}.header-meta{gap:12px}.ad-header{flex-direction:column;align-items:flex-start}.screenshots-grid{grid-template-columns:1fr}.validation-panel{left:16px;right:16px;width:auto}.fix-modal-panel{width:92vw}}</style>
 </head>
 <body>
   <div class="container">
@@ -212,11 +212,33 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
       : '';
     const addToCartSku = addToCart?.sku ? `SKU ${addToCart.sku}` : '';
     const addToCartValidation = group.validation?.comparisons?.sku;
-    const addToCartExpected = addToCartValidation && !addToCartValidation.match
-      ? addToCartValidation.expected
+    const skuMismatch = Boolean(addToCartValidation && !addToCartValidation.match);
+    const addToCartExpected = skuMismatch ? addToCartValidation.expected : '';
+    const cartStatusClass = addToCart
+      ? (addToCart.success && !skuMismatch ? 'success' : 'error')
       : '';
+    const validationActualLink = group.validation?.actual?.link || '';
+    const validationExpectedLink = group.validation?.expected?.link || '';
+    const validationActualTarget = group.validation?.comparisons?.target?.actual
+      || group.validation?.actual?.target
+      || '';
+    const validationExpectedTarget = group.validation?.comparisons?.target?.expected
+      || group.validation?.expected?.target
+      || '';
+    const validationActualSku = group.validation?.comparisons?.sku?.actual
+      || group.validation?.actual?.sku
+      || addToCart?.sku
+      || '';
+    const validationExpectedSku = group.validation?.comparisons?.sku?.expected
+      || group.validation?.expected?.sku
+      || '';
+    const hasFixableMismatch = Boolean(group.validation?.comparisons && group.url && (
+      (group.validation.comparisons.link && !group.validation.comparisons.link.match)
+      || (group.validation.comparisons.target && !group.validation.comparisons.target.match)
+      || (group.validation.comparisons.sku && !group.validation.comparisons.sku.match)
+    ));
     const adLabel = group.adIndex !== null ? ` - Mix-In Ad #${group.adIndex + 1}` : '';
-    const linkDisplay = stripDomain(group.href);
+    const linkDisplay = stripDomain(validationActualLink || group.href);
     const anchorId = `mixinad-${groupIdx + 1}`;
 
     return `
@@ -258,6 +280,20 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
               <td>
                 <span class="mono">${escapeHtml(linkDisplay || 'N/A')}</span>
                 ${linkDisplay ? `<button class="btn-copy" onclick="copyText('${encodeURIComponent(linkDisplay)}', this)" style="margin-left: 12px;">Copy Link</button>` : ''}
+                ${hasFixableMismatch ? `
+                <button class="btn-fix" type="button"
+                  data-fix-url="${escapeHtml(group.url || '')}"
+                  data-fix-culture="${escapeHtml(group.culture || '')}"
+                  data-fix-category="${escapeHtml(group.category || '')}"
+                  data-fix-main="${escapeHtml(group.mainCategory || '')}"
+                  data-fix-actual="${escapeHtml(validationActualLink || group.href || group.validation?.comparisons?.link?.actual || '')}"
+                  data-fix-expected="${escapeHtml(validationExpectedLink || group.validation?.comparisons?.link?.expected || '')}"
+                  data-fix-actual-target="${escapeHtml(validationActualTarget || '')}"
+                  data-fix-expected-target="${escapeHtml(validationExpectedTarget || '')}"
+                  data-fix-actual-sku="${escapeHtml(validationActualSku || '')}"
+                  data-fix-expected-sku="${escapeHtml(validationExpectedSku || '')}"
+                  data-fix-ad-index="${Number.isFinite(group.adIndex) ? group.adIndex : ''}">Review</button>
+                ` : ''}
                 ${group.validation && group.validation.comparisons && group.validation.comparisons.link && !group.validation.comparisons.link.match ? `
                 <div style="margin-top: 8px; padding: 8px 12px; background: ${isDark ? '#3b1f1f' : '#fef2f2'}; border-radius: 6px;">
                   ${group.validation.comparisons.link.domainError ? `
@@ -266,7 +302,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
                     <div style="font-size: 12px; color: var(--text-secondary);">Actual Domain: <span style="font-family: monospace; background: ${isDark ? '#475569' : '#f1f5f9'}; padding: 2px 6px; border-radius: 4px;">${escapeHtml(group.validation.comparisons.link.actualDomain || 'N/A')}</span></div>
                   ` : `
                     <div style="font-size: 12px; color: ${isDark ? '#f87171' : '#dc2626'}; font-weight: 600;">Expected:</div>
-                    <div style="font-size: 13px; color: var(--text-secondary); font-family: monospace; margin-top: 4px;">${escapeHtml(group.validation.comparisons.link.expected)}</div>
+                    <div style="font-size: 13px; color: var(--text-secondary); font-family: monospace; margin-top: 4px;">${escapeHtml(validationExpectedLink || group.validation.comparisons.link.expected)}</div>
                   `}
                 </div>
                 ` : ''}
@@ -279,11 +315,25 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
                 ${group.validation && group.validation.comparisons && group.validation.comparisons.target && !group.validation.comparisons.target.match ? `
                 <div style="margin-top: 8px; padding: 8px 12px; background: ${isDark ? '#3b1f1f' : '#fef2f2'}; border-radius: 6px;">
                   <div style="font-size: 12px; color: ${isDark ? '#f87171' : '#dc2626'}; font-weight: 600;">Expected:</div>
-                  <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">${escapeHtml(group.validation.comparisons.target.expected)}</div>
+                  <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">${escapeHtml(validationExpectedTarget || group.validation.comparisons.target.expected)}</div>
                 </div>
                 ` : ''}
               </td>
             </tr>
+            ${group.validation && group.validation.comparisons && group.validation.comparisons.sku ? `
+            <tr>
+              <th>SKU</th>
+              <td>
+                <span class="mono">${escapeHtml(validationActualSku || 'N/A')}</span>
+                ${!group.validation.comparisons.sku.match ? `
+                <div style="margin-top: 8px; padding: 8px 12px; background: ${isDark ? '#3b1f1f' : '#fef2f2'}; border-radius: 6px;">
+                  <div style="font-size: 12px; color: ${isDark ? '#f87171' : '#dc2626'}; font-weight: 600;">Expected:</div>
+                  <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">${escapeHtml(validationExpectedSku || '')}</div>
+                </div>
+                ` : ''}
+              </td>
+            </tr>
+            ` : ''}
             ${group.domPosition ? `
             <tr>
               <th>Position</th>
@@ -320,7 +370,7 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
         </div>
 
         ${addToCart ? `
-        <div class="cart-result ${addToCart.success ? 'success' : 'error'}">
+        <div class="cart-result ${cartStatusClass}">
           <strong>Add to Cart:</strong>
           <span>${escapeHtml(addToCartMessage)}</span>
           ${addToCartSku ? `<span class="cart-sku">${escapeHtml(addToCartSku)}</span>` : ''}
@@ -361,6 +411,318 @@ export function generateMixInAdReport(results, captureDuration, theme = 'dark', 
       </div>
     </div>`;
   }).join('')}
+
+    <div class="fix-modal" id="mixin-report-fix-modal" aria-hidden="true">
+      <div class="fix-modal-panel" role="dialog" aria-modal="true" aria-labelledby="mixin-report-fix-title">
+        <div class="fix-modal-header">
+          <div class="fix-modal-title" id="mixin-report-fix-title">Mix-In Ad Fix</div>
+          <button class="fix-modal-close" id="mixin-report-fix-close" type="button" aria-label="Close">X</button>
+        </div>
+        <div class="fix-modal-body">
+          <div class="fix-modal-location" id="mixin-report-fix-location"></div>
+          <div class="fix-modal-message">This mix-in ad link, target, or SKU does not match the validation sheet.</div>
+          <div class="fix-modal-grid">
+            <div class="fix-modal-field">
+              <div class="fix-modal-label">Current link</div>
+              <div class="fix-modal-value" id="mixin-report-fix-actual"></div>
+            </div>
+            <div class="fix-modal-field">
+              <div class="fix-modal-label">Expected link</div>
+              <div class="fix-modal-value" id="mixin-report-fix-expected"></div>
+            </div>
+            <div class="fix-modal-field">
+              <div class="fix-modal-label">Current target</div>
+              <div class="fix-modal-value" id="mixin-report-fix-target"></div>
+            </div>
+            <div class="fix-modal-field">
+              <div class="fix-modal-label">Expected target</div>
+              <div class="fix-modal-value" id="mixin-report-fix-target-expected"></div>
+            </div>
+            <div class="fix-modal-field" id="mixin-report-fix-sku-field">
+              <div class="fix-modal-label">Current SKU</div>
+              <div class="fix-modal-value" id="mixin-report-fix-sku"></div>
+            </div>
+            <div class="fix-modal-field" id="mixin-report-fix-sku-expected-field">
+              <div class="fix-modal-label">Expected SKU</div>
+              <div class="fix-modal-value" id="mixin-report-fix-sku-expected"></div>
+            </div>
+          </div>
+          <div class="fix-modal-note" id="mixin-report-fix-note">Auto-fix runs automatically when a link, target, or SKU mismatch is found. Use Review to open Content Editor and approve the item.</div>
+        </div>
+        <div class="fix-modal-actions">
+          <button class="btn-copy" id="mixin-report-fix-manual" type="button">Review in Content Editor</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const FIX_LOG_PREFIX = '[MixIn Report Fix]';
+        const modal = document.getElementById('mixin-report-fix-modal');
+        const closeBtn = document.getElementById('mixin-report-fix-close');
+        const manualBtn = document.getElementById('mixin-report-fix-manual');
+        const noteEl = document.getElementById('mixin-report-fix-note');
+        const locationEl = document.getElementById('mixin-report-fix-location');
+        const actualEl = document.getElementById('mixin-report-fix-actual');
+        const expectedEl = document.getElementById('mixin-report-fix-expected');
+        const actualTargetEl = document.getElementById('mixin-report-fix-target');
+        const expectedTargetEl = document.getElementById('mixin-report-fix-target-expected');
+        const skuFieldEl = document.getElementById('mixin-report-fix-sku-field');
+        const skuExpectedFieldEl = document.getElementById('mixin-report-fix-sku-expected-field');
+        const skuEl = document.getElementById('mixin-report-fix-sku');
+        const skuExpectedEl = document.getElementById('mixin-report-fix-sku-expected');
+        let activeFix = null;
+
+        function logFix(level, message, data) {
+          const logger = console[level] || console.log;
+          if (data !== undefined) {
+            logger(FIX_LOG_PREFIX + ' ' + message, data);
+          } else {
+            logger(FIX_LOG_PREFIX + ' ' + message);
+          }
+        }
+
+        function stripDomain(value) {
+          if (!value) return '';
+          let link = String(value).trim();
+          link = link.replace(/^https?:\\/\\/[^/]+/i, '');
+          link = link.replace(/#.*$/, '');
+          if (link.length > 1) {
+            link = link.replace(/\\/$/, '');
+          }
+          return link;
+        }
+
+        function formatTargetLabel(value) {
+          if (value === null || value === undefined) return '';
+          const raw = String(value).trim();
+          if (!raw) return 'Same Tab';
+          const lower = raw.toLowerCase();
+          if (lower === '_blank' || lower.includes('new')) return 'New Tab';
+          if (lower === '_self' || lower.includes('same')) return 'Same Tab';
+          return raw;
+        }
+
+        function classifyExpectedLink(expectedLink) {
+          const value = String(expectedLink || '').trim();
+          if (!value) {
+            return { linkType: 'internal', requiresItemLookup: true, expectedLinkDomain: '' };
+          }
+          const match = value.match(/^https?:\/\/([^/?#]+)/i);
+          if (!match) {
+            return { linkType: 'internal', requiresItemLookup: true, expectedLinkDomain: '' };
+          }
+          const domain = String(match[1] || '').toLowerCase();
+          const isInternal = /(^|\.)melaleuca\.com$/i.test(domain);
+          return {
+            linkType: isInternal ? 'internal' : 'external',
+            requiresItemLookup: isInternal,
+            expectedLinkDomain: domain
+          };
+        }
+
+        function setNote(message) {
+          if (noteEl) noteEl.textContent = message || '';
+        }
+
+        function setSkuVisibility(show) {
+          if (skuFieldEl) skuFieldEl.style.display = show ? '' : 'none';
+          if (skuExpectedFieldEl) skuExpectedFieldEl.style.display = show ? '' : 'none';
+        }
+
+        function closeModal() {
+          if (!modal) return;
+          modal.classList.remove('open');
+          modal.setAttribute('aria-hidden', 'true');
+          if (activeFix && activeFix.timeoutId) {
+            clearTimeout(activeFix.timeoutId);
+          }
+          activeFix = null;
+          logFix('info', 'Fix modal closed');
+        }
+
+        function createRequestId() {
+          return 'report-mixin-fix-' + Date.now() + '-' + Math.random().toString(16).slice(2, 8);
+        }
+
+        function openModal(button) {
+          if (!modal || !button) return;
+          const culture = button.dataset.fixCulture || '';
+          const category = button.dataset.fixCategory || '';
+          const main = button.dataset.fixMain || '';
+          const adIndexRaw = button.dataset.fixAdIndex;
+          const adIndex = adIndexRaw !== '' && Number.isFinite(Number(adIndexRaw)) ? Number(adIndexRaw) : null;
+          const adLabel = Number.isFinite(adIndex) ? ' - Mix-In Ad #' + (adIndex + 1) : '';
+          const location = main
+            ? culture + ' > ' + main + ' > ' + category + adLabel
+            : culture + ' > ' + category + adLabel;
+          const actualRaw = button.dataset.fixActual || '';
+          const expectedRaw = button.dataset.fixExpected || '';
+          const actualTargetRaw = button.dataset.fixActualTarget || '';
+          const expectedTargetRaw = button.dataset.fixExpectedTarget || '';
+          const actualSkuRaw = button.dataset.fixActualSku || '';
+          const expectedSkuRaw = button.dataset.fixExpectedSku || '';
+          const actual = stripDomain(actualRaw) || 'Not available';
+          const expected = stripDomain(expectedRaw) || 'Not available';
+          const url = button.dataset.fixUrl || '';
+          let scLang = '';
+          try {
+            const parsedUrl = new URL(url);
+            scLang = parsedUrl.searchParams.get('sc_lang') || '';
+          } catch (e) {
+            scLang = '';
+          }
+
+          if (locationEl) locationEl.textContent = location;
+          if (actualEl) actualEl.textContent = actual;
+          if (expectedEl) expectedEl.textContent = expected;
+          if (actualTargetEl) actualTargetEl.textContent = formatTargetLabel(actualTargetRaw) || 'Not available';
+          if (expectedTargetEl) expectedTargetEl.textContent = formatTargetLabel(expectedTargetRaw) || 'Not available';
+          if (skuEl) skuEl.textContent = actualSkuRaw || 'Not available';
+          if (skuExpectedEl) skuExpectedEl.textContent = expectedSkuRaw || 'Not available';
+          setSkuVisibility(Boolean(actualSkuRaw || expectedSkuRaw));
+          setNote('Auto-fix runs automatically when a link, target, or SKU mismatch is found. Use Review to open Content Editor and approve the item.');
+
+          activeFix = {
+            url,
+            culture,
+            expectedLink: expectedRaw || expected,
+            expectedTarget: expectedTargetRaw || '',
+            expectedSku: expectedSkuRaw || '',
+            scLang: scLang,
+            adIndex,
+            requestId: null,
+            extensionAcked: false,
+            timeoutId: null
+          };
+
+          modal.classList.add('open');
+          modal.setAttribute('aria-hidden', 'false');
+          logFix('info', 'Fix modal opened', { url: url });
+        }
+
+        function sendFixRequest() {
+          if (!activeFix || !activeFix.url) {
+            logFix('warn', 'Manual fix clicked without URL');
+            return;
+          }
+
+          activeFix.requestId = createRequestId();
+          activeFix.extensionAcked = false;
+          const linkMeta = classifyExpectedLink(activeFix.expectedLink);
+
+          window.postMessage({
+            source: 'mixinad-tester',
+            type: 'CONTENT_QA_FIX_REQUEST',
+            payload: {
+              requestId: activeFix.requestId,
+              url: activeFix.url,
+              culture: activeFix.culture,
+              expectedLink: activeFix.expectedLink,
+              expectedTarget: activeFix.expectedTarget,
+              expectedSku: activeFix.expectedSku,
+              linkType: linkMeta.linkType,
+              requiresItemLookup: linkMeta.requiresItemLookup,
+              expectedLinkDomain: linkMeta.expectedLinkDomain,
+              scLang: activeFix.scLang || '',
+              componentType: 'mixinad',
+              adIndex: Number.isFinite(activeFix.adIndex) ? activeFix.adIndex : null,
+              mode: 'manual'
+            }
+          }, window.location.origin);
+
+          logFix('info', 'Sent fix request', { requestId: activeFix.requestId });
+          setNote('Contacting Content QA extension...');
+
+          activeFix.timeoutId = setTimeout(() => {
+            if (activeFix && activeFix.extensionAcked) return;
+            logFix('warn', 'Extension not detected; opening page');
+            setNote('Extension not detected. Opening page so you can use Sitecore Developer Tools.');
+            window.open(activeFix.url, '_blank', 'noopener');
+            closeModal();
+          }, 1500);
+        }
+
+        function handleExtensionStatus(message) {
+          if (!message || message.source !== 'content-qa-extension') return;
+          if (!activeFix || message.requestId !== activeFix.requestId) return;
+
+          if (message.status === 'ack') {
+            activeFix.extensionAcked = true;
+            if (activeFix.timeoutId) {
+              clearTimeout(activeFix.timeoutId);
+              activeFix.timeoutId = null;
+            }
+            setNote('Extension connected. Working...');
+            logFix('info', 'Extension acknowledged request');
+            return;
+          }
+
+          if (message.status === 'progress') {
+            if (message.detail) setNote(message.detail);
+            logFix('info', 'Extension progress', { detail: message.detail });
+            return;
+          }
+
+          if (message.status === 'needs-selection') {
+            setNote('Multiple mix-in ads found. Open the Content QA extension popup to choose the correct component.');
+            logFix('warn', 'Extension needs component selection');
+            return;
+          }
+
+          if (message.status === 'complete') {
+            if (message.detail) {
+              setNote(message.detail);
+              if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification('Fix Applied', { body: message.detail });
+                } catch (e) {
+                  // ignore notification failures
+                }
+              }
+            } else {
+              setNote('Content Editor opened.');
+            }
+            logFix('info', 'Extension completed', { detail: message.detail });
+            closeModal();
+            return;
+          }
+
+          if (message.status === 'error') {
+            setNote(message.error || 'Extension failed to complete the manual fix.');
+            logFix('error', 'Extension error', { error: message.error });
+          }
+        }
+
+        document.addEventListener('click', function(event) {
+          const fixButton = event.target.closest('.btn-fix');
+          if (fixButton) {
+            openModal(fixButton);
+            return;
+          }
+
+          if (event.target === closeBtn || event.target === modal) {
+            closeModal();
+          }
+        });
+
+        if (manualBtn) manualBtn.addEventListener('click', function() {
+          logFix('info', 'Review clicked');
+          sendFixRequest();
+        });
+
+        document.addEventListener('keydown', function(event) {
+          if (event.key === 'Escape' && modal && modal.classList.contains('open')) {
+            closeModal();
+          }
+        });
+
+        window.addEventListener('message', function(event) {
+          if (event.source !== window) return;
+          handleExtensionStatus(event.data);
+        });
+      })();
+    </script>
 
     <div class="footer">
       Generated by Melaleuca Unified Tester
@@ -577,7 +939,7 @@ function stripDomain(value) {
   if (!value) return '';
   let link = String(value).trim();
   link = link.replace(/^https?:\/\/[^/]+/i, '');
-  link = link.replace(/[?#].*$/, '');
+  link = link.replace(/#.*$/, '');
   if (link.length > 1) {
     link = link.replace(/\/$/, '');
   }

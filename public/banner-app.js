@@ -42,6 +42,8 @@ let isWaitingForCredentials = false;
 let activityItems = []; // Activity feed items
 let bannerProgress = {}; // Track progress per banner (culture-mainCategory-category)
 let expectedWidths = []; // Widths selected for current job
+let activeFixContext = null;
+const FIX_LOG_PREFIX = '[Banner Fix]';
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
@@ -90,6 +92,77 @@ const activityList = document.getElementById('activity-list');
 const passedCountEl = document.getElementById('passed-count');
 const failedCountEl = document.getElementById('failed-count');
 const clearActivityBtn = document.getElementById('clear-activity');
+const fixModal = document.getElementById('banner-fix-modal');
+const fixModalClose = document.getElementById('banner-fix-close');
+const fixModalLocation = document.getElementById('banner-fix-location');
+const fixModalActual = document.getElementById('banner-fix-actual');
+const fixModalExpected = document.getElementById('banner-fix-expected');
+const fixModalTarget = document.getElementById('banner-fix-target');
+const fixModalTargetExpected = document.getElementById('banner-fix-target-expected');
+const fixModalNote = document.getElementById('banner-fix-note');
+const fixModalApprove = document.getElementById('banner-fix-approve');
+const fixModalManual = document.getElementById('banner-fix-manual');
+const autoFixToggle = document.getElementById('auto-fix-toggle');
+const autoFixIndicator = document.getElementById('auto-fix-indicator');
+const autoFixWarningModal = document.getElementById('auto-fix-warning-modal');
+const autoFixWarningClose = document.getElementById('auto-fix-warning-close');
+const autoFixWarningCancel = document.getElementById('auto-fix-warning-cancel');
+const autoFixWarningConfirm = document.getElementById('auto-fix-warning-confirm');
+
+function logFix(level, message, data = null) {
+  const logger = console[level] || console.log;
+  if (data !== null && data !== undefined) {
+    logger(`${FIX_LOG_PREFIX} ${message}`, data);
+  } else {
+    logger(`${FIX_LOG_PREFIX} ${message}`);
+  }
+}
+
+const AUTO_FIX_PREF_KEY = 'bannerAutoFixEnabled';
+let autoFixEnabled = false;
+
+function updateAutoFixIndicator() {
+  if (!autoFixIndicator) return;
+  if (autoFixEnabled) {
+    autoFixIndicator.textContent = 'Auto-fix is ON. Link and target mismatches will be updated automatically. Requires Sitecore Production login and melaleuca.com signed out in all environments.';
+    autoFixIndicator.style.display = 'block';
+  } else {
+    autoFixIndicator.textContent = '';
+    autoFixIndicator.style.display = 'none';
+  }
+}
+
+function setAutoFixEnabled(enabled, { persist = true } = {}) {
+  autoFixEnabled = Boolean(enabled);
+  if (autoFixToggle) autoFixToggle.checked = autoFixEnabled;
+  if (persist) {
+    localStorage.setItem(AUTO_FIX_PREF_KEY, autoFixEnabled ? 'true' : 'false');
+  }
+  updateAutoFixIndicator();
+  if (!autoFixEnabled) {
+    autoFixQueue.length = 0;
+  }
+  logFix('info', `Auto-fix ${autoFixEnabled ? 'enabled' : 'disabled'}`);
+}
+
+function loadAutoFixPreference() {
+  const stored = localStorage.getItem(AUTO_FIX_PREF_KEY);
+  autoFixEnabled = stored === 'true';
+  if (autoFixToggle) autoFixToggle.checked = autoFixEnabled;
+  updateAutoFixIndicator();
+}
+
+function openAutoFixWarning() {
+  if (!autoFixWarningModal) return;
+  autoFixWarningModal.classList.add('open');
+  autoFixWarningModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeAutoFixWarning() {
+  if (!autoFixWarningModal) return;
+  autoFixWarningModal.classList.remove('open');
+  autoFixWarningModal.setAttribute('aria-hidden', 'true');
+}
 
 const skuRegionToBannerRegion = {
   us: 'usca',
@@ -113,6 +186,9 @@ let bannerToSkuCultureMap = {};
 async function init() {
   try {
     await loadConfig();
+    loadAutoFixPreference();
+    loadAutoFixState();
+    primeAutoFixSeen();
     initCultureMaps();
     renderRegionOptions(loginToggle ? loginToggle.checked : false);
     setupEventListeners();
@@ -120,6 +196,7 @@ async function init() {
     renderWidthOptions();
     renderCategoryTree();
     loadPreferences();
+    initFixModal();
     connectWebSocket();
     loadActivityFromStorage(); // Load cached activity first (may have old per-capture data)
     setStatusRunning('Checking status...', 'Loading job state');
@@ -221,6 +298,7 @@ async function restoreActivityFromServer() {
           hasError: false,
           errorMessages: [],
           issues: [],
+          linkFix: null,
           timestamp: result.timestamp || Date.now()
         };
       }
@@ -247,6 +325,18 @@ async function restoreActivityFromServer() {
         validation: result.validation || null,
         url: result.url
       };
+
+      if (!bannerGroups[key].linkFix) {
+        const linkFix = buildLinkFixFromValidation(result.validation, result.href);
+        if (linkFix) {
+          bannerGroups[key].linkFix = linkFix;
+          logFix('info', 'Stored link fix from server result', {
+            culture: result.culture,
+            category: result.category,
+            url: result.url
+          });
+        }
+      }
 
       if (result.url && !bannerGroups[key].url) {
         bannerGroups[key].url = result.url;
@@ -316,6 +406,7 @@ async function restoreActivityFromServer() {
         type = 'warning';
       }
 
+      const hasFixableIssue = group.issues.includes('Link mismatch') || group.issues.includes('Target mismatch');
       const item = {
         type,
         culture: group.culture,
@@ -324,8 +415,10 @@ async function restoreActivityFromServer() {
         issues: group.issues.length > 0 ? group.issues : undefined,
         error: group.hasError ? (group.errorMessages[0] || 'Capture failed') : undefined,
         url: group.url || undefined,
+        linkFix: hasFixableIssue ? group.linkFix : undefined,
         timestamp: new Date(group.timestamp)
       };
+      applyAutoFixState(item);
 
       // Add item - errors/warnings at start, success at end
       if (type === 'error' || type === 'warning') {
@@ -892,6 +985,22 @@ function handleProgress(data) {
     // Check if all widths for this banner are complete
     if (completedWidths >= banner.totalWidths) {
       const categoryPath = banner.mainCategory ? `${banner.mainCategory} › ${banner.category}` : banner.category;
+      const hasFixableIssue = uniqueIssues.includes('Link mismatch') || uniqueIssues.includes('Target mismatch');
+      const linkFix = hasFixableIssue
+        ? buildLinkFixFromWidthResults(widthResults)
+        : null;
+      if (linkFix) {
+        logFix('info', 'Computed link fix from live capture', {
+          culture: banner.culture,
+          category: banner.category,
+          url: banner.url
+        });
+      } else if (hasFixableIssue) {
+        logFix('warn', 'Fixable mismatch detected but no fix data found', {
+          culture: banner.culture,
+          category: banner.category
+        });
+      }
 
       if (errorWidths > 0) {
         const errorMessages = Object.entries(banner.widths)
@@ -909,14 +1018,21 @@ function handleProgress(data) {
         });
       } else if (uniqueIssues.length > 0) {
         // Show warning for validation issues
-        addActivityItem({
+        const warningItem = {
           type: 'warning',
           culture: banner.culture,
           categoryPath: categoryPath,
           detail: `${completedWidths} widths captured`,
           issues: uniqueIssues,
-          url: banner.url
-        });
+          url: banner.url,
+          linkFix: linkFix || undefined,
+          autoFixStatus: autoFixEnabled && linkFix ? 'queued' : undefined,
+          autoFixNote: autoFixEnabled && linkFix ? 'Queued for auto-fix' : ''
+        };
+        addActivityItem(warningItem);
+        if (autoFixEnabled && linkFix && linkFix.expectedLink) {
+          enqueueAutoFix(warningItem);
+        }
       } else {
         addActivityItem({
           type: 'success',
@@ -1559,8 +1675,548 @@ function setConnectionStatus(status) {
   }
 }
 
+// ===== Fix Modal Functions =====
+const autoFixQueue = [];
+const autoFixSeen = new Set();
+let autoFixActive = null;
+function buildLinkFixFromValidation(validation, fallbackActual) {
+  if (!validation || !Array.isArray(validation.failures)) return null;
+  const hasLinkFailure = validation.failures.includes('link');
+  const hasTargetFailure = validation.failures.includes('target');
+  if (!hasLinkFailure && !hasTargetFailure) return null;
+  const expectedLink = validation.expected?.link || '';
+  const actualLink = validation.actual?.link || fallbackActual || '';
+  if (!expectedLink) return null;
+  const expectedTarget = validation.expected?.target
+    || validation.comparisons?.target?.expected
+    || '';
+  const actualTarget = validation.actual?.target
+    || validation.comparisons?.target?.actual
+    || '';
+  logFix('debug', 'Link fix derived from validation', {
+    expected: expectedLink,
+    actual: actualLink,
+    expectedTarget,
+    actualTarget
+  });
+  return {
+    expectedLink,
+    actualLink,
+    expectedTarget,
+    actualTarget,
+    hasLinkFailure,
+    hasTargetFailure
+  };
+}
+
+function buildLinkFixFromWidthResults(widthResults) {
+  if (!Array.isArray(widthResults)) return null;
+  logFix('debug', 'Scanning width results for link fix', { count: widthResults.length });
+  for (const result of widthResults) {
+    const fix = buildLinkFixFromValidation(result?.validation, result?.href);
+    if (fix) {
+      logFix('info', 'Link fix located in width results');
+      return fix;
+    }
+  }
+  logFix('debug', 'No link fix found in width results');
+  return null;
+}
+
+function stripDomain(value) {
+  if (!value) return '';
+  let link = String(value).trim();
+  link = link.replace(/^https?:\/\/[^/]+/i, '');
+  link = link.replace(/#.*$/, '');
+  if (link.length > 1) {
+    link = link.replace(/\/$/, '');
+  }
+  return link;
+}
+
+function formatTargetLabel(value) {
+  if (value === null || value === undefined) return '';
+  const raw = String(value).trim();
+  if (!raw) return 'Same Tab';
+  const lower = raw.toLowerCase();
+  if (lower === '_blank' || lower.includes('new')) return 'New Tab';
+  if (lower === '_self' || lower.includes('same')) return 'Same Tab';
+  return raw;
+}
+
+function classifyExpectedLink(expectedLink) {
+  const value = String(expectedLink || '').trim();
+  if (!value) {
+    return { linkType: 'internal', requiresItemLookup: true, expectedLinkDomain: '' };
+  }
+  const match = value.match(/^https?:\/\/([^/?#]+)/i);
+  if (!match) {
+    return { linkType: 'internal', requiresItemLookup: true, expectedLinkDomain: '' };
+  }
+  const domain = String(match[1] || '').toLowerCase();
+  const isInternal = /(^|\.)melaleuca\.com$/i.test(domain);
+  return {
+    linkType: isInternal ? 'internal' : 'external',
+    requiresItemLookup: isInternal,
+    expectedLinkDomain: domain
+  };
+}
+
+function setFixModalNote(message) {
+  if (!fixModalNote) return;
+  fixModalNote.textContent = message || '';
+}
+
+function createFixRequestId() {
+  return `fix-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function startReviewFlow() {
+  if (!activeFixContext?.url) {
+    logFix('warn', 'Review clicked without URL');
+    return;
+  }
+
+  const actionButton = fixModalManual;
+  const originalLabel = actionButton ? actionButton.textContent : '';
+
+  if (actionButton) {
+    actionButton.disabled = true;
+    actionButton.textContent = 'Opening...';
+  }
+
+  setFixModalNote(autoFixEnabled
+    ? 'Opening Content Editor so you can review the fix and approve the item.'
+    : 'Opening Content Editor so you can update the link manually.');
+
+  try {
+    const requestId = createFixRequestId();
+    activeFixContext.requestId = requestId;
+    activeFixContext.extensionAcked = false;
+    const linkMeta = classifyExpectedLink(activeFixContext.expectedLink);
+
+    sendFixRequestToExtension({
+      requestId,
+      url: activeFixContext.url,
+      culture: activeFixContext.culture,
+      scLang: activeFixContext.scLang,
+      expectedLink: activeFixContext.expectedLink,
+      expectedTarget: activeFixContext.expectedTarget,
+      linkType: linkMeta.linkType,
+      requiresItemLookup: linkMeta.requiresItemLookup,
+      expectedLinkDomain: linkMeta.expectedLinkDomain,
+      mode: 'manual'
+    });
+
+    activeFixContext.fallbackTimeout = setTimeout(() => {
+      if (activeFixContext?.extensionAcked) return;
+      logFix('warn', 'Extension not detected; falling back to opening page');
+      setFixModalNote('Extension not detected. Opening page so you can use Sitecore Developer Tools.');
+      window.open(activeFixContext.url, '_blank', 'noopener');
+      closeFixModal();
+    }, 1500);
+  } catch (error) {
+    logFix('error', 'Review flow failed to start', { error: error.message || String(error) });
+    setFixModalNote(error?.message || 'Unable to contact extension. Try again or open manually.');
+  } finally {
+    if (actionButton) {
+      actionButton.textContent = originalLabel;
+      actionButton.disabled = false;
+    }
+  }
+}
+
+function sendFixRequestToExtension(payload) {
+  window.postMessage({
+    source: 'banner-tester',
+    type: 'CONTENT_QA_FIX_REQUEST',
+    payload
+  }, window.location.origin);
+  logFix('info', 'Sent fix request to extension', payload);
+}
+
+function buildAutoFixKey(item) {
+  const parts = [
+    item.culture || '',
+    item.categoryPath || item.category || '',
+    item.url || '',
+    item.linkFix?.expectedLink || ''
+  ];
+  return parts.join('|');
+}
+
+function updateAutoFixItem(item, status, note) {
+  if (!item) return;
+  item.autoFixStatus = status;
+  item.autoFixNote = note || '';
+  const key = buildAutoFixKey(item);
+  updateAutoFixState(key, status, note);
+  renderActivityFeed();
+}
+
+function startNextAutoFix() {
+  if (!autoFixEnabled) return;
+  if (autoFixActive || autoFixQueue.length === 0) return;
+  const item = autoFixQueue.shift();
+  if (!item || !item.url || !item.linkFix?.expectedLink) {
+    startNextAutoFix();
+    return;
+  }
+
+  const requestId = createFixRequestId();
+  autoFixActive = {
+    requestId,
+    item,
+    acked: false,
+    timeoutId: null
+  };
+  updateAutoFixItem(item, 'in-progress', 'Starting auto-fix...');
+  const linkMeta = classifyExpectedLink(item.linkFix.expectedLink);
+
+  sendFixRequestToExtension({
+    requestId,
+    url: item.url,
+    culture: item.culture,
+    scLang: bannerToSkuCultureMap[item.culture] || item.culture || '',
+    expectedLink: item.linkFix.expectedLink,
+    expectedTarget: item.linkFix.expectedTarget,
+    linkType: linkMeta.linkType,
+    requiresItemLookup: linkMeta.requiresItemLookup,
+    expectedLinkDomain: linkMeta.expectedLinkDomain,
+    mode: 'approved'
+  });
+
+  autoFixActive.timeoutId = setTimeout(() => {
+    if (!autoFixActive || autoFixActive.acked) return;
+    logFix('warn', 'Auto-fix extension not detected');
+    updateAutoFixItem(item, 'error', 'Extension not detected');
+    autoFixActive = null;
+    startNextAutoFix();
+  }, 2000);
+}
+
+function enqueueAutoFix(item) {
+  if (!autoFixEnabled) return;
+  if (!item || !item.url || !item.linkFix?.expectedLink) return;
+  const key = buildAutoFixKey(item);
+  if (autoFixSeen.has(key)) return;
+  autoFixSeen.add(key);
+  autoFixQueue.push(item);
+  updateAutoFixItem(item, 'queued', 'Queued for auto-fix');
+  startNextAutoFix();
+}
+
+function handleExtensionStatus(message) {
+  if (!message || message.source !== 'content-qa-extension') return;
+  if (message.status === 'log') {
+    const level = message.logLevel || 'log';
+    const logger = console[level] || console.log;
+    if (message.logData !== undefined) {
+      logger(`[Content QA Ext][CE] ${message.logMessage || ''}`, message.logData);
+    } else {
+      logger(`[Content QA Ext][CE] ${message.logMessage || ''}`);
+    }
+    return;
+  }
+  if (autoFixActive && message.requestId === autoFixActive.requestId) {
+    const item = autoFixActive.item;
+    if (message.status === 'ack') {
+      autoFixActive.acked = true;
+      if (autoFixActive.timeoutId) {
+        clearTimeout(autoFixActive.timeoutId);
+        autoFixActive.timeoutId = null;
+      }
+      updateAutoFixItem(item, 'in-progress', 'Extension connected...');
+      return;
+    }
+
+    if (message.status === 'progress') {
+      updateAutoFixItem(item, 'in-progress', message.detail || 'Working...');
+      return;
+    }
+
+    if (message.status === 'needs-selection') {
+      updateAutoFixItem(item, 'needs-review', 'Multiple components found. Open Content Editor to review.');
+      autoFixActive = null;
+      startNextAutoFix();
+      return;
+    }
+
+    if (message.status === 'complete') {
+      const detail = message.detail || 'Auto-fix completed.';
+      updateAutoFixItem(item, 'fixed', detail);
+      if (typeof showVisualNotification === 'function') {
+        showVisualNotification('Auto-fix Applied', detail, 'success');
+      }
+      autoFixActive = null;
+      startNextAutoFix();
+      return;
+    }
+
+    if (message.status === 'error') {
+      updateAutoFixItem(item, 'error', message.error || 'Auto-fix failed.');
+      autoFixActive = null;
+      startNextAutoFix();
+      return;
+    }
+  }
+
+  if (!activeFixContext || message.requestId !== activeFixContext.requestId) return;
+
+  if (message.status === 'ack') {
+    activeFixContext.extensionAcked = true;
+    if (activeFixContext.fallbackTimeout) {
+      clearTimeout(activeFixContext.fallbackTimeout);
+      activeFixContext.fallbackTimeout = null;
+    }
+    logFix('info', 'Extension acknowledged fix request');
+    setFixModalNote('Extension connected. Working...');
+    return;
+  }
+
+  if (message.status === 'progress') {
+    logFix('info', 'Extension progress', { step: message.step, detail: message.detail });
+    if (message.detail) {
+      setFixModalNote(message.detail);
+    }
+    return;
+  }
+
+  if (message.status === 'needs-selection') {
+    logFix('warn', 'Extension needs component selection');
+    setFixModalNote('Multiple banners found. Open the extension popup to choose the correct component.');
+    return;
+  }
+
+  if (message.status === 'complete') {
+    logFix('info', 'Extension completed fix flow', { detail: message.detail });
+    if (message.detail) {
+      setFixModalNote(message.detail);
+      if (typeof showVisualNotification === 'function') {
+        showVisualNotification('Fix Applied', message.detail, 'success');
+      }
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('Fix Applied', { body: message.detail });
+        } catch {
+          // ignore notification failures
+        }
+      }
+    } else {
+      setFixModalNote('Content Editor opened.');
+    }
+    closeFixModal();
+    return;
+  }
+
+  if (message.status === 'error') {
+    logFix('error', 'Extension error', { error: message.error || 'Unknown error' });
+    setFixModalNote(message.error || 'Extension failed to complete the manual fix.');
+  }
+}
+
+function closeFixModal() {
+  if (!fixModal) return;
+  fixModal.classList.remove('open');
+  fixModal.setAttribute('aria-hidden', 'true');
+  logFix('info', 'Fix modal closed');
+  if (activeFixContext?.fallbackTimeout) {
+    clearTimeout(activeFixContext.fallbackTimeout);
+  }
+  activeFixContext = null;
+}
+
+function openFixModal(item) {
+  if (!fixModal || !item) return;
+  const location = item.categoryPath
+    ? `${item.culture} › ${item.categoryPath}`
+    : `${item.culture} › ${item.category || ''}`;
+  if (fixModalLocation) fixModalLocation.textContent = location;
+  if (fixModalActual) {
+    const actualDisplay = stripDomain(item.linkFix?.actualLink || '');
+    fixModalActual.textContent = actualDisplay || 'Not available';
+  }
+  if (fixModalExpected) {
+    const expectedDisplay = stripDomain(item.linkFix?.expectedLink || '');
+    fixModalExpected.textContent = expectedDisplay || 'Not available';
+  }
+  if (fixModalTarget) {
+    const actualTarget = formatTargetLabel(item.linkFix?.actualTarget || '');
+    fixModalTarget.textContent = actualTarget || 'Not available';
+  }
+  if (fixModalTargetExpected) {
+    const expectedTarget = formatTargetLabel(item.linkFix?.expectedTarget || '');
+    fixModalTargetExpected.textContent = expectedTarget || 'Not available';
+  }
+  if (autoFixEnabled) {
+    const autoFixLabelMap = {
+      queued: 'Queued',
+      'in-progress': 'In progress',
+      fixed: 'Fixed',
+      error: 'Failed',
+      'needs-review': 'Needs review'
+    };
+    const autoFixLabel = item.autoFixStatus ? (autoFixLabelMap[item.autoFixStatus] || item.autoFixStatus) : '';
+    const autoFixMessage = item.autoFixStatus ? `Auto-fix status: ${autoFixLabel}.` : 'Auto-fix runs automatically when a link mismatch is found.';
+    setFixModalNote(`${autoFixMessage} Use Review to open Content Editor for approval.`);
+  } else {
+    setFixModalNote('Auto-fix is OFF. Use Review to open Content Editor and update the link or target manually.');
+  }
+  activeFixContext = {
+    url: item.url || '',
+    culture: item.culture || '',
+    scLang: bannerToSkuCultureMap[item.culture] || item.culture || '',
+    expectedLink: item.linkFix?.expectedLink || '',
+    expectedTarget: item.linkFix?.expectedTarget || ''
+  };
+  if (fixModalManual) fixModalManual.disabled = !activeFixContext.url;
+  fixModal.classList.add('open');
+  fixModal.setAttribute('aria-hidden', 'false');
+  logFix('info', 'Fix modal opened', {
+    location,
+    url: activeFixContext.url,
+    hasExpected: Boolean(item.linkFix?.expectedLink)
+  });
+}
+
+function initFixModal() {
+  if (!fixModal || !activityList) return;
+  logFix('info', 'Initializing fix modal handlers');
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    handleExtensionStatus(event.data);
+  });
+
+  if (fixModalClose) {
+    fixModalClose.addEventListener('click', closeFixModal);
+  }
+  if (fixModalManual) {
+    fixModalManual.addEventListener('click', () => {
+      logFix('info', 'Review clicked');
+      startReviewFlow();
+    });
+  }
+
+  if (autoFixToggle) {
+    autoFixToggle.addEventListener('change', () => {
+      if (autoFixToggle.checked) {
+        autoFixToggle.checked = false;
+        openAutoFixWarning();
+      } else {
+        setAutoFixEnabled(false);
+      }
+    });
+  }
+
+  if (autoFixWarningConfirm) {
+    autoFixWarningConfirm.addEventListener('click', () => {
+      setAutoFixEnabled(true);
+      closeAutoFixWarning();
+    });
+  }
+
+  if (autoFixWarningCancel) {
+    autoFixWarningCancel.addEventListener('click', () => {
+      setAutoFixEnabled(false);
+      closeAutoFixWarning();
+    });
+  }
+
+  if (autoFixWarningClose) {
+    autoFixWarningClose.addEventListener('click', () => {
+      setAutoFixEnabled(false);
+      closeAutoFixWarning();
+    });
+  }
+
+  if (autoFixWarningModal) {
+    autoFixWarningModal.addEventListener('click', (event) => {
+      if (event.target === autoFixWarningModal) {
+        setAutoFixEnabled(false);
+        closeAutoFixWarning();
+      }
+    });
+  }
+
+  fixModal.addEventListener('click', (event) => {
+    if (event.target === fixModal) {
+      closeFixModal();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && fixModal.classList.contains('open')) {
+      closeFixModal();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && autoFixWarningModal && autoFixWarningModal.classList.contains('open')) {
+      setAutoFixEnabled(false);
+      closeAutoFixWarning();
+    }
+  });
+
+  activityList.addEventListener('click', (event) => {
+    const fixButton = event.target.closest('.activity-fix-btn');
+    if (!fixButton) return;
+    if (fixButton.disabled) return;
+    const index = Number(fixButton.dataset.fixIndex);
+    if (!Number.isFinite(index) || !activityItems[index]) return;
+    logFix('info', 'Fix button clicked', { index });
+    openFixModal(activityItems[index]);
+  });
+}
+
 // ===== Activity Feed Functions =====
 const ACTIVITY_STORAGE_KEY = 'activityFeed-banner';
+const AUTO_FIX_STATE_KEY = 'activityAutoFixState-banner';
+let autoFixState = {};
+
+function loadAutoFixState() {
+  try {
+    const stored = sessionStorage.getItem(AUTO_FIX_STATE_KEY);
+    autoFixState = stored ? JSON.parse(stored) : {};
+  } catch (e) {
+    autoFixState = {};
+  }
+}
+
+function saveAutoFixState() {
+  try {
+    sessionStorage.setItem(AUTO_FIX_STATE_KEY, JSON.stringify(autoFixState));
+  } catch (e) {
+    // ignore storage failures
+  }
+}
+
+function updateAutoFixState(key, status, note) {
+  if (!key) return;
+  autoFixState[key] = {
+    status,
+    note: note || '',
+    updatedAt: Date.now()
+  };
+  saveAutoFixState();
+}
+
+function applyAutoFixState(item) {
+  if (!item) return;
+  const key = buildAutoFixKey(item);
+  if (!key) return;
+  const stored = autoFixState[key];
+  if (!stored) return;
+  item.autoFixStatus = stored.status;
+  item.autoFixNote = stored.note || '';
+}
+
+function primeAutoFixSeen() {
+  autoFixSeen.clear();
+  Object.keys(autoFixState).forEach((key) => {
+    autoFixSeen.add(key);
+  });
+}
 
 function loadActivityFromStorage() {
   try {
@@ -1570,6 +2226,7 @@ function loadActivityFromStorage() {
       activityItems.forEach(item => {
         if (item.timestamp) item.timestamp = new Date(item.timestamp);
       });
+      activityItems.forEach(item => applyAutoFixState(item));
       renderActivityFeed();
       if (activityItems.length > 0) {
         activityFeed.style.display = 'block';
@@ -1590,6 +2247,7 @@ function saveActivityToStorage() {
 
 function addActivityItem(item) {
   item.timestamp = new Date();
+  applyAutoFixState(item);
 
   if (item.type === 'error') {
     activityItems.unshift(item);
@@ -1608,6 +2266,9 @@ function addActivityItem(item) {
 
 function clearActivityFeed() {
   activityItems = [];
+  autoFixState = {};
+  saveAutoFixState();
+  autoFixSeen.clear();
   saveActivityToStorage();
   renderActivityFeed();
 }
@@ -1625,13 +2286,30 @@ function renderActivityFeed() {
     return;
   }
 
-  activityList.innerHTML = activityItems.map(item => {
+  activityList.innerHTML = activityItems.map((item, index) => {
     const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
     const timeStr = formatActivityTime(item.timestamp);
     const itemClass = item.type === 'error' ? 'error' : (item.type === 'warning' ? 'warning' : 'success');
-    const linkMarkup = item.url
-      ? `<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`
-      : '';
+    const actions = [];
+    if (item.url) {
+      actions.push(`<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`);
+    }
+      const isFixable = item.type === 'warning' && item.linkFix && item.linkFix.expectedLink;
+      if (isFixable) {
+        const reviewReady = autoFixEnabled
+          ? ['fixed', 'error', 'needs-review'].includes(item.autoFixStatus)
+          : true;
+        const disabledAttr = reviewReady ? '' : 'disabled';
+        const disabledTitle = reviewReady ? '' : 'title="Auto-fix must complete before review."';
+        actions.push(`<button class="activity-fix-btn" data-fix-index="${index}" type="button" ${disabledAttr} ${disabledTitle}>Review</button>`);
+      }
+      logFix('debug', 'Rendered activity item', {
+        index,
+        type: item.type,
+        hasLinkFix: Boolean(item.linkFix?.expectedLink),
+        hasUrl: Boolean(item.url)
+      });
+    const actionsMarkup = actions.length > 0 ? `<div class="activity-item-actions">${actions.join('')}</div>` : '';
     // Use categoryPath for grouped banners, fallback to old format for compatibility
     const location = item.categoryPath
       ? `${item.culture} › ${item.categoryPath}`
@@ -1644,20 +2322,31 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || ''} ${item.error ? '- ' + item.error : ''}</div>
-            ${linkMarkup}
+            ${actionsMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
       `;
     } else if (item.type === 'warning') {
       const issueText = item.issues ? item.issues.join(' • ') : '';
+      const autoFixLabelMap = {
+        queued: 'Queued',
+        'in-progress': 'In progress',
+        fixed: 'Fixed',
+        error: 'Failed',
+        'needs-review': 'Needs review'
+      };
+      const autoFixLabel = item.autoFixStatus ? (autoFixLabelMap[item.autoFixStatus] || item.autoFixStatus) : '';
+      const autoFixText = autoFixEnabled && item.autoFixStatus
+        ? `Auto-fix: ${autoFixLabel}${item.autoFixNote ? ` - ${item.autoFixNote}` : ''}`
+        : '';
       return `
         <div class="activity-item warning">
           <span class="activity-item-icon">${icon}</span>
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
-            <div class="activity-item-detail">${item.detail || ''} ${issueText ? '- ' + issueText : ''}</div>
-            ${linkMarkup}
+            <div class="activity-item-detail">${item.detail || ''} ${issueText ? '- ' + issueText : ''}${autoFixText ? ` | ${autoFixText}` : ''}</div>
+            ${actionsMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
@@ -1669,7 +2358,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || 'Captured'}</div>
-            ${linkMarkup}
+            ${actionsMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
@@ -1693,3 +2382,7 @@ function formatActivityTime(date) {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+
+
+

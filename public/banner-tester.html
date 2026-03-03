@@ -84,6 +84,19 @@
         </div>
 
         <div class="section">
+          <div class="label">Auto Fix Links</div>
+          <label class="toggle-row">
+            <span class="toggle-label">Enable auto-fix for mismatched banner links</span>
+            <span class="toggle-switch">
+              <input type="checkbox" id="auto-fix-toggle">
+              <span class="toggle-slider" aria-hidden="true"></span>
+            </span>
+          </label>
+          <div class="meta">When enabled, the tool will update Sitecore links and targets automatically and move items to Content Lead Approval. You must be signed in to Sitecore Production and signed out of melaleuca.com in all environments.</div>
+          <div class="auto-fix-indicator" id="auto-fix-indicator" style="display: none;"></div>
+        </div>
+
+        <div class="section">
           <div class="label">Viewport Widths</div>
           <div class="toggle-buttons">
             <button class="toggle-btn" id="select-all-widths">Select All</button>
@@ -158,6 +171,58 @@
     <div class="connection-status" id="connection-status">
       <span class="connection-dot"></span>
       <span class="connection-text">Connecting...</span>
+    </div>
+  </div>
+
+  <div class="fix-modal" id="banner-fix-modal" aria-hidden="true">
+    <div class="fix-modal-panel" role="dialog" aria-modal="true" aria-labelledby="banner-fix-title">
+      <div class="fix-modal-header">
+        <div class="fix-modal-title" id="banner-fix-title">Link Fix</div>
+        <button class="fix-modal-close" id="banner-fix-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="fix-modal-body">
+        <div class="fix-modal-location" id="banner-fix-location"></div>
+        <div class="fix-modal-message">This banner link or target does not match the validation sheet.</div>
+        <div class="fix-modal-grid">
+          <div class="fix-modal-field">
+            <div class="fix-modal-label">Current link</div>
+            <div class="fix-modal-value" id="banner-fix-actual"></div>
+          </div>
+          <div class="fix-modal-field">
+            <div class="fix-modal-label">Expected link</div>
+            <div class="fix-modal-value" id="banner-fix-expected"></div>
+          </div>
+          <div class="fix-modal-field">
+            <div class="fix-modal-label">Current target</div>
+            <div class="fix-modal-value" id="banner-fix-target"></div>
+          </div>
+          <div class="fix-modal-field">
+            <div class="fix-modal-label">Expected target</div>
+            <div class="fix-modal-value" id="banner-fix-target-expected"></div>
+          </div>
+        </div>
+        <div class="fix-modal-note" id="banner-fix-note">Auto-fix runs automatically when a link mismatch is found. Use Review to open Content Editor and approve the item.</div>
+      </div>
+        <div class="fix-modal-actions">
+          <button class="primary" id="banner-fix-manual" type="button">Review in Content Editor</button>
+        </div>
+    </div>
+  </div>
+
+  <div class="fix-modal" id="auto-fix-warning-modal" aria-hidden="true">
+    <div class="fix-modal-panel" role="dialog" aria-modal="true" aria-labelledby="auto-fix-warning-title">
+      <div class="fix-modal-header">
+        <div class="fix-modal-title" id="auto-fix-warning-title">Enable Auto-fix?</div>
+        <button class="fix-modal-close" id="auto-fix-warning-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="fix-modal-body">
+        <div class="fix-modal-message">Auto-fix will automatically update Sitecore links and targets when mismatches are found and move the item to Content Lead Approval. You must be signed in to Sitecore Production and signed out of melaleuca.com in all environments.</div>
+        <div class="fix-modal-note">Only enable this if you are ready for the tool to apply changes without manual edits.</div>
+      </div>
+      <div class="fix-modal-actions">
+        <button class="toggle-btn" id="auto-fix-warning-cancel" type="button">Cancel</button>
+        <button class="danger" id="auto-fix-warning-confirm" type="button">Enable Auto-fix</button>
+      </div>
     </div>
   </div>
 

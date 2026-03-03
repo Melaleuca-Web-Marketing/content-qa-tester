@@ -55,6 +55,61 @@ if (userId) {
   console.error('[Critical] Failed to get userId - multi-user isolation may not work properly');
 }
 
+const AUTO_FIX_PREF_KEY = 'mixinadAutoFixEnabled';
+let autoFixEnabled = false;
+
+function logFix(level, message, data = null) {
+  const logger = console[level] || console.log;
+  if (data !== null && data !== undefined) {
+    logger(`${FIX_LOG_PREFIX} ${message}`, data);
+  } else {
+    logger(`${FIX_LOG_PREFIX} ${message}`);
+  }
+}
+
+function updateAutoFixIndicator() {
+  if (!autoFixIndicator) return;
+  if (autoFixEnabled) {
+    autoFixIndicator.textContent = 'Auto-fix is ON. Link, target, and SKU mismatches will be updated automatically. Requires Sitecore Production login and melaleuca.com signed out in all environments.';
+    autoFixIndicator.style.display = 'block';
+  } else {
+    autoFixIndicator.textContent = '';
+    autoFixIndicator.style.display = 'none';
+  }
+}
+
+function setAutoFixEnabled(enabled, { persist = true } = {}) {
+  autoFixEnabled = Boolean(enabled);
+  if (autoFixToggle) autoFixToggle.checked = autoFixEnabled;
+  if (persist) {
+    localStorage.setItem(AUTO_FIX_PREF_KEY, autoFixEnabled ? 'true' : 'false');
+  }
+  updateAutoFixIndicator();
+  if (!autoFixEnabled) {
+    autoFixQueue.length = 0;
+  }
+  logFix('info', `Auto-fix ${autoFixEnabled ? 'enabled' : 'disabled'}`);
+}
+
+function loadAutoFixPreference() {
+  const stored = localStorage.getItem(AUTO_FIX_PREF_KEY);
+  autoFixEnabled = stored === 'true';
+  if (autoFixToggle) autoFixToggle.checked = autoFixEnabled;
+  updateAutoFixIndicator();
+}
+
+function openAutoFixWarning() {
+  if (!autoFixWarningModal) return;
+  autoFixWarningModal.classList.add('open');
+  autoFixWarningModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeAutoFixWarning() {
+  if (!autoFixWarningModal) return;
+  autoFixWarningModal.classList.remove('open');
+  autoFixWarningModal.setAttribute('aria-hidden', 'true');
+}
+
 // DOM Elements
 const envSelect = document.getElementById('env-select');
 const regionSelect = document.getElementById('region-select');
@@ -90,6 +145,27 @@ const activityList = document.getElementById('activity-list');
 const passedCountEl = document.getElementById('passed-count');
 const failedCountEl = document.getElementById('failed-count');
 const clearActivityBtn = document.getElementById('clear-activity');
+const mixinFixModal = document.getElementById('mixin-fix-modal');
+const mixinFixClose = document.getElementById('mixin-fix-close');
+const mixinFixLocation = document.getElementById('mixin-fix-location');
+const mixinFixActual = document.getElementById('mixin-fix-actual');
+const mixinFixExpected = document.getElementById('mixin-fix-expected');
+const mixinFixTarget = document.getElementById('mixin-fix-target');
+const mixinFixTargetExpected = document.getElementById('mixin-fix-target-expected');
+const mixinFixSku = document.getElementById('mixin-fix-sku');
+const mixinFixSkuExpected = document.getElementById('mixin-fix-sku-expected');
+const mixinFixSkuField = document.getElementById('mixin-fix-sku-field');
+const mixinFixSkuExpectedField = document.getElementById('mixin-fix-sku-expected-field');
+const mixinFixNote = document.getElementById('mixin-fix-note');
+const mixinFixManual = document.getElementById('mixin-fix-manual');
+const autoFixToggle = document.getElementById('auto-fix-toggle');
+const autoFixIndicator = document.getElementById('auto-fix-indicator');
+const autoFixWarningModal = document.getElementById('auto-fix-warning-modal');
+const autoFixWarningClose = document.getElementById('auto-fix-warning-close');
+const autoFixWarningCancel = document.getElementById('auto-fix-warning-cancel');
+const autoFixWarningConfirm = document.getElementById('auto-fix-warning-confirm');
+
+const FIX_LOG_PREFIX = '[MixIn Fix]';
 
 const skuRegionToBannerRegion = {
   us: 'usca',
@@ -113,6 +189,9 @@ let bannerToSkuCultureMap = {};
 async function init() {
   try {
     await loadConfig();
+    loadAutoFixPreference();
+    loadAutoFixState();
+    primeAutoFixSeen();
     initCultureMaps();
     renderRegionOptions(loginToggle ? loginToggle.checked : false);
     setupEventListeners();
@@ -120,6 +199,7 @@ async function init() {
     renderWidthOptions();
     renderCategoryTree();
     loadPreferences();
+    initFixModal();
     connectWebSocket();
     loadActivityFromStorage(); // Load cached activity first (may have old per-capture data)
     setStatusRunning('Checking status...', 'Loading job state');
@@ -185,6 +265,131 @@ async function checkStatus() {
   }
 }
 
+function stripDomain(value) {
+  if (!value) return '';
+  let link = String(value).trim();
+  link = link.replace(/^https?:\/\/[^/]+/i, '');
+  link = link.replace(/#.*$/, '');
+  if (link.length > 1) {
+    link = link.replace(/\/$/, '');
+  }
+  return link;
+}
+
+function formatTargetLabel(value) {
+  if (value === null || value === undefined) return '';
+  const raw = String(value).trim();
+  if (!raw) return 'Same Tab';
+  const lower = raw.toLowerCase();
+  if (lower === '_blank' || lower.includes('new')) return 'New Tab';
+  if (lower === '_self' || lower.includes('same')) return 'Same Tab';
+  return raw;
+}
+
+function classifyExpectedLink(expectedLink) {
+  const value = String(expectedLink || '').trim();
+  if (!value) {
+    return { linkType: 'internal', requiresItemLookup: true, expectedLinkDomain: '' };
+  }
+  const match = value.match(/^https?:\/\/([^/?#]+)/i);
+  if (!match) {
+    return { linkType: 'internal', requiresItemLookup: true, expectedLinkDomain: '' };
+  }
+  const domain = String(match[1] || '').toLowerCase();
+  const isInternal = /(^|\.)melaleuca\.com$/i.test(domain);
+  return {
+    linkType: isInternal ? 'internal' : 'external',
+    requiresItemLookup: isInternal,
+    expectedLinkDomain: domain
+  };
+}
+
+function parseSkuList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map(entry => String(entry || '').trim()).filter(Boolean);
+  }
+  return String(value)
+    .split(/[,\n;]/)
+    .map(entry => entry.trim())
+    .filter(Boolean);
+}
+
+function isLimitedQuantityMessage(message) {
+  if (!message) return false;
+  const text = String(message).toLowerCase();
+  return text.includes('limited quantity')
+    || text.includes('limit of')
+    || text.includes('maximum quantity')
+    || (text.includes('quantity') && text.includes('limit'));
+}
+
+function buildMixInAdFixFromValidations(validations, fallbackActual = {}) {
+  if (!Array.isArray(validations) || validations.length === 0) return null;
+  for (const validation of validations) {
+    if (!validation || !Array.isArray(validation.failures)) continue;
+    const hasLinkFailure = validation.failures.includes('link');
+    const hasTargetFailure = validation.failures.includes('target');
+    if (!hasLinkFailure && !hasTargetFailure) continue;
+    const expectedLink = validation.expected?.link || '';
+    if (!expectedLink) continue;
+    const actualLink = validation.actual?.link || fallbackActual.link || '';
+    const expectedTarget = validation.expected?.target
+      || validation.comparisons?.target?.expected
+      || '';
+    const actualTarget = validation.actual?.target
+      || validation.comparisons?.target?.actual
+      || fallbackActual.target
+      || '';
+    logFix('debug', 'Mix-in ad fix derived from validation', {
+      expected: expectedLink,
+      actual: actualLink,
+      expectedTarget,
+      actualTarget
+    });
+    return {
+      expectedLink,
+      actualLink,
+      expectedTarget,
+      actualTarget,
+      hasLinkFailure,
+      hasTargetFailure
+    };
+  }
+  return null;
+}
+
+function buildMixInAdSkuFixFromValidations(validations, addToCartResult) {
+  if (!Array.isArray(validations) || validations.length === 0) return null;
+  if (addToCartResult && isLimitedQuantityMessage(addToCartResult.error || addToCartResult.message)) {
+    return null;
+  }
+  for (const validation of validations) {
+    if (!validation || !Array.isArray(validation.failures)) continue;
+    if (!validation.failures.includes('sku')) continue;
+    const expectedList = parseSkuList(validation.expected?.sku || '');
+    const actualSku = validation.actual?.sku || addToCartResult?.sku || '';
+    if (!actualSku || expectedList.length === 0) continue;
+    if (expectedList.length > 1) {
+      logFix('warn', 'SKU mismatch has multiple expected values; skipping auto-fix', {
+        expected: expectedList,
+        actual: actualSku
+      });
+      return null;
+    }
+    logFix('debug', 'Mix-in ad SKU fix derived from validation', {
+      expected: expectedList[0],
+      actual: actualSku
+    });
+    return {
+      expectedSku: expectedList[0],
+      expectedSkuDisplay: expectedList.join(', '),
+      actualSku
+    };
+  }
+  return null;
+}
+
 function buildMixInAdActivityItems(results, options = {}) {
   const expectedWidthCount = options.expectedWidthCount || 0;
   const filterIncomplete = options.filterIncomplete && expectedWidthCount > 0;
@@ -209,6 +414,8 @@ function buildMixInAdActivityItems(results, options = {}) {
         addToCartResult: null,
         noAdsFound: false,
         url: result.url || '',
+        actualLink: '',
+        actualTarget: '',
         missing: {
           href: false,
           target: false
@@ -236,6 +443,13 @@ function buildMixInAdActivityItems(results, options = {}) {
     } else if (!result.error && !result.noAdsFound) {
       if (!result.href) group.missing.href = true;
       if (!result.target) group.missing.target = true;
+    }
+
+    if (result.href && !group.actualLink) {
+      group.actualLink = result.href;
+    }
+    if (result.target && !group.actualTarget) {
+      group.actualTarget = result.target;
     }
 
     if (result.addToCartResult && !group.addToCartResult) {
@@ -281,6 +495,25 @@ function buildMixInAdActivityItems(results, options = {}) {
       if (group.missing.target) issues.add('Missing target');
     }
 
+    const limitedQuantity = isLimitedQuantityMessage(group.addToCartResult?.error || group.addToCartResult?.message);
+    const hasSkuMismatch = issues.has('SKU mismatch');
+    const hasFixableIssue = issues.has('Link mismatch')
+      || issues.has('Target mismatch')
+      || (hasSkuMismatch && !limitedQuantity);
+    const linkFix = (issues.has('Link mismatch') || issues.has('Target mismatch'))
+      ? buildMixInAdFixFromValidations(group.validations, { link: group.actualLink, target: group.actualTarget })
+      : null;
+    const skuFix = hasSkuMismatch && !limitedQuantity
+      ? buildMixInAdSkuFixFromValidations(group.validations, group.addToCartResult)
+      : null;
+    if (hasFixableIssue && !linkFix && !skuFix) {
+      logFix('warn', 'Mix-in ad mismatch detected but no fix data found', {
+        culture: group.culture,
+        category: group.category,
+        adIndex: group.adIndex
+      });
+    }
+
     let type = 'success';
     let error = undefined;
     if (group.errors.length > 0) {
@@ -303,10 +536,15 @@ function buildMixInAdActivityItems(results, options = {}) {
       type,
       culture: group.culture,
       categoryPath: `${categoryPath}${adLabel}`,
+      adIndex: group.adIndex,
       detail: `${widthCount} widths captured`,
       issues: issues.size > 0 ? Array.from(issues) : undefined,
       error,
       url: group.url || undefined,
+      linkFix: linkFix || undefined,
+      skuFix: skuFix || undefined,
+      autoFixStatus: autoFixEnabled && (linkFix || skuFix) ? 'queued' : undefined,
+      autoFixNote: autoFixEnabled && (linkFix || skuFix) ? 'Queued for auto-fix' : '',
       timestamp: group.timestamp
     });
   });
@@ -324,6 +562,398 @@ function addActivityItemsFromResults(results, options = {}) {
     activityFeed.style.display = 'block';
   }
   return items.length;
+}
+
+// ===== Fix Modal / Auto-fix =====
+const autoFixQueue = [];
+const autoFixSeen = new Set();
+let autoFixActive = null;
+let activeFixContext = null;
+
+function setFixModalNote(message) {
+  if (!mixinFixNote) return;
+  mixinFixNote.textContent = message || '';
+}
+
+function createFixRequestId() {
+  return `mixin-fix-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function buildAutoFixKey(item) {
+  const parts = [
+    item.culture || '',
+    item.categoryPath || item.category || '',
+    Number.isFinite(item.adIndex) ? `ad-${item.adIndex}` : 'ad-none',
+    item.url || '',
+    item.linkFix?.expectedLink || '',
+    item.skuFix?.expectedSku || ''
+  ];
+  return parts.join('|');
+}
+
+function updateAutoFixItem(item, status, note) {
+  if (!item) return;
+  item.autoFixStatus = status;
+  item.autoFixNote = note || '';
+  const key = buildAutoFixKey(item);
+  updateAutoFixState(key, status, note);
+  renderActivityFeed();
+}
+
+function sendFixRequestToExtension(payload) {
+  window.postMessage({
+    source: 'mixinad-tester',
+    type: 'CONTENT_QA_FIX_REQUEST',
+    payload
+  }, window.location.origin);
+  logFix('info', 'Sent fix request to extension', payload);
+}
+
+function startNextAutoFix() {
+  if (!autoFixEnabled) return;
+  if (autoFixActive || autoFixQueue.length === 0) return;
+  const item = autoFixQueue.shift();
+  const hasLinkFix = Boolean(item?.linkFix?.expectedLink);
+  const hasSkuFix = Boolean(item?.skuFix?.expectedSku);
+  if (!item || !item.url || (!hasLinkFix && !hasSkuFix)) {
+    startNextAutoFix();
+    return;
+  }
+
+  const requestId = createFixRequestId();
+  autoFixActive = {
+    requestId,
+    item,
+    acked: false,
+    timeoutId: null
+  };
+  updateAutoFixItem(item, 'in-progress', 'Starting auto-fix...');
+  const linkMeta = classifyExpectedLink(hasLinkFix ? item.linkFix.expectedLink : '');
+
+  sendFixRequestToExtension({
+    requestId,
+    url: item.url,
+    culture: item.culture,
+    scLang: bannerToSkuCultureMap[item.culture] || item.culture || '',
+    expectedLink: hasLinkFix ? item.linkFix.expectedLink : '',
+    expectedTarget: hasLinkFix ? item.linkFix.expectedTarget : '',
+    expectedSku: hasSkuFix ? item.skuFix.expectedSku : '',
+    linkType: linkMeta.linkType,
+    requiresItemLookup: linkMeta.requiresItemLookup,
+    expectedLinkDomain: linkMeta.expectedLinkDomain,
+    componentType: 'mixinad',
+    adIndex: item.adIndex,
+    componentKey: Number.isFinite(item.adIndex) ? `mixinad:${item.adIndex}` : 'mixinad:unknown',
+    mode: 'approved'
+  });
+
+  autoFixActive.timeoutId = setTimeout(() => {
+    if (!autoFixActive || autoFixActive.acked) return;
+    logFix('warn', 'Auto-fix extension not detected');
+    updateAutoFixItem(item, 'error', 'Extension not detected');
+    autoFixActive = null;
+    startNextAutoFix();
+  }, 2000);
+}
+
+function enqueueAutoFix(item) {
+  if (!autoFixEnabled) return;
+  if (!item || !item.url || (!item.linkFix?.expectedLink && !item.skuFix?.expectedSku)) return;
+  const key = buildAutoFixKey(item);
+  if (autoFixSeen.has(key)) return;
+  autoFixSeen.add(key);
+  autoFixQueue.push(item);
+  updateAutoFixItem(item, 'queued', 'Queued for auto-fix');
+  startNextAutoFix();
+}
+
+function handleExtensionStatus(message) {
+  if (!message || message.source !== 'content-qa-extension') return;
+  if (message.status === 'log') {
+    const level = message.logLevel || 'log';
+    const logger = console[level] || console.log;
+    if (message.logData !== undefined) {
+      logger(`[Content QA Ext][CE] ${message.logMessage || ''}`, message.logData);
+    } else {
+      logger(`[Content QA Ext][CE] ${message.logMessage || ''}`);
+    }
+    return;
+  }
+  if (autoFixActive && message.requestId === autoFixActive.requestId) {
+    const item = autoFixActive.item;
+    if (message.status === 'ack') {
+      autoFixActive.acked = true;
+      if (autoFixActive.timeoutId) {
+        clearTimeout(autoFixActive.timeoutId);
+        autoFixActive.timeoutId = null;
+      }
+      updateAutoFixItem(item, 'in-progress', 'Extension connected...');
+      return;
+    }
+
+    if (message.status === 'progress') {
+      updateAutoFixItem(item, 'in-progress', message.detail || 'Working...');
+      return;
+    }
+
+    if (message.status === 'needs-selection') {
+      updateAutoFixItem(item, 'needs-review', 'Multiple mix-in ads found. Open Content Editor to review.');
+      autoFixActive = null;
+      startNextAutoFix();
+      return;
+    }
+
+    if (message.status === 'complete') {
+      const detail = message.detail || 'Auto-fix completed.';
+      updateAutoFixItem(item, 'fixed', detail);
+      if (typeof showVisualNotification === 'function') {
+        showVisualNotification('Auto-fix Applied', detail, 'success');
+      }
+      autoFixActive = null;
+      startNextAutoFix();
+      return;
+    }
+
+    if (message.status === 'error') {
+      updateAutoFixItem(item, 'error', message.error || 'Auto-fix failed.');
+      autoFixActive = null;
+      startNextAutoFix();
+      return;
+    }
+  }
+
+  if (!activeFixContext || message.requestId !== activeFixContext.requestId) return;
+
+  if (message.status === 'ack') {
+    activeFixContext.extensionAcked = true;
+    if (activeFixContext.fallbackTimeout) {
+      clearTimeout(activeFixContext.fallbackTimeout);
+      activeFixContext.fallbackTimeout = null;
+    }
+    logFix('info', 'Extension acknowledged fix request');
+    setFixModalNote('Extension connected. Working...');
+    return;
+  }
+
+  if (message.status === 'progress') {
+    logFix('info', 'Extension progress', { step: message.step, detail: message.detail });
+    if (message.detail) {
+      setFixModalNote(message.detail);
+    }
+    return;
+  }
+
+  if (message.status === 'needs-selection') {
+    logFix('warn', 'Extension needs component selection');
+    setFixModalNote('Multiple mix-in ads found. Open the extension popup to choose the correct component.');
+    return;
+  }
+
+  if (message.status === 'complete') {
+    logFix('info', 'Extension completed fix flow', { detail: message.detail });
+    if (message.detail) {
+      setFixModalNote(message.detail);
+      if (typeof showVisualNotification === 'function') {
+        showVisualNotification('Fix Applied', message.detail, 'success');
+      }
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('Fix Applied', { body: message.detail });
+        } catch {
+          // ignore notification failures
+        }
+      }
+    } else {
+      setFixModalNote('Content Editor opened.');
+    }
+    closeFixModal();
+    return;
+  }
+
+  if (message.status === 'error') {
+    logFix('error', 'Extension error', { error: message.error || 'Unknown error' });
+    setFixModalNote(message.error || 'Extension failed to complete the manual fix.');
+  }
+}
+
+function closeFixModal() {
+  if (!mixinFixModal) return;
+  mixinFixModal.classList.remove('open');
+  mixinFixModal.setAttribute('aria-hidden', 'true');
+  logFix('info', 'Fix modal closed');
+  if (activeFixContext?.fallbackTimeout) {
+    clearTimeout(activeFixContext.fallbackTimeout);
+  }
+  activeFixContext = null;
+}
+
+function startReviewFlow() {
+  if (!activeFixContext?.url) {
+    logFix('warn', 'Review clicked without URL');
+    return;
+  }
+
+  const actionButton = mixinFixManual;
+  const originalLabel = actionButton ? actionButton.textContent : '';
+
+  if (actionButton) {
+    actionButton.disabled = true;
+    actionButton.textContent = 'Opening...';
+  }
+
+  setFixModalNote(autoFixEnabled
+    ? 'Opening Content Editor so you can review the fix and approve the item.'
+    : 'Opening Content Editor so you can update the link, target, or SKU manually.');
+
+  try {
+    const requestId = createFixRequestId();
+    activeFixContext.requestId = requestId;
+    activeFixContext.extensionAcked = false;
+    const linkMeta = classifyExpectedLink(activeFixContext.expectedLink);
+
+    sendFixRequestToExtension({
+      requestId,
+      url: activeFixContext.url,
+      culture: activeFixContext.culture,
+      scLang: activeFixContext.scLang,
+      expectedLink: activeFixContext.expectedLink,
+      expectedTarget: activeFixContext.expectedTarget,
+      expectedSku: activeFixContext.expectedSku || '',
+      linkType: linkMeta.linkType,
+      requiresItemLookup: linkMeta.requiresItemLookup,
+      expectedLinkDomain: linkMeta.expectedLinkDomain,
+      componentType: 'mixinad',
+      adIndex: activeFixContext.adIndex,
+      componentKey: Number.isFinite(activeFixContext.adIndex) ? `mixinad:${activeFixContext.adIndex}` : 'mixinad:unknown',
+      mode: 'manual'
+    });
+
+    activeFixContext.fallbackTimeout = setTimeout(() => {
+      if (activeFixContext?.extensionAcked) return;
+      logFix('warn', 'Extension not detected; falling back to opening page');
+      setFixModalNote('Extension not detected. Opening page so you can use Sitecore Developer Tools.');
+      window.open(activeFixContext.url, '_blank', 'noopener');
+      closeFixModal();
+    }, 1500);
+  } catch (error) {
+    logFix('error', 'Review flow failed to start', { error: error.message || String(error) });
+    setFixModalNote(error?.message || 'Unable to contact extension. Try again or open manually.');
+  } finally {
+    if (actionButton) {
+      actionButton.textContent = originalLabel;
+      actionButton.disabled = false;
+    }
+  }
+}
+
+function openFixModal(item) {
+  if (!mixinFixModal || !item) return;
+  const location = item.categoryPath
+    ? `${item.culture} > ${item.categoryPath}`
+    : `${item.culture} > ${item.category || ""}`;
+  if (mixinFixLocation) mixinFixLocation.textContent = location;
+  if (mixinFixActual) {
+    const actualDisplay = stripDomain(item.linkFix?.actualLink || '');
+    mixinFixActual.textContent = actualDisplay || 'Not available';
+  }
+  if (mixinFixExpected) {
+    const expectedDisplay = stripDomain(item.linkFix?.expectedLink || '');
+    mixinFixExpected.textContent = expectedDisplay || 'Not available';
+  }
+  if (mixinFixTarget) {
+    const actualTarget = formatTargetLabel(item.linkFix?.actualTarget || '');
+    mixinFixTarget.textContent = actualTarget || 'Not available';
+  }
+  if (mixinFixTargetExpected) {
+    const expectedTarget = formatTargetLabel(item.linkFix?.expectedTarget || '');
+    mixinFixTargetExpected.textContent = expectedTarget || 'Not available';
+  }
+  const actualSku = item.skuFix?.actualSku || '';
+  const expectedSkuDisplay = item.skuFix?.expectedSkuDisplay || item.skuFix?.expectedSku || '';
+  if (mixinFixSku) {
+    mixinFixSku.textContent = actualSku || 'Not available';
+  }
+  if (mixinFixSkuExpected) {
+    mixinFixSkuExpected.textContent = expectedSkuDisplay || 'Not available';
+  }
+  const showSkuFields = Boolean(actualSku || expectedSkuDisplay);
+  if (mixinFixSkuField) mixinFixSkuField.style.display = showSkuFields ? 'block' : 'none';
+  if (mixinFixSkuExpectedField) mixinFixSkuExpectedField.style.display = showSkuFields ? 'block' : 'none';
+  if (autoFixEnabled) {
+    const autoFixLabelMap = {
+      queued: 'Queued',
+      'in-progress': 'In progress',
+      fixed: 'Fixed',
+      error: 'Failed',
+      'needs-review': 'Needs review'
+    };
+    const autoFixLabel = item.autoFixStatus ? (autoFixLabelMap[item.autoFixStatus] || item.autoFixStatus) : '';
+    const autoFixMessage = item.autoFixStatus ? `Auto-fix status: ${autoFixLabel}.` : 'Auto-fix runs automatically when a link, target, or SKU mismatch is found.';
+    setFixModalNote(`${autoFixMessage} Use Review to open Content Editor for approval.`);
+  } else {
+    setFixModalNote('Auto-fix is OFF. Use Review to open Content Editor and update the link, target, or SKU manually.');
+  }
+
+  activeFixContext = {
+    url: item.url || '',
+    culture: item.culture || '',
+    scLang: bannerToSkuCultureMap[item.culture] || item.culture || '',
+    expectedLink: item.linkFix?.expectedLink || '',
+    expectedTarget: item.linkFix?.expectedTarget || '',
+    expectedSku: item.skuFix?.expectedSku || '',
+    adIndex: Number.isFinite(item.adIndex) ? item.adIndex : null
+  };
+
+  if (mixinFixManual) mixinFixManual.disabled = !activeFixContext.url;
+  mixinFixModal.classList.add('open');
+  mixinFixModal.setAttribute('aria-hidden', 'false');
+  logFix('info', 'Fix modal opened', {
+    location,
+    url: activeFixContext.url,
+    adIndex: activeFixContext.adIndex
+  });
+}
+
+function initFixModal() {
+  if (!mixinFixModal || !activityList) return;
+  logFix('info', 'Initializing fix modal handlers');
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    handleExtensionStatus(event.data);
+  });
+
+  if (mixinFixClose) {
+    mixinFixClose.addEventListener('click', closeFixModal);
+  }
+  if (mixinFixManual) {
+    mixinFixManual.addEventListener('click', () => {
+      logFix('info', 'Review clicked');
+      startReviewFlow();
+    });
+  }
+
+  mixinFixModal.addEventListener('click', (event) => {
+    if (event.target === mixinFixModal) {
+      closeFixModal();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && mixinFixModal.classList.contains('open')) {
+      closeFixModal();
+    }
+  });
+
+  activityList.addEventListener('click', (event) => {
+    const fixButton = event.target.closest('.activity-fix-btn');
+    if (!fixButton) return;
+    if (fixButton.disabled) return;
+    const index = Number(fixButton.dataset.fixIndex);
+    if (!Number.isFinite(index) || !activityItems[index]) return;
+    logFix('info', 'Fix button clicked', { index });
+    openFixModal(activityItems[index]);
+  });
 }
 
 // Restore activity feed from server-side Mix-In Ad results
@@ -507,6 +1137,47 @@ function setupEventListeners() {
     });
   }
 
+  if (autoFixToggle) {
+    autoFixToggle.addEventListener('change', () => {
+      if (autoFixToggle.checked) {
+        autoFixToggle.checked = false;
+        openAutoFixWarning();
+      } else {
+        setAutoFixEnabled(false);
+      }
+    });
+  }
+
+  if (autoFixWarningConfirm) {
+    autoFixWarningConfirm.addEventListener('click', () => {
+      setAutoFixEnabled(true);
+      closeAutoFixWarning();
+    });
+  }
+
+  if (autoFixWarningCancel) {
+    autoFixWarningCancel.addEventListener('click', () => {
+      setAutoFixEnabled(false);
+      closeAutoFixWarning();
+    });
+  }
+
+  if (autoFixWarningClose) {
+    autoFixWarningClose.addEventListener('click', () => {
+      setAutoFixEnabled(false);
+      closeAutoFixWarning();
+    });
+  }
+
+  if (autoFixWarningModal) {
+    autoFixWarningModal.addEventListener('click', (event) => {
+      if (event.target === autoFixWarningModal) {
+        setAutoFixEnabled(false);
+        closeAutoFixWarning();
+      }
+    });
+  }
+
   if (usernameInput) {
     usernameInput.addEventListener('input', savePreferences);
   }
@@ -552,6 +1223,13 @@ function setupEventListeners() {
       updatePasswordToggle();
     });
   }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && autoFixWarningModal && autoFixWarningModal.classList.contains('open')) {
+      setAutoFixEnabled(false);
+      closeAutoFixWarning();
+    }
+  });
 }
 
 function toggleAllCheckboxes(containerId, checked) {
@@ -1511,6 +2189,52 @@ function setConnectionStatus(status) {
 
 // ===== Activity Feed Functions =====
 const ACTIVITY_STORAGE_KEY = 'activityFeed-mixinad';
+const AUTO_FIX_STATE_KEY = 'activityAutoFixState-mixinad';
+let autoFixState = {};
+
+function loadAutoFixState() {
+  try {
+    const stored = sessionStorage.getItem(AUTO_FIX_STATE_KEY);
+    autoFixState = stored ? JSON.parse(stored) : {};
+  } catch (e) {
+    autoFixState = {};
+  }
+}
+
+function saveAutoFixState() {
+  try {
+    sessionStorage.setItem(AUTO_FIX_STATE_KEY, JSON.stringify(autoFixState));
+  } catch (e) {
+    // ignore storage failures
+  }
+}
+
+function updateAutoFixState(key, status, note) {
+  if (!key) return;
+  autoFixState[key] = {
+    status,
+    note: note || '',
+    updatedAt: Date.now()
+  };
+  saveAutoFixState();
+}
+
+function applyAutoFixState(item) {
+  if (!item) return;
+  const key = buildAutoFixKey(item);
+  if (!key) return;
+  const stored = autoFixState[key];
+  if (!stored) return;
+  item.autoFixStatus = stored.status;
+  item.autoFixNote = stored.note || '';
+}
+
+function primeAutoFixSeen() {
+  autoFixSeen.clear();
+  Object.keys(autoFixState).forEach((key) => {
+    autoFixSeen.add(key);
+  });
+}
 
 function loadActivityFromStorage() {
   try {
@@ -1520,6 +2244,7 @@ function loadActivityFromStorage() {
       activityItems.forEach(item => {
         if (item.timestamp) item.timestamp = new Date(item.timestamp);
       });
+      activityItems.forEach(item => applyAutoFixState(item));
       renderActivityFeed();
       if (activityItems.length > 0) {
         activityFeed.style.display = 'block';
@@ -1543,6 +2268,7 @@ function addActivityItem(item) {
     activityItems = activityItems.filter(existing => existing.key !== item.key);
   }
   item.timestamp = item.timestamp ? new Date(item.timestamp) : new Date();
+  applyAutoFixState(item);
 
   if (item.type === 'error') {
     activityItems.unshift(item);
@@ -1557,10 +2283,19 @@ function addActivityItem(item) {
 
   saveActivityToStorage();
   renderActivityFeed();
+
+  if (autoFixEnabled && item.type === 'warning' && (item.linkFix?.expectedLink || item.skuFix?.expectedSku)) {
+    if (!item.autoFixStatus || item.autoFixStatus === 'queued') {
+      enqueueAutoFix(item);
+    }
+  }
 }
 
 function clearActivityFeed() {
   activityItems = [];
+  autoFixState = {};
+  saveAutoFixState();
+  autoFixSeen.clear();
   saveActivityToStorage();
   renderActivityFeed();
 }
@@ -1578,16 +2313,27 @@ function renderActivityFeed() {
     return;
   }
 
-  activityList.innerHTML = activityItems.map(item => {
+  activityList.innerHTML = activityItems.map((item, index) => {
     const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
     const timeStr = formatActivityTime(item.timestamp);
-    const linkMarkup = item.url
-      ? `<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`
-      : '';
+    const actions = [];
+    if (item.url) {
+      actions.push(`<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`);
+    }
+    const isFixable = item.type === 'warning' && ((item.linkFix && item.linkFix.expectedLink) || (item.skuFix && item.skuFix.expectedSku));
+    if (isFixable) {
+      const reviewReady = autoFixEnabled
+        ? ['fixed', 'error', 'needs-review'].includes(item.autoFixStatus)
+        : true;
+      const disabledAttr = reviewReady ? '' : 'disabled';
+      const disabledTitle = reviewReady ? '' : 'title="Auto-fix must complete before review."';
+      actions.push(`<button class="activity-fix-btn" data-fix-index="${index}" type="button" ${disabledAttr} ${disabledTitle}>Review</button>`);
+    }
+    const actionsMarkup = actions.length > 0 ? `<div class="activity-item-actions">${actions.join('')}</div>` : '';
     // Use categoryPath for grouped items, fallback to old format
     const location = item.categoryPath
-      ? `${item.culture} › ${item.categoryPath}`
-      : `${item.culture} › ${item.category}`;
+    ? `${item.culture} > ${item.categoryPath}`
+    : `${item.culture} > ${item.category || ""}`;
 
     if (item.type === 'error') {
       return `
@@ -1596,20 +2342,31 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || ''} ${item.error ? '- ' + item.error : ''}</div>
-            ${linkMarkup}
+            ${actionsMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
       `;
     } else if (item.type === 'warning') {
       const issueText = item.issues ? item.issues.join(' • ') : '';
+      const autoFixLabelMap = {
+        queued: 'Queued',
+        'in-progress': 'In progress',
+        fixed: 'Fixed',
+        error: 'Failed',
+        'needs-review': 'Needs review'
+      };
+      const autoFixLabel = item.autoFixStatus ? (autoFixLabelMap[item.autoFixStatus] || item.autoFixStatus) : '';
+      const autoFixText = autoFixEnabled && item.autoFixStatus
+        ? `Auto-fix: ${autoFixLabel}${item.autoFixNote ? ` - ${item.autoFixNote}` : ''}`
+        : '';
       return `
         <div class="activity-item warning">
           <span class="activity-item-icon">${icon}</span>
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
-            <div class="activity-item-detail">${item.detail || ''} ${issueText ? '- ' + issueText : ''}</div>
-            ${linkMarkup}
+            <div class="activity-item-detail">${item.detail || ''} ${issueText ? '- ' + issueText : ''}${autoFixText ? ` | ${autoFixText}` : ''}</div>
+            ${actionsMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>
@@ -1621,7 +2378,7 @@ function renderActivityFeed() {
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
             <div class="activity-item-detail">${item.detail || 'Captured'}</div>
-            ${linkMarkup}
+            ${actionsMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
         </div>

@@ -313,21 +313,27 @@ async function parseExcelFile(file, options = {}) {
         // Normalize data
         const normalizedData = jsonData.map((row, index) => {
           const linkByCulture = {};
+          const linkByCultureRaw = {};
           if (format === FORMAT_UK_EU) {
             Object.entries(EU_CULTURE_LINK_COLUMNS).forEach(([cultureKey, columnName]) => {
               const headerKey = headerMap.get(normalizeHeaderKey(columnName));
               if (!headerKey) return;
-              linkByCulture[cultureKey] = normalizeLink(row[headerKey]);
+              const rawLink = String(row[headerKey] || '').trim();
+              linkByCultureRaw[cultureKey] = rawLink;
+              linkByCulture[cultureKey] = normalizeLink(rawLink);
             });
           }
 
+          const rawBannerLink = format === FORMAT_US_CA ? String(row[linkColumn] || '').trim() : '';
           const normalized = {
             rowNumber: index + 2, // +2 because row 1 is headers and Excel is 1-indexed
             type: normalizeType(row['Type']),
             mainCategory: normalizeText(row['Main Category']),
             subcategory: normalizeText(row['Subcategory']),
-            bannerLink: format === FORMAT_US_CA ? normalizeLink(row[linkColumn]) : '',
+            bannerLink: format === FORMAT_US_CA ? normalizeLink(rawBannerLink) : '',
+            bannerLinkRaw: format === FORMAT_US_CA ? rawBannerLink : '',
             linkByCulture: format === FORMAT_UK_EU ? linkByCulture : undefined,
+            linkByCultureRaw: format === FORMAT_UK_EU ? linkByCultureRaw : undefined,
             target: normalizeTarget(row[targetColumn]),
             position: row['Position'] ? parseInt(row['Position']) : null,
             skus: normalizeSkuList(row['SKUs']),
@@ -485,7 +491,7 @@ function normalizeSkuList(value) {
  * Parse URL into domain and path components
  */
 function parseLink(value) {
-  if (!value) return { domain: null, path: '' };
+  if (!value) return { domain: null, path: '', query: '' };
 
   let link = value.toString().trim().toLowerCase();
 
@@ -495,22 +501,39 @@ function parseLink(value) {
   if (domainMatch) {
     const domain = domainMatch[1]; // e.g., "www.melaleuca.com" or "www.melaleuca.ca"
     let path = domainMatch[2] || '/';
+    let query = '';
+    const queryIndex = path.indexOf('?');
+    if (queryIndex >= 0) {
+      query = path.slice(queryIndex);
+      path = path.slice(0, queryIndex);
+    }
+    const hashIndex = path.indexOf('#');
+    if (hashIndex >= 0) {
+      path = path.slice(0, hashIndex);
+    }
 
     // Remove trailing slash
     path = path.replace(/\/$/, '');
-    // Remove query parameters and fragments
-    path = path.replace(/[?#].*$/, '');
 
-    return { domain, path };
+    return { domain, path, query };
   } else {
     // No domain, just a path
     let path = link;
+    let query = '';
+    const queryIndex = path.indexOf('?');
+    if (queryIndex >= 0) {
+      query = path.slice(queryIndex);
+      path = path.slice(0, queryIndex);
+    }
+    const hashIndex = path.indexOf('#');
+    if (hashIndex >= 0) {
+      path = path.slice(0, hashIndex);
+    }
+
     // Remove trailing slash
     path = path.replace(/\/$/, '');
-    // Remove query parameters and fragments
-    path = path.replace(/[?#].*$/, '');
 
-    return { domain: null, path };
+    return { domain: null, path, query };
   }
 }
 
@@ -533,6 +556,28 @@ function normalizeLink(value) {
   return link;
 }
 
+function normalizeQueryString(value) {
+  if (!value) return '';
+  const raw = value.toString().trim();
+  const query = raw.startsWith('?') ? raw.slice(1) : raw;
+  if (!query) return '';
+  const params = new URLSearchParams(query);
+  const entries = [];
+  params.forEach((val, key) => {
+    entries.push([key, val]);
+  });
+  entries.sort((a, b) => {
+    if (a[0] === b[0]) return a[1].localeCompare(b[1]);
+    return a[0].localeCompare(b[0]);
+  });
+  return entries.map(([key, val]) => `${encodeURIComponent(key)}=${encodeURIComponent(val)}`).join('&');
+}
+
+function isMelaleucaDomain(domain) {
+  if (!domain) return false;
+  return /(^|\.)melaleuca\.com$/i.test(String(domain).trim());
+}
+
 /**
  * Normalize target field
  */
@@ -553,7 +598,8 @@ function resolveExpectedLink(match, culture) {
 
   if (match.linkByCulture && cultureKey) {
     const hasColumn = Object.prototype.hasOwnProperty.call(match.linkByCulture, cultureKey);
-    const value = hasColumn ? match.linkByCulture[cultureKey] : '';
+    const rawValue = match.linkByCultureRaw && hasColumn ? match.linkByCultureRaw[cultureKey] : '';
+    const value = rawValue || (hasColumn ? match.linkByCulture[cultureKey] : '');
     return {
       value: value || '',
       missing: !hasColumn || !value,
@@ -562,9 +608,10 @@ function resolveExpectedLink(match, culture) {
     };
   }
 
+  const rawBannerLink = match.bannerLinkRaw || '';
   return {
-    value: match.bannerLink || '',
-    missing: false,
+    value: rawBannerLink || match.bannerLink || '',
+    missing: !rawBannerLink && !match.bannerLink,
     cultureKey,
     columnName: null
   };
@@ -681,8 +728,10 @@ function compareLinks(actual, expected, culture = '', environment = 'production'
 
   // Check if paths match
   const pathsMatch = parsedActual.path === parsedExpected.path;
+  const queryMatch = normalizeQueryString(parsedActual.query) === normalizeQueryString(parsedExpected.query);
 
-  // Check domain if present in actual captured result
+  // Internal links should match culture/environment host.
+  // External absolute links should match the domain from Excel directly.
   let domainMatch = true;
   let domainError = null;
   let expectedDomain = parsedExpected.domain;
@@ -690,23 +739,25 @@ function compareLinks(actual, expected, culture = '', environment = 'production'
   if (parsedActual.domain) {
     const actualDomain = parsedActual.domain;
     const expectedHost = resolveExpectedDomain(culture, environment);
+    const expectedIsExternal = parsedExpected.domain && !isMelaleucaDomain(parsedExpected.domain);
+    const targetDomain = expectedIsExternal
+      ? parsedExpected.domain
+      : (expectedHost || parsedExpected.domain);
 
-    if (expectedHost) {
-      if (actualDomain !== expectedHost) {
+    if (targetDomain) {
+      if (actualDomain !== targetDomain) {
         domainMatch = false;
-        domainError = `Expected ${expectedHost} for ${culture || 'unknown culture'} (${environment || 'production'}), but found ${actualDomain}`;
+        if (expectedIsExternal) {
+          domainError = `Expected ${targetDomain}, but found ${actualDomain}`;
+        } else {
+          domainError = `Expected ${targetDomain} for ${culture || 'unknown culture'} (${environment || 'production'}), but found ${actualDomain}`;
+        }
       }
-      expectedDomain = expectedHost;
-    } else if (parsedExpected.domain) {
-      if (actualDomain !== parsedExpected.domain) {
-        domainMatch = false;
-        domainError = `Expected ${parsedExpected.domain}, but found ${actualDomain}`;
-      }
-      expectedDomain = parsedExpected.domain;
+      expectedDomain = targetDomain;
     }
   }
 
-  const match = pathsMatch && domainMatch;
+  const match = pathsMatch && domainMatch && queryMatch;
 
   return {
     actual: normalizedActual,
@@ -714,7 +765,10 @@ function compareLinks(actual, expected, culture = '', environment = 'production'
     match,
     domainError,
     actualDomain: parsedActual.domain,
-    expectedDomain
+    expectedDomain,
+    queryMatch,
+    actualQuery: parsedActual.query,
+    expectedQuery: parsedExpected.query
   };
 }
 
