@@ -137,6 +137,12 @@ const apiLimiter = rateLimit({
 // Apply rate limiter to all API routes
 router.use('/api/', apiLimiter);
 
+function parseJsonFile(filePath) {
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const normalized = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
+  return JSON.parse(normalized);
+}
+
 function ensureCategoriesFile() {
   const categoriesPath = getCategoriesPath();
   if (fs.existsSync(categoriesPath)) {
@@ -147,7 +153,7 @@ function ensureCategoriesFile() {
   const templatePath = getCategoriesTemplatePath();
   if (fs.existsSync(templatePath)) {
     try {
-      templateData = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+      templateData = parseJsonFile(templatePath);
     } catch (err) {
       console.warn('[Categories] Failed to read template file:', err.message);
       templateData = {};
@@ -474,8 +480,7 @@ const CategorySchema = z.record(
 router.get('/api/categories', (req, res) => {
   try {
     const categoriesPath = ensureCategoriesFile();
-    const categoriesData = fs.readFileSync(categoriesPath, 'utf8');
-    const parsed = JSON.parse(categoriesData);
+    const parsed = parseJsonFile(categoriesPath);
 
     // Check if data has version metadata
     if (parsed._version) {
@@ -544,8 +549,7 @@ router.post('/api/categories', express.json(), (req, res) => {
     // Read current file to check for conflicts
     let currentData;
     try {
-      const currentContent = fs.readFileSync(categoriesPath, 'utf8');
-      currentData = JSON.parse(currentContent);
+      currentData = parseJsonFile(categoriesPath);
     } catch (err) {
       // File doesn't exist or is corrupted, create new
       currentData = null;

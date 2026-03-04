@@ -9,6 +9,12 @@ const __dirname = dirname(__filename);
 const DEFAULT_CATEGORIES_PATH = join(__dirname, 'categories.json');
 const TEMPLATE_CATEGORIES_PATH = join(__dirname, 'categories.template.json');
 
+function parseJsonFile(filePath) {
+  const raw = readFileSync(filePath, 'utf8');
+  const normalized = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
+  return JSON.parse(normalized);
+}
+
 export function getCategoriesPath() {
   const envPath = process.env.CATEGORIES_PATH;
   if (!envPath) return DEFAULT_CATEGORIES_PATH;
@@ -23,7 +29,7 @@ export function getCategoriesTemplatePath() {
 function loadCategories() {
   try {
     const categoriesPath = getCategoriesPath();
-    const categoriesData = JSON.parse(readFileSync(categoriesPath, 'utf8'));
+    const categoriesData = parseJsonFile(categoriesPath);
     const source = categoriesData && categoriesData.data ? categoriesData.data : categoriesData;
 
     // Transform JSON format to config format
@@ -37,7 +43,7 @@ function loadCategories() {
     return transformed;
   } catch (err) {
     try {
-      const categoriesData = JSON.parse(readFileSync(TEMPLATE_CATEGORIES_PATH, 'utf8'));
+      const categoriesData = parseJsonFile(TEMPLATE_CATEGORIES_PATH);
       const source = categoriesData && categoriesData.data ? categoriesData.data : categoriesData;
       const transformed = {};
       for (const [region, categories] of Object.entries(source || {})) {
