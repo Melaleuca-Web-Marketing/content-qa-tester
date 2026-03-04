@@ -14,6 +14,8 @@ server.err.log
 
 # Test history (may contain sensitive data)
 history.json
+job-state.json
+session-lanes.json
 
 # Backup files
 *.backup
