@@ -1,5 +1,5 @@
 /* shared.css - Common styles for all pages */
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
 
 * {
   box-sizing: border-box;
@@ -46,15 +46,25 @@ body.light-mode {
 }
 
 body {
-  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-family: "Manrope", "Segoe UI", sans-serif;
   background:
-    radial-gradient(1200px circle at 8% -20%, var(--bg-spot-1), transparent 55%),
+    radial-gradient(
+      1200px circle at 8% -20%,
+      var(--bg-spot-1),
+      transparent 55%
+    ),
     radial-gradient(900px circle at 90% 10%, var(--bg-spot-2), transparent 60%),
-    linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+    linear-gradient(
+      135deg,
+      var(--bg-gradient-start) 0%,
+      var(--bg-gradient-end) 100%
+    );
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
-  transition: background 0.3s, color 0.3s;
+  transition:
+    background 0.3s,
+    color 0.3s;
 }
 
 .container {
@@ -72,7 +82,6 @@ body {
   width: 100%;
 }
 
-
 @media (min-width: 1440px) {
   .container {
     max-width: 1800px;
@@ -85,17 +94,24 @@ body {
 }
 
 .card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)), var(--bg-card);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)),
+    var(--bg-card);
   backdrop-filter: blur(10px);
   border: 1px solid var(--border-color);
   border-radius: 16px;
   padding: 32px;
-  box-shadow: 0 30px 60px -30px var(--shadow-color), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-  transition: background 0.3s, border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+  box-shadow:
+    0 30px 60px -30px var(--shadow-color),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  transition:
+    background 0.3s,
+    border-color 0.3s,
+    box-shadow 0.3s,
+    transform 0.3s;
 }
 
 @media (min-width: 1440px) {
-
   body.dashboard-page .card,
   body.tool-page .card {
     display: flex;
@@ -138,12 +154,15 @@ body {
   }
 }
 
-
 h1 {
   font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--accent-primary) 0%,
+    var(--accent-secondary) 100%
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -180,7 +199,6 @@ h1 {
 }
 
 @media (max-width: 600px) {
-
   .settings-row-2,
   .settings-row-3 {
     grid-template-columns: 1fr;
@@ -211,7 +229,11 @@ textarea {
   padding: 12px 16px;
   color: var(--text-primary);
   font-size: 14px;
-  transition: border-color 0.2s, box-shadow 0.2s, background 0.3s, color 0.3s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s,
+    background 0.3s,
+    color 0.3s;
 }
 
 select:focus,
@@ -244,7 +266,11 @@ button:disabled {
 }
 
 .primary {
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--accent-primary) 0%,
+    var(--accent-secondary) 100%
+  );
   border: none;
   color: white;
   padding: 14px 28px;
@@ -371,11 +397,13 @@ button:disabled {
   background: rgba(148, 163, 184, 0.2);
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 
 .toggle-slider::before {
-  content: '';
+  content: "";
   position: absolute;
   height: 18px;
   width: 18px;
@@ -383,21 +411,23 @@ button:disabled {
   top: 2px;
   border-radius: 50%;
   background: #e2e8f0;
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
-.toggle-switch input:checked+.toggle-slider {
+.toggle-switch input:checked + .toggle-slider {
   background: rgba(34, 197, 94, 0.35);
   border-color: rgba(34, 197, 94, 0.7);
 }
 
-.toggle-switch input:checked+.toggle-slider::before {
+.toggle-switch input:checked + .toggle-slider::before {
   transform: translateX(22px);
   background: var(--accent-primary);
 }
 
-.toggle-switch input:focus+.toggle-slider {
+.toggle-switch input:focus + .toggle-slider {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
 }
 
@@ -492,7 +522,6 @@ button:disabled {
 }
 
 @keyframes pulse {
-
   0%,
   100% {
     opacity: 1;
@@ -544,7 +573,11 @@ button:disabled {
 
 .progress-bar-inner {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  background: linear-gradient(
+    90deg,
+    var(--accent-primary),
+    var(--accent-secondary)
+  );
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -577,7 +610,6 @@ button:disabled {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
@@ -659,7 +691,11 @@ button:disabled {
 
 /* Unread history items - like email inbox */
 .history-item.unread {
-  background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, var(--bg-item) 100%);
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.08) 0%,
+    var(--bg-item) 100%
+  );
   border-left: 3px solid var(--accent, #3b82f6);
 }
 
@@ -742,7 +778,7 @@ button:disabled {
   gap: 16px;
 }
 
-.current-sku-details>div {
+.current-sku-details > div {
   font-size: 14px;
   color: var(--text-primary);
 }
@@ -880,7 +916,9 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: background 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s;
 }
 
 .theme-toggle:hover {
@@ -1208,7 +1246,6 @@ button:disabled {
 }
 
 @keyframes shake {
-
   0%,
   100% {
     transform: translateX(0);
@@ -1235,7 +1272,9 @@ button:disabled {
   padding: 6px;
   border-radius: 6px;
   color: var(--text-secondary);
-  transition: color 0.2s, background 0.2s;
+  transition:
+    color 0.2s,
+    background 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1264,7 +1303,9 @@ button:disabled {
   z-index: 1000;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s, visibility 0.2s;
+  transition:
+    opacity 0.2s,
+    visibility 0.2s;
 }
 
 .sound-settings-modal.open {
@@ -1319,7 +1360,9 @@ button:disabled {
   padding: 4px;
   color: var(--text-secondary);
   border-radius: 4px;
-  transition: color 0.2s, background 0.2s;
+  transition:
+    color 0.2s,
+    background 0.2s;
 }
 
 .sound-settings-close:hover {
@@ -1370,7 +1413,7 @@ button:disabled {
 }
 
 .sound-option-radio::after {
-  content: '';
+  content: "";
   width: 8px;
   height: 8px;
   border-radius: 50%;

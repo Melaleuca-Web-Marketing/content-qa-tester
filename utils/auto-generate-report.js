@@ -25,6 +25,7 @@ export function autoGenerateReport(processor, reportGenerator, mode, userId = nu
       // Get Excel validation options from processor if available
       const options = processor.currentOptions || {};
       const excelValidation = options.excelValidation || null;
+      const customTestName = typeof options.testName === 'string' ? options.testName.trim() : '';
 
       console.log('[Auto-Generate-Report] Excel Validation:', excelValidation ? `Enabled (${excelValidation.data?.length || 0} rows)` : 'Disabled');
 
@@ -66,6 +67,10 @@ export function autoGenerateReport(processor, reportGenerator, mode, userId = nu
         duration,
         culture
       };
+
+      if (customTestName) {
+        entry.testName = customTestName;
+      }
 
       if (Array.isArray(results)) {
         entry.region = results[0]?.region;

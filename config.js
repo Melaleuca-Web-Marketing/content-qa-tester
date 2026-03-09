@@ -469,6 +469,38 @@ export const config = {
     }
   },
 
+  // ============ SORT ORDER TESTER CONFIGURATION ============
+  sortorder: {
+    selectors: {
+      sortSelect: 'select.a-select__field.-sort',
+      gridItem: 'ul.p-catListing__grid > li.p-catListing__col',
+      productCard: '.m-prodCard',
+      mixinAd: '.m-mixinAd, article.m-mixinAd',
+      showAllButton: '.p-catListing button[aria-label*="Show All"], .p-catListing button:has-text("Show All")'
+    },
+
+    timeouts: {
+      singleCapture: 90000,
+      totalCapture: 1800000,
+      pageLoad: 3000,
+      betweenCaptures: 500
+    },
+
+    browser: {
+      captureHeight: 1800
+    },
+
+    // Reuse banner's region and culture configuration
+    get regions() { return config.banner.regions; },
+    get cultureLangMap() { return config.banner.cultureLangMap; },
+    get hostMap() { return config.banner.hostMap; },
+    defaults: {
+      environment: "stage",
+      region: "usca",
+      width: 1210
+    }
+  },
+
   // ============ PDP TESTER CONFIGURATION ============
   pdp: {
     screenWidths: [320, 415, 576, 768, 992, 1210],
@@ -587,6 +619,8 @@ export function validateSkuConfig(options) {
     }
   }
 
+  validateOptionalTestName(options, errors);
+
   return errors;
 }
 
@@ -601,6 +635,16 @@ export function buildBannerUrl(environment, culture, path) {
 // Get banner region config
 export function getBannerRegion(regionCode) {
   return config.banner.regions[regionCode] || null;
+}
+
+function validateOptionalTestName(options, errors) {
+  if (options.testName === null || options.testName === undefined) return;
+  const normalizedName = String(options.testName).trim();
+  if (normalizedName.length === 0) {
+    errors.push('Test name cannot be empty');
+  } else if (normalizedName.length > 120) {
+    errors.push('Test name must be 120 characters or fewer');
+  }
 }
 
 // Validate banner configuration
@@ -622,6 +666,8 @@ export function validateBannerConfig(options) {
   if (options.loginEnabled && (!options.username || !options.password)) {
     errors.push('Username and password are required when login is enabled');
   }
+
+  validateOptionalTestName(options, errors);
 
   return errors;
 }
@@ -669,6 +715,8 @@ export function validatePslpConfig(options) {
     errors.push('Username and password are required for PSLP testing');
   }
 
+  validateOptionalTestName(options, errors);
+
   return errors;
 }
 
@@ -693,6 +741,36 @@ export function validateMixInAdConfig(options) {
   if (options.loginEnabled && (!options.username || !options.password)) {
     errors.push('Username and password are required when login is enabled');
   }
+
+  validateOptionalTestName(options, errors);
+
+  return errors;
+}
+
+// ============ SORT ORDER HELPER FUNCTIONS ============
+
+// Validate Sort Order configuration
+export function validateSortOrderConfig(options) {
+  const errors = [];
+
+  if (!['stage', 'uat', 'production'].includes(options.environment)) {
+    errors.push(`Invalid environment: ${options.environment}. Valid: stage, uat, production`);
+  }
+
+  if (!config.sortorder.regions[options.region]) {
+    errors.push(`Invalid region: ${options.region}. Valid: ${Object.keys(config.sortorder.regions).join(', ')}`);
+  }
+
+  if (options.loginEnabled && (!options.username || !options.password)) {
+    errors.push('Username and password are required when login is enabled');
+  }
+
+  if (Object.prototype.hasOwnProperty.call(options, 'sortValidationEnabled')
+    && typeof options.sortValidationEnabled !== 'boolean') {
+    errors.push('Sort validation toggle must be true or false');
+  }
+
+  validateOptionalTestName(options, errors);
 
   return errors;
 }
@@ -728,6 +806,8 @@ export function validatePdpConfig(options) {
   if (!options.username || !options.password) {
     errors.push('Username and password are required for PDP testing');
   }
+
+  validateOptionalTestName(options, errors);
 
   return errors;
 }

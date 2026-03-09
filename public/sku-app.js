@@ -55,6 +55,7 @@ if (userId) {
 // DOM Elements
 const envSelect = document.getElementById('env-select');
 const regionSelect = document.getElementById('region-select');
+const testNameInput = document.getElementById('test-name-input');
 const cultureOptions = document.getElementById('culture-options');
 const selectAllCulturesBtn = document.getElementById('select-all-cultures');
 const deselectAllCulturesBtn = document.getElementById('deselect-all-cultures');
@@ -313,6 +314,9 @@ function setupEventListeners() {
     savePreferences();
   });
   addToCartCheck.addEventListener('change', savePreferences);
+  if (testNameInput) {
+    testNameInput.addEventListener('input', savePreferences);
+  }
 
   skuInput.addEventListener('input', () => {
     updateSkuCount();
@@ -431,6 +435,7 @@ function updateSkuCount() {
 
 function savePreferences() {
   const prefs = {
+    testName: testNameInput ? testNameInput.value.trim() : '',
     environment: envSelect.value,
     region: regionSelect.value,
     cultures: getSelectedCultures(),
@@ -476,6 +481,9 @@ function loadPreferences() {
         if (prefs.topScreenshot) fullScreenshotCheck.checked = false;
       }
       if (typeof prefs.addToCart === 'boolean') addToCartCheck.checked = prefs.addToCart;
+      if (typeof prefs.testName === 'string' && testNameInput) {
+        testNameInput.value = prefs.testName;
+      }
       // Restore saved credentials
       if (prefs.username) usernameInput.value = prefs.username;
       updateSkuCount();
@@ -1006,6 +1014,7 @@ function formatCultureList(cultures) {
 }
 
 async function startCapture() {
+  const testName = testNameInput ? testNameInput.value.trim() : '';
   const skus = parseSkus(skuInput.value);
   const cultures = getSelectedCultures();
 
@@ -1031,12 +1040,18 @@ async function startCapture() {
     return;
   }
 
+  if (testName.length > 120) {
+    setStatusError('Test name too long', 'Use 120 characters or fewer');
+    return;
+  }
+
   jobSummary = buildJobSummary();
   completionNotified = false;
   requestNotificationPermission();
   primeAudio();
 
   const options = {
+    testName,
     skus,
     environment,
     region: regionSelect.value,

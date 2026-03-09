@@ -150,23 +150,23 @@
     }
 
     .mode-card.sku .mode-icon {
-      color: #10b981;
+      color: #22c55e;
     }
 
     .mode-card.sku {
-      background: linear-gradient(180deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.05)), var(--bg-item);
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.05)), var(--bg-item);
     }
 
     .mode-card.banner .mode-icon {
-      color: #3b82f6;
+      color: #6366f1;
     }
 
     .mode-card.banner {
-      background: linear-gradient(180deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.05)), var(--bg-item);
+      background: linear-gradient(180deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.05)), var(--bg-item);
     }
 
     .mode-card.pslp .mode-icon {
-      color: #8b5cf6;
+      color: #f59e0b;
     }
 
     .mode-card.pslp {
@@ -186,27 +186,40 @@
       box-shadow: 0 20px 40px rgba(236, 72, 153, 0.2);
     }
 
+    .mode-card.sortorder .mode-icon {
+      color: #06b6d4;
+    }
+
+    .mode-card.sortorder {
+      background: linear-gradient(180deg, rgba(6, 182, 212, 0.18), rgba(6, 182, 212, 0.05)), var(--bg-item);
+    }
+
+    .mode-card.sortorder:hover {
+      border-color: #0891b2;
+      box-shadow: 0 20px 40px rgba(6, 182, 212, 0.2);
+    }
+
     .mode-card.pdp .mode-icon {
-      color: #8b5cf6;
+      color: #a855f7;
     }
 
     .mode-card.pdp {
-      background: linear-gradient(180deg, rgba(139, 92, 246, 0.18), rgba(139, 92, 246, 0.05)), var(--bg-item);
+      background: linear-gradient(180deg, rgba(168, 85, 247, 0.18), rgba(168, 85, 247, 0.05)), var(--bg-item);
     }
 
     .mode-card.pdp:hover {
-      border-color: #8b5cf6;
-      box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+      border-color: #a855f7;
+      box-shadow: 0 20px 40px rgba(168, 85, 247, 0.2);
     }
 
     .mode-card.sku:hover {
-      border-color: #10b981;
-      box-shadow: 0 20px 40px rgba(16, 185, 129, 0.2);
+      border-color: #22c55e;
+      box-shadow: 0 20px 40px rgba(34, 197, 94, 0.2);
     }
 
     .mode-card.banner:hover {
-      border-color: #3b82f6;
-      box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2);
+      border-color: #6366f1;
+      box-shadow: 0 20px 40px rgba(99, 102, 241, 0.2);
     }
 
     .mode-card.pslp:hover {
@@ -291,31 +304,51 @@
     }
 
     .job-card {
+      --tool-accent: #22c55e;
+      --tool-accent-strong: #16a34a;
+      --tool-accent-soft: rgba(34, 197, 94, 0.14);
       background: var(--bg-item);
       border: 2px solid var(--border-color);
+      border-left: 4px solid var(--tool-accent);
       border-radius: 12px;
       padding: 16px;
       position: relative;
     }
 
     .job-card.sku {
-      border-left: 4px solid #10b981;
+      --tool-accent: #22c55e;
+      --tool-accent-strong: #16a34a;
+      --tool-accent-soft: rgba(34, 197, 94, 0.14);
     }
 
     .job-card.banner {
-      border-left: 4px solid #3b82f6;
+      --tool-accent: #6366f1;
+      --tool-accent-strong: #4f46e5;
+      --tool-accent-soft: rgba(99, 102, 241, 0.14);
     }
 
     .job-card.pslp {
-      border-left: 4px solid #8b5cf6;
+      --tool-accent: #f59e0b;
+      --tool-accent-strong: #d97706;
+      --tool-accent-soft: rgba(245, 158, 11, 0.14);
     }
 
     .job-card.mixinad {
-      border-left: 4px solid #ec4899;
+      --tool-accent: #ec4899;
+      --tool-accent-strong: #db2777;
+      --tool-accent-soft: rgba(236, 72, 153, 0.14);
+    }
+
+    .job-card.sortorder {
+      --tool-accent: #06b6d4;
+      --tool-accent-strong: #0891b2;
+      --tool-accent-soft: rgba(6, 182, 212, 0.14);
     }
 
     .job-card.pdp {
-      border-left: 4px solid #8b5cf6;
+      --tool-accent: #a855f7;
+      --tool-accent-strong: #9333ea;
+      --tool-accent-soft: rgba(168, 85, 247, 0.14);
     }
 
     .job-card.waiting-auth {
@@ -391,12 +424,41 @@
       font-weight: 600;
       color: var(--text-primary);
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
     }
 
     .job-icon {
       font-size: 20px;
+    }
+
+    .job-name-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .job-name-text {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--text-primary);
+      word-break: break-word;
+    }
+
+    .job-type {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      padding: 1px 8px;
     }
 
     .job-stop-btn {
@@ -478,25 +540,9 @@
 
     .job-progress-bar {
       height: 100%;
-      background: linear-gradient(90deg, #10b981, #059669);
+      background: linear-gradient(90deg, var(--tool-accent), var(--tool-accent-strong));
       transition: width 0.3s ease;
       border-radius: 4px;
-    }
-
-    .job-card.banner .job-progress-bar {
-      background: linear-gradient(90deg, #3b82f6, #2563eb);
-    }
-
-    .job-card.pslp .job-progress-bar {
-      background: linear-gradient(90deg, #8b5cf6, #7c3aed);
-    }
-
-    .job-card.mixinad .job-progress-bar {
-      background: linear-gradient(90deg, #ec4899, #db2777);
-    }
-
-    .job-card.pdp .job-progress-bar {
-      background: linear-gradient(90deg, #8b5cf6, #7c3aed);
     }
 
     .job-meta {
@@ -540,8 +586,12 @@
     }
 
     .history-item {
+      --tool-accent: #22c55e;
+      --tool-accent-strong: #16a34a;
+      --tool-accent-soft: rgba(34, 197, 94, 0.12);
       background: var(--bg-item);
       border: 1px solid var(--border-color);
+      border-left: 4px solid var(--tool-accent);
       border-radius: 8px;
       padding: 16px;
       display: flex;
@@ -551,34 +601,50 @@
     }
 
     .history-item:hover {
-      border-color: #10b981;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+      border-color: var(--tool-accent);
+      box-shadow: 0 4px 12px var(--tool-accent-soft);
     }
 
     .history-item.sku {
-      border-left: 4px solid #10b981;
+      --tool-accent: #22c55e;
+      --tool-accent-strong: #16a34a;
+      --tool-accent-soft: rgba(34, 197, 94, 0.12);
     }
 
     .history-item.banner {
-      border-left: 4px solid #3b82f6;
+      --tool-accent: #6366f1;
+      --tool-accent-strong: #4f46e5;
+      --tool-accent-soft: rgba(99, 102, 241, 0.12);
     }
 
     .history-item.pslp {
-      border-left: 4px solid #8b5cf6;
+      --tool-accent: #f59e0b;
+      --tool-accent-strong: #d97706;
+      --tool-accent-soft: rgba(245, 158, 11, 0.12);
     }
 
     .history-item.mixinad {
-      border-left: 4px solid #ec4899;
+      --tool-accent: #ec4899;
+      --tool-accent-strong: #db2777;
+      --tool-accent-soft: rgba(236, 72, 153, 0.12);
+    }
+
+    .history-item.sortorder {
+      --tool-accent: #06b6d4;
+      --tool-accent-strong: #0891b2;
+      --tool-accent-soft: rgba(6, 182, 212, 0.12);
     }
 
     .history-item.pdp {
-      border-left: 4px solid #8b5cf6;
+      --tool-accent: #a855f7;
+      --tool-accent-strong: #9333ea;
+      --tool-accent-soft: rgba(168, 85, 247, 0.12);
     }
 
     /* Unread history items */
     .history-item.unread {
-      background: linear-gradient(90deg, rgba(59, 130, 246, 0.12) 0%, var(--bg-secondary) 100%);
-      border-left-width: 5px;
+      background: linear-gradient(90deg, var(--tool-accent-soft) 0%, var(--bg-secondary) 100%);
+      border-left: 5px solid var(--tool-accent);
     }
 
     .history-item.unread .history-title {
@@ -595,8 +661,36 @@
       color: var(--text-primary);
       margin-bottom: 4px;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
+    }
+
+    .history-title-main {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .history-name {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.2;
+      word-break: break-word;
+    }
+
+    .history-type {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      padding: 1px 8px;
     }
 
     .history-meta {
@@ -1155,6 +1249,21 @@
           </div>
         </a>
 
+        <a href="sortorder-tester.html" class="mode-card sortorder">
+          <div class="mode-icon">&#8645;</div>
+          <div class="mode-title">Test Sort Orders</div>
+          <div class="mode-description">
+            Validate category sorting behavior and include mix-in ad positions after using Show All.
+          </div>
+          <div class="features">
+            <span class="feature-tag">Sort Validation</span>
+            <span class="feature-tag">Show All</span>
+            <span class="feature-tag">Mix-In Ads</span>
+            <span class="feature-tag">Multi Width</span>
+            <span class="feature-tag">Login Support</span>
+          </div>
+        </a>
+
         <a href="pdp-tester.html" class="mode-card pdp">
           <div class="mode-icon">&#128196;</div>
           <div class="mode-title">Test PDPs</div>
@@ -1375,6 +1484,7 @@
         banner: { name: 'Banner Test', icon: '&#128444;', class: 'banner', page: 'banner-tester.html' },
         pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp', page: 'pslp-tester.html' },
         mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad', page: 'mixinad-tester.html' },
+        sortorder: { name: 'Sort Order Test', icon: '&#8645;', class: 'sortorder', page: 'sortorder-tester.html' },
         pdp: { name: 'PDP Test', icon: '&#128196;', class: 'pdp', page: 'pdp-tester.html' }
       };
 
@@ -1383,6 +1493,7 @@
         banner: null,
         pslp: null,
         mixinad: null,
+        sortorder: null,
         pdp: null
       };
 
@@ -1391,6 +1502,7 @@
         banner: null,
         pslp: null,
         mixinad: null,
+        sortorder: null,
         pdp: null
       };
 
@@ -1399,6 +1511,7 @@
         banner: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
         pslp: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
         mixinad: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
+        sortorder: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
         pdp: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null }
       };
 
@@ -1408,8 +1521,18 @@
         banner: false,
         pslp: false,
         mixinad: false,
+        sortorder: false,
         pdp: false
       };
+
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
 
       // Audio context for notification sounds
       let dashboardAudioContext = null;
@@ -1524,7 +1647,7 @@
 
       function getProgressMetrics(tool, progress) {
         if (!progress) return null;
-        const isBannerJob = tool === 'banner' || tool === 'mixinad';
+        const isBannerJob = tool === 'banner' || tool === 'mixinad' || tool === 'sortorder';
         const useBannerProgress = isBannerJob && Number.isFinite(progress.totalBanners) && progress.totalBanners > 0;
         const current = useBannerProgress ? progress.completedBanners : (progress.completed ?? progress.current);
         const total = useBannerProgress ? progress.totalBanners : progress.total;
@@ -1589,7 +1712,7 @@
 
       // Fetch status for all processors
       async function updateAllStatuses() {
-        const tools = ['sku', 'banner', 'pslp', 'mixinad', 'pdp'];
+        const tools = ['sku', 'banner', 'pslp', 'mixinad', 'sortorder', 'pdp'];
 
         for (const tool of tools) {
           try {
@@ -1675,6 +1798,9 @@
       // Create a job card element
       function createJobCard(tool, config, status) {
         const card = document.createElement('div');
+        const customTestName = typeof status.options?.testName === 'string' ? status.options.testName.trim() : '';
+        const jobName = customTestName || 'Untitled Job';
+        const jobType = config.name;
 
         // Check if job is waiting for authentication or credentials
         const isWaitingForAuth = status.statusType === 'waiting-for-auth' ||
@@ -1715,8 +1841,8 @@
             const { completed, total, current, culture, category, width, sku, step, component, completedBanners, totalBanners } = status.progress;
             let hasCounts = false;
 
-            // For banner and mixinad jobs, use banner-level progress if available
-            const isBannerJob = tool === 'banner' || tool === 'mixinad';
+            // For banner-like jobs, use category-level progress if available
+            const isBannerJob = tool === 'banner' || tool === 'mixinad' || tool === 'sortorder';
             const useBannerProgress = isBannerJob && totalBanners !== undefined && totalBanners > 0;
 
             const progCurrent = useBannerProgress ? completedBanners : (completed ?? current);
@@ -1791,7 +1917,10 @@
           <div class="job-header">
             <div class="job-name">
               <span class="job-icon">${config.icon}</span>
-              ${config.name}
+              <div class="job-name-stack">
+                <span class="job-name-text">${escapeHtml(jobName)}</span>
+                <span class="job-type">${escapeHtml(jobType)}</span>
+              </div>
             </div>
             ${actionButtons}
           </div>
@@ -1895,6 +2024,9 @@
                 ? data.progress
                 : jobStates[tool].progress
             };
+            if (!jobStates[tool].options?.testName) {
+              setTimeout(updateAllStatuses, 300);
+            }
           } else if (data.isRunning) {
             // Job just started - initialize state and reset credential error flag
             jobStartTimes[tool] = Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
@@ -1904,6 +2036,9 @@
               ...data,
               statusType: data.type
             };
+            if (!data.options?.testName) {
+              setTimeout(updateAllStatuses, 300);
+            }
             console.log(`[Dashboard] Job started via WebSocket: ${tool}`);
           }
           renderDashboard();
@@ -1935,6 +2070,7 @@
         banner: { name: 'Banner Test', icon: '&#128444;', class: 'banner' },
         pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp' },
         mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad' },
+        sortorder: { name: 'Sort Order Test', icon: '&#8645;', class: 'sortorder' },
         pdp: { name: 'PDP Test', icon: '&#128196;', class: 'pdp' }
       };
 
@@ -1991,6 +2127,28 @@
         return date.toLocaleDateString();
       }
 
+      function formatReadableTimestamp(date) {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+          return '-';
+        }
+        return date.toLocaleString([], {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
       function getCultureDisplay(report) {
         if (!report.culture) return '';
 
@@ -2027,8 +2185,13 @@
         const config = toolConfig[report.mode] || { name: 'Unknown', icon: '📄', class: '' };
         const isUnread = report.read === false;
         item.className = `history-item ${config.class}${isUnread ? ' unread' : ''}`;
+        const customTestName = typeof report.testName === 'string' ? report.testName.trim() : '';
+        const historyName = customTestName || 'Untitled Job';
+        const historyType = config.name;
 
-        const timeAgo = formatTimeAgo(new Date(report.timestamp));
+        const timestampDate = new Date(report.timestamp);
+        const timeAgo = formatTimeAgo(timestampDate);
+        const readableTimestamp = formatReadableTimestamp(timestampDate);
         const reportUrl = withUserQuery(api(`/api/reports/${report.filename}`));
         const downloadUrl = `${reportUrl}${reportUrl.includes('?') ? '&' : '?'}download=true`;
 
@@ -2039,12 +2202,16 @@
           <div class="history-info">
             <div class="history-title">
               <span>${config.icon}</span>
-              ${config.name}
+              <div class="history-title-main">
+                <span class="history-name">${escapeHtml(historyName)}</span>
+                <span class="history-type">${escapeHtml(historyType)}</span>
+              </div>
               ${isUnread ? '<span class="new-badge">NEW</span>' : ''}
             </div>
             <div class="history-meta">
               <span>🌐 ${report.environment}</span>
               ${getCultureDisplay(report)}
+              <span>🕒 ${escapeHtml(readableTimestamp)}</span>
               <span>⏱️ ${timeAgo}</span>
             </div>
           </div>
@@ -2242,7 +2409,7 @@
     }
 
     function getSavedCultures() {
-      const keys = ['bannerTesterPrefs', 'mixinadTesterPrefs', 'pslpTesterPrefs', 'skuTesterPrefs'];
+      const keys = ['bannerTesterPrefs', 'mixinadTesterPrefs', 'sortorderTesterPrefs', 'pslpTesterPrefs', 'skuTesterPrefs'];
       const cultures = new Set();
       keys.forEach((key) => {
         const raw = localStorage.getItem(key);

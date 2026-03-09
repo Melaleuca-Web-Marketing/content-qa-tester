@@ -13,13 +13,15 @@ import { SkuProcessor } from './processors/sku-processor.js';
 import { BannerProcessor } from './processors/banner-processor.js';
 import { PSLPProcessor } from './processors/pslp-processor.js';
 import { MixInAdProcessor } from './processors/mixinad-processor.js';
+import { SortOrderProcessor } from './processors/sortorder-processor.js';
 import { PDPProcessor } from './processors/pdp-processor.js';
 import { generateSkuReport } from './report-generators/sku-report.js';
 import { generateBannerReport } from './report-generators/banner-report.js';
 import { generatePslpReport } from './report-generators/pslp-report.js';
 import { generateMixInAdReport } from './report-generators/mixinad-report.js';
+import { generateSortOrderReport } from './report-generators/sortorder-report.js';
 import { generatePdpReport } from './report-generators/pdp-report.js';
-import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, validatePdpConfig, reloadCategories, getCategoriesPath, getCategoriesTemplatePath } from './config.js';
+import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, validateSortOrderConfig, validatePdpConfig, reloadCategories, getCategoriesPath, getCategoriesTemplatePath } from './config.js';
 import { asyncHandler } from './utils/async-handler.js';
 import { autoGenerateReport } from './utils/auto-generate-report.js';
 import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory, markAsRead } from './utils/history.js';
@@ -53,6 +55,7 @@ const DEFAULT_LANE_TOOL_CONCURRENCY = parsePositiveInt(process.env.TESTER_LANE_T
 const TOOL_CONCURRENCY = {
   banner: parsePositiveInt(process.env.TESTER_BANNER_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
   mixinad: parsePositiveInt(process.env.TESTER_MIXINAD_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
+  sortorder: parsePositiveInt(process.env.TESTER_SORTORDER_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
   pslp: parsePositiveInt(process.env.TESTER_PSLP_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
   sku: parsePositiveInt(process.env.TESTER_SKU_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
   pdp: parsePositiveInt(process.env.TESTER_PDP_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY)
@@ -60,6 +63,7 @@ const TOOL_CONCURRENCY = {
 const LANE_TOOL_CONCURRENCY = {
   banner: parsePositiveInt(process.env.TESTER_BANNER_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
   mixinad: parsePositiveInt(process.env.TESTER_MIXINAD_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
+  sortorder: parsePositiveInt(process.env.TESTER_SORTORDER_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
   pslp: parsePositiveInt(process.env.TESTER_PSLP_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
   sku: parsePositiveInt(process.env.TESTER_SKU_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
   pdp: parsePositiveInt(process.env.TESTER_PDP_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY)
@@ -225,6 +229,7 @@ const queueScheduler = new LaneJobScheduler({
   globalQueueLimitByTool: {
     banner: TOOL_QUEUE_LIMIT,
     mixinad: TOOL_QUEUE_LIMIT,
+    sortorder: TOOL_QUEUE_LIMIT,
     pslp: TOOL_QUEUE_LIMIT,
     sku: TOOL_QUEUE_LIMIT,
     pdp: TOOL_QUEUE_LIMIT
@@ -360,6 +365,10 @@ function createProcessor(tool, userId) {
       processor = new MixInAdProcessor();
       reportGenerator = generateMixInAdReport;
       break;
+    case 'sortorder':
+      processor = new SortOrderProcessor();
+      reportGenerator = generateSortOrderReport;
+      break;
     case 'pdp':
       processor = new PDPProcessor();
       reportGenerator = generatePdpReport;
@@ -445,6 +454,11 @@ router.get('/api/config', (req, res) => {
       regions: config.mixinad.regions,
       cultureLangMap: config.mixinad.cultureLangMap,
       defaults: config.mixinad.defaults
+    },
+    sortorder: {
+      regions: config.sortorder.regions,
+      cultureLangMap: config.sortorder.cultureLangMap,
+      defaults: config.sortorder.defaults
     }
   });
 });
@@ -606,7 +620,8 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
   const effectiveUserId = getExecutionLaneId(req, res);
   if (!effectiveUserId) return;
   console.log(`[API] POST /api/sku/start | userId: ${effectiveUserId} | SKU count: ${req.body.skus?.length || 0}`);
-  const { skus, environment, region, culture, cultures, fullScreenshot, topScreenshot, addToCart, username, password } = req.body;
+  const { skus, environment, region, culture, cultures, fullScreenshot, topScreenshot, addToCart, username, password, testName } = req.body;
+  const normalizedTestName = typeof testName === 'string' ? testName.trim() : '';
 
   if (!skus || !Array.isArray(skus) || skus.length === 0) {
     return res.status(400).json({ error: 'No SKUs provided' });
@@ -620,6 +635,10 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
     });
   }
 
+  if (typeof testName === 'string' && normalizedTestName.length > 120) {
+    return res.status(400).json({ error: 'Test name too long', message: 'Maximum 120 characters allowed' });
+  }
+
   const useTopScreenshot = topScreenshot === true;
   const normalizedCultures = Array.isArray(cultures)
     ? cultures.map(c => String(c).trim()).filter(Boolean)
@@ -630,6 +649,7 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
     : [defaultCulture];
 
   const options = {
+    testName: normalizedTestName || null,
     skus: skus.map(s => String(s).trim()).filter(Boolean),
     environment: environment || 'production',
     region: region || 'us',
@@ -746,7 +766,8 @@ router.get('/api/banner/status', (req, res) => {
 router.post('/api/banner/start', asyncHandler(async (req, res) => {
   const effectiveUserId = getExecutionLaneId(req, res);
   if (!effectiveUserId) return;
-  const { environment, region, cultures, widths, categories, excelValidation, loginEnabled, username, password } = req.body;
+  const { environment, region, cultures, widths, categories, excelValidation, loginEnabled, username, password, testName } = req.body;
+  const normalizedTestName = typeof testName === 'string' ? testName.trim() : '';
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
     return res.status(400).json({ error: 'No cultures selected' });
@@ -772,6 +793,10 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Too many categories', message: 'Maximum 100 categories allowed' });
   }
 
+  if (typeof testName === 'string' && normalizedTestName.length > 120) {
+    return res.status(400).json({ error: 'Test name too long', message: 'Maximum 120 characters allowed' });
+  }
+
   const bannerProcessor = getProcessor(effectiveUserId, 'banner');
   if (bannerProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Banner capture already in progress' });
@@ -781,6 +806,7 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
   }
 
   const options = {
+    testName: normalizedTestName || null,
     environment,
     region,
     cultures,
@@ -890,7 +916,8 @@ router.get('/api/pslp/status', (req, res) => {
 router.post('/api/pslp/start', asyncHandler(async (req, res) => {
   const effectiveUserId = getExecutionLaneId(req, res);
   if (!effectiveUserId) return;
-  const { environment, region, culture, cultures, components, widths, screenWidths, username, password, excelValidation } = req.body;
+  const { environment, region, culture, cultures, components, widths, screenWidths, username, password, excelValidation, testName } = req.body;
+  const normalizedTestName = typeof testName === 'string' ? testName.trim() : '';
 
   const normalizedCultures = Array.isArray(cultures)
     ? cultures.map(c => String(c).trim()).filter(Boolean)
@@ -910,6 +937,10 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Too many screen widths', message: 'Maximum 20 screen widths allowed' });
   }
 
+  if (typeof testName === 'string' && normalizedTestName.length > 120) {
+    return res.status(400).json({ error: 'Test name too long', message: 'Maximum 120 characters allowed' });
+  }
+
   const pslpProcessor = getProcessor(effectiveUserId, 'pslp');
   if (pslpProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'PSLP capture already in progress' });
@@ -919,6 +950,7 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
   }
 
   const options = {
+    testName: normalizedTestName || null,
     environment: environment || 'production',
     region: region || 'us',
     culture: normalizedCultures[0],
@@ -1027,7 +1059,8 @@ router.get('/api/mixinad/status', (req, res) => {
 router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   const effectiveUserId = getExecutionLaneId(req, res);
   if (!effectiveUserId) return;
-  const { environment, region, cultures, widths, categories, excelValidation, loginEnabled, username, password } = req.body;
+  const { environment, region, cultures, widths, categories, excelValidation, loginEnabled, username, password, testName } = req.body;
+  const normalizedTestName = typeof testName === 'string' ? testName.trim() : '';
 
   if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
     return res.status(400).json({ error: 'No cultures selected' });
@@ -1053,6 +1086,10 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Too many categories', message: 'Maximum 100 categories allowed' });
   }
 
+  if (typeof testName === 'string' && normalizedTestName.length > 120) {
+    return res.status(400).json({ error: 'Test name too long', message: 'Maximum 120 characters allowed' });
+  }
+
   const mixinAdProcessor = getProcessor(effectiveUserId, 'mixinad');
   if (mixinAdProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Mix-In Ad capture already in progress' });
@@ -1062,6 +1099,7 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   }
 
   const options = {
+    testName: normalizedTestName || null,
     environment,
     region,
     cultures,
@@ -1161,6 +1199,141 @@ router.get('/api/mixinad/results', (req, res) => {
   res.json(getProcessorResults(userId, 'mixinad'));
 });
 
+// ============ Sort Order API Routes ============
+
+router.get('/api/sortorder/status', (req, res) => {
+  const userId = getUserId(req);
+  res.json(getProcessorStatus(userId, 'sortorder'));
+});
+
+router.post('/api/sortorder/start', asyncHandler(async (req, res) => {
+  const effectiveUserId = getExecutionLaneId(req, res);
+  if (!effectiveUserId) return;
+  const { environment, region, cultures, categories, loginEnabled, username, password, testName, sortValidationEnabled } = req.body;
+  const normalizedTestName = typeof testName === 'string' ? testName.trim() : '';
+
+  if (!cultures || !Array.isArray(cultures) || cultures.length === 0) {
+    return res.status(400).json({ error: 'No cultures selected' });
+  }
+
+  if (cultures.length > 50) {
+    return res.status(400).json({ error: 'Too many cultures', message: 'Maximum 50 cultures allowed' });
+  }
+
+  if (!categories || !Array.isArray(categories) || categories.length === 0) {
+    return res.status(400).json({ error: 'No categories selected' });
+  }
+
+  if (categories.length > 100) {
+    return res.status(400).json({ error: 'Too many categories', message: 'Maximum 100 categories allowed' });
+  }
+
+  if (typeof testName === 'string' && normalizedTestName.length > 120) {
+    return res.status(400).json({ error: 'Test name too long', message: 'Maximum 120 characters allowed' });
+  }
+
+  const sortOrderProcessor = getProcessor(effectiveUserId, 'sortorder');
+  if (sortOrderProcessor.getStatus().isRunning) {
+    return res.status(409).json({ error: 'Sort order capture already in progress' });
+  }
+  if (isToolJobQueued(effectiveUserId, 'sortorder')) {
+    return res.status(409).json({ error: 'Sort order capture already queued' });
+  }
+
+  const options = {
+    testName: normalizedTestName || null,
+    sortValidationEnabled: sortValidationEnabled !== false,
+    environment,
+    region,
+    cultures,
+    widths: [config.sortorder.defaults.width],
+    categories,
+    loginEnabled: loginEnabled === true,
+    username: loginEnabled ? (username || null) : null,
+    password: loginEnabled ? (password || null) : null
+  };
+
+  const errors = validateSortOrderConfig(options);
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join(', ') });
+  }
+
+  const queueResult = enqueueToolJob({
+    tool: 'sortorder',
+    userId: effectiveUserId,
+    processor: sortOrderProcessor,
+    options,
+    startFn: () => sortOrderProcessor.start(options).catch((err) => {
+      console.error('Sort order capture error:', err);
+      broadcast({ type: 'sortorder-error', data: { message: err.message } }, effectiveUserId);
+      throw err;
+    })
+  });
+
+  if (queueResult.rejected) {
+    return res.status(429).json({
+      error: 'Queue is full',
+      message: 'Too many captures are queued. Please try again later.'
+    });
+  }
+
+  broadcast({ type: 'sortorder-status', data: sortOrderProcessor.getStatus() }, effectiveUserId);
+
+  if (queueResult.queued) {
+    return res.json({
+      ok: true,
+      queued: true,
+      jobId: queueResult.jobId,
+      position: queueResult.position,
+      message: 'Sort order capture queued'
+    });
+  }
+
+  res.json({ ok: true, jobId: queueResult.jobId, message: 'Sort order capture started' });
+}));
+
+router.post('/api/sortorder/stop', (req, res) => {
+  const effectiveUserId = getExecutionLaneId(req, res);
+  if (!effectiveUserId) return;
+  const sortOrderProcessor = getProcessor(effectiveUserId, 'sortorder');
+  const cancelledJob = cancelQueuedJob(effectiveUserId, 'sortorder');
+  if (cancelledJob) {
+    broadcast({ type: 'sortorder-status', data: sortOrderProcessor.getStatus() }, effectiveUserId);
+    return res.json({ ok: true, jobId: cancelledJob.id, message: 'Removed from queue' });
+  }
+  sortOrderProcessor.stop();
+  broadcast({ type: 'sortorder-status', data: sortOrderProcessor.getStatus() }, effectiveUserId);
+  res.json({ ok: true, message: 'Stop requested' });
+});
+
+router.post('/api/sortorder/resume', (req, res) => {
+  const effectiveUserId = getExecutionLaneId(req, res);
+  if (!effectiveUserId) return;
+  const sortOrderProcessor = getProcessor(effectiveUserId, 'sortorder');
+  sortOrderProcessor.resume();
+  broadcast({ type: 'sortorder-status', data: sortOrderProcessor.getStatus() }, effectiveUserId);
+  res.json({ ok: true, message: 'Resume requested' });
+});
+
+router.post('/api/sortorder/update-credentials', (req, res) => {
+  const effectiveUserId = getExecutionLaneId(req, res);
+  if (!effectiveUserId) return;
+  const sortOrderProcessor = getProcessor(effectiveUserId, 'sortorder');
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  sortOrderProcessor.updateCredentials(username, password);
+  res.json({ ok: true, message: 'Credentials updated' });
+});
+
+router.get('/api/sortorder/results', (req, res) => {
+  const userId = getUserId(req);
+  res.json(getProcessorResults(userId, 'sortorder'));
+});
+
 // ============ PDP API Routes ============
 
 router.get('/api/pdp/status', (req, res) => {
@@ -1172,7 +1345,8 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
   const effectiveUserId = getExecutionLaneId(req, res);
   if (!effectiveUserId) return;
   console.log(`[API] POST /api/pdp/start | userId: ${effectiveUserId} | SKU count: ${req.body.skus?.length || 0}`);
-  const { skus, environment, region, culture, cultures, username, password } = req.body;
+  const { skus, environment, region, culture, cultures, username, password, testName } = req.body;
+  const normalizedTestName = typeof testName === 'string' ? testName.trim() : '';
 
   if (!skus || !Array.isArray(skus) || skus.length === 0) {
     return res.status(400).json({ error: 'No SKUs provided' });
@@ -1186,6 +1360,10 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
     });
   }
 
+  if (typeof testName === 'string' && normalizedTestName.length > 120) {
+    return res.status(400).json({ error: 'Test name too long', message: 'Maximum 120 characters allowed' });
+  }
+
   const normalizedCultures = Array.isArray(cultures)
     ? cultures.map(c => String(c).trim()).filter(Boolean)
     : (culture ? [String(culture).trim()] : []);
@@ -1195,6 +1373,7 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
     : [defaultCulture];
 
   const options = {
+    testName: normalizedTestName || null,
     skus: skus.map(s => String(s).trim()).filter(Boolean),
     environment: environment || 'production',
     region: region || 'us',

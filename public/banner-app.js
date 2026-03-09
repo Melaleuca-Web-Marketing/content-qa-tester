@@ -58,6 +58,7 @@ if (userId) {
 // DOM Elements
 const envSelect = document.getElementById('env-select');
 const regionSelect = document.getElementById('region-select');
+const testNameInput = document.getElementById('test-name-input');
 const cultureOptions = document.getElementById('culture-options');
 const loginToggle = document.getElementById('login-toggle');
 const loginSection = document.getElementById('login-section');
@@ -512,6 +513,9 @@ function setupEventListeners() {
   if (passwordInput) {
     passwordInput.addEventListener('input', savePreferences);
   }
+  if (testNameInput) {
+    testNameInput.addEventListener('input', savePreferences);
+  }
 
   document.getElementById('select-all-cultures').addEventListener('click', () => toggleAllCheckboxes('culture-options', true));
   document.getElementById('deselect-all-cultures').addEventListener('click', () => toggleAllCheckboxes('culture-options', false));
@@ -710,6 +714,7 @@ function getSelectedCategories() {
 
 function savePreferences() {
   const prefs = {
+    testName: testNameInput ? testNameInput.value.trim() : '',
     environment: envSelect.value,
     region: regionSelect.value,
     cultures: getSelectedCultures(),
@@ -754,6 +759,9 @@ function loadPreferences() {
         categoryTree.querySelectorAll('input[name="category"]').forEach(cb => {
           cb.checked = prefs.categories.includes(cb.value);
         });
+      }
+      if (typeof prefs.testName === 'string' && testNameInput) {
+        testNameInput.value = prefs.testName;
       }
       if (prefs.username && usernameInput) usernameInput.value = prefs.username;
     }
@@ -1369,6 +1377,7 @@ function formatTime(ms) {
 }
 
 async function startCapture() {
+  const testName = testNameInput ? testNameInput.value.trim() : '';
   const cultures = getSelectedCultures();
   const widths = getSelectedWidths();
   const categories = getSelectedCategories();
@@ -1397,12 +1406,18 @@ async function startCapture() {
     return;
   }
 
+  if (testName.length > 120) {
+    setStatusError('Test name too long', 'Use 120 characters or fewer');
+    return;
+  }
+
   jobSummary = buildJobSummary();
   completionNotified = false;
   requestNotificationPermission();
   primeAudio();
 
   const options = {
+    testName,
     environment,
     region: getRequestRegion(),
     cultures: getRequestCultures(),

@@ -41,6 +41,7 @@ if (userId) {
 // DOM Elements
 const envSelect = document.getElementById('env-select');
 const regionSelect = document.getElementById('region-select');
+const testNameInput = document.getElementById('test-name-input');
 const cultureOptions = document.getElementById('culture-options');
 const selectAllCulturesBtn = document.getElementById('select-all-cultures');
 const deselectAllCulturesBtn = document.getElementById('deselect-all-cultures');
@@ -243,6 +244,9 @@ function setupEventListeners() {
     applySavedCredentials();
     savePreferences();
   });
+  if (testNameInput) {
+    testNameInput.addEventListener('input', savePreferences);
+  }
 
   if (selectAllCulturesBtn && deselectAllCulturesBtn) {
     selectAllCulturesBtn.addEventListener('click', () => toggleAllCultures(true));
@@ -403,6 +407,7 @@ function updateSkuCount() {
 
 function savePreferences() {
   const prefs = {
+    testName: testNameInput ? testNameInput.value.trim() : '',
     environment: envSelect.value,
     region: regionSelect.value,
     cultures: getSelectedCultures(),
@@ -445,6 +450,9 @@ function loadPreferences() {
           cb.checked = checked;
           cb.closest('.width-option').classList.toggle('selected', checked);
         });
+      }
+      if (typeof prefs.testName === 'string' && testNameInput) {
+        testNameInput.value = prefs.testName;
       }
       if (prefs.skus) skuInput.value = prefs.skus;
       if (prefs.username) usernameInput.value = prefs.username;
@@ -1149,6 +1157,7 @@ function formatCultureList(cultures) {
 }
 
 async function startCapture() {
+  const testName = testNameInput ? testNameInput.value.trim() : '';
   const skus = parseSkus(skuInput.value);
   const cultures = getSelectedCultures();
   const widths = getSelectedWidths();
@@ -1176,12 +1185,18 @@ async function startCapture() {
     return;
   }
 
+  if (testName.length > 120) {
+    setStatusError('Test name too long', 'Use 120 characters or fewer');
+    return;
+  }
+
   jobSummary = buildJobSummary();
   completionNotified = false;
   requestNotificationPermission();
   primeAudio();
 
   const options = {
+    testName,
     skus,
     environment: envSelect.value,
     region: regionSelect.value,

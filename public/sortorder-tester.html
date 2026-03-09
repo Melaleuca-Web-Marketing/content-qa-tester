@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sort Order Tester - Melaleuca Unified Tester</title>
+    <script src="base-path.js"></script>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+
+  <body class="tool-page">
+    <div class="container">
+      <a href="index.html" class="back-link">&larr; Back to Mode Selector</a>
+
+      <div class="card">
+        <div class="main-column">
+          <h1>Sort Order Tester</h1>
+          <p class="subtitle">
+            Capture default category order after Show All and include mix-in ad
+            positions in the report.
+          </p>
+
+          <div id="form-wrapper">
+            <div class="section">
+              <div class="label">Test Name (optional)</div>
+              <input
+                type="text"
+                id="test-name-input"
+                maxlength="120"
+                placeholder="e.g. Spring Promo Sort Validation" />
+              <div class="meta">
+                Used in Job History so you can identify this run later.
+              </div>
+            </div>
+
+            <div class="settings-row settings-row-2">
+              <div class="section">
+                <div class="label">Environment</div>
+                <select id="env-select">
+                  <option value="production">Production</option>
+                  <option value="stage">Stage (Preview)</option>
+                  <option value="uat">UAT</option>
+                </select>
+              </div>
+
+              <div class="section">
+                <div class="label">Region</div>
+                <select id="region-select">
+                  <option value="usca">US & Canada</option>
+                  <option value="mx">Mexico</option>
+                  <option value="ukeu">UK & Europe</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="label">Cultures</div>
+              <div class="toggle-buttons">
+                <button class="toggle-btn" id="select-all-cultures">
+                  Select All
+                </button>
+                <button class="toggle-btn" id="deselect-all-cultures">
+                  Deselect All
+                </button>
+              </div>
+              <div class="options-grid" id="culture-options">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+
+            <div class="section" id="login-section">
+              <div class="label">Login Credentials (optional)</div>
+              <label class="toggle-row">
+                <span class="toggle-label">Sign in before capture</span>
+                <span class="toggle-switch">
+                  <input type="checkbox" id="login-toggle" />
+                  <span class="toggle-slider" aria-hidden="true"></span>
+                </span>
+              </label>
+              <form
+                class="login-fields"
+                id="login-fields"
+                style="display: none"
+                autocomplete="on"
+                action="#"
+                method="post">
+                <input
+                  type="text"
+                  id="username-input"
+                  name="username"
+                  placeholder="Username"
+                  autocomplete="username" />
+                <div class="password-input-wrapper">
+                  <input
+                    type="password"
+                    id="password-input"
+                    name="password"
+                    placeholder="Password"
+                    autocomplete="current-password" />
+                  <button
+                    type="button"
+                    class="password-toggle-btn"
+                    aria-label="Show password">
+                    <span class="eye-icon eye-show" aria-hidden="true">
+                      <svg
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        focusable="false">
+                        <path
+                          d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    </span>
+                    <span class="eye-icon eye-hide" aria-hidden="true">
+                      <svg
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        focusable="false">
+                        <path
+                          d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M4 4l16 16"></path>
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+              </form>
+              <div class="meta">
+                When enabled, the run will sign in before capturing default
+                category order.
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="label">Sort Order Validation</div>
+              <label class="toggle-row">
+                <span class="toggle-label"
+                  >Validate LIMITED TIME -> NEW -> OPEN STOCK -> SOLD OUT
+                  order</span
+                >
+                <span class="toggle-switch">
+                  <input type="checkbox" id="sort-validation-toggle" checked />
+                  <span class="toggle-slider" aria-hidden="true"></span>
+                </span>
+              </label>
+              <div class="meta">
+                When enabled, validates stamp priority and sold-out families at
+                the end.
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="label">Categories</div>
+              <div class="toggle-buttons">
+                <button class="toggle-btn" id="select-all-categories">
+                  Select All
+                </button>
+                <button class="toggle-btn" id="deselect-all-categories">
+                  Deselect All
+                </button>
+              </div>
+              <div class="category-tree" id="category-tree">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+
+            <div class="button-row">
+              <button id="start-capture" class="primary">Start Capture</button>
+              <button id="stop-capture" class="danger" disabled>Stop</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-column">
+          <div id="status-banner" class="status-banner idle">
+            <span class="status-icon" id="status-icon">&#9679;</span>
+            <div class="status-text">
+              <div id="status-main">Ready to capture</div>
+              <div class="status-detail" id="status-detail"></div>
+            </div>
+          </div>
+
+          <div
+            id="progress-container"
+            class="progress-container"
+            style="display: none">
+            <div class="progress-info">
+              <span id="progress-culture">Culture: -</span>
+              <span id="progress-category">Category: -</span>
+              <span id="progress-sort">Order: default</span>
+            </div>
+            <div class="progress-bar" id="progress-bar">
+              <div class="progress-bar-inner" id="progress-bar-inner"></div>
+            </div>
+            <div class="progress-stats">
+              <span id="progress-count">0 / 0</span>
+              <span id="progress-eta">ETR: --:--</span>
+            </div>
+          </div>
+
+          <div class="activity-feed" id="activity-feed" style="display: none">
+            <div class="activity-header">
+              <span class="activity-title">Live Activity</span>
+              <span class="activity-counts">
+                <span class="passed-count">Passed: <span id="passed-count">0</span></span>
+                <span class="failed-count">Failed: <span id="failed-count">0</span></span>
+              </span>
+              <button class="activity-clear-btn" id="clear-activity" title="Clear feed">Clear</button>
+            </div>
+            <div class="activity-list" id="activity-list">
+              <div class="activity-empty">No activity yet</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="connection-status" id="connection-status">
+        <span class="connection-dot"></span>
+        <span class="connection-text">Connecting...</span>
+      </div>
+    </div>
+
+    <script src="user-session.js"></script>
+    <script src="credentials-store.js"></script>
+    <script src="visual-notifications.js"></script>
+    <script src="sortorder-app.js"></script>
+  </body>
+</html>
