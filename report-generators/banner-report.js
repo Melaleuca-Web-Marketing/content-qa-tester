@@ -82,13 +82,24 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
   });
 
   const groups = Object.values(groupedItems);
-  const failedItems = groups
-    .map((group, index) => {
+  const groupsWithAnchors = groups.map((group, index) => {
+    const categoryPath = group.mainCategory ? `${group.mainCategory} > ${group.category}` : group.category;
+    const hasIssue = group.items.some((item) => item.error) || isValidationFailure(group.validation);
+    return {
+      ...group,
+      anchorId: `banner-${index + 1}`,
+      categoryPath,
+      cultureText: String(group.culture || '').toUpperCase(),
+      hasIssue
+    };
+  });
+  const categoriesWithIssues = groupsWithAnchors.filter((group) => group.hasIssue).length;
+  const failedItems = groupsWithAnchors
+    .map((group) => {
       if (!group.validation || group.validation.status !== 'fail') return null;
-      const categoryPath = group.mainCategory ? `${group.mainCategory} > ${group.category}` : group.category;
       return {
-        id: `banner-${index + 1}`,
-        label: `${String(group.culture || '').toUpperCase()} - ${categoryPath}`
+        id: group.anchorId,
+        label: `${group.cultureText} - ${group.categoryPath}`
       };
     })
     .filter(Boolean);
@@ -111,9 +122,122 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Banner Test Report - ${new Date(timestamp).toLocaleString()}</title>
   <style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg-primary:${isDark ? '#0f172a' : '#f0f2f5'};--bg-card:${isDark ? '#1e293b' : 'white'};--bg-card-header:${isDark ? '#334155' : '#f8fafc'};--bg-screenshot:${isDark ? '#334155' : '#f8fafc'};--text-primary:${isDark ? '#f1f5f9' : '#1a1a2e'};--text-secondary:${isDark ? '#94a3b8' : '#64748b'};--text-heading:${isDark ? '#f8fafc' : '#1e293b'};--border-color:${isDark ? '#475569' : '#e2e8f0'};--border-light:${isDark ? '#334155' : '#f1f5f9'};--mono-bg:${isDark ? '#475569' : '#f1f5f9'}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg-primary);color:var(--text-primary);line-height:1.6;padding:20px}.container{max-width:1400px;margin:0 auto}.header{background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:#fff;padding:30px 40px;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(59,130,246,.3)}.header h1{font-size:28px;font-weight:700;margin-bottom:12px}.header-meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;opacity:.95}.header-meta span{display:flex;align-items:center;gap:6px}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}.summary-card{background:var(--bg-card);padding:12px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'});text-align:center}.summary-card h3{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.summary-card .value{font-size:18px;font-weight:700}.summary-card .value.total{color:#3b82f6}.summary-card .value.success{color:#10b981}.summary-card .value.error{color:#ef4444}.summary-card .value.time{color:#8b5cf6;font-size:14px}.summary-card.summary-action{border:2px solid #ef4444;background:var(--bg-card);cursor:pointer;transition:transform .1s,box-shadow .2s}.summary-card.summary-action:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(239,68,68,.2)}.summary-card.summary-action:focus{outline:2px solid #ef4444;outline-offset:2px}.summary-action-note{font-size:11px;color:var(--text-secondary)}.banner-card{background:var(--bg-card);border-radius:16px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,${isDark ? '.3' : '.08'})}.banner-header{padding:20px 24px;background:var(--bg-card-header);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}.banner-header h2{font-size:20px;font-weight:600;color:var(--text-heading)}.banner-header .culture-badge{background:#dbeafe;color:#1d4ed8;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:600}.status-badge{padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.status-badge.success{background:#d1fae5;color:#059669}.status-badge.error{background:#fee2e2;color:#dc2626}.status-badge.partial{background:#fef3c7;color:#d97706}.banner-body{padding:24px}.error-message{background:${isDark ? '#3b1f1f' : '#fef2f2'};border:1px solid ${isDark ? '#7f1d1d' : '#fecaca'};color:${isDark ? '#f87171' : '#dc2626'};padding:16px 20px;border-radius:10px;margin-bottom:20px;font-weight:500}.banner-info{margin-bottom:24px}.banner-info table{width:100%;border-collapse:collapse}.banner-info th,.banner-info td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--border-light)}.banner-info th{width:130px;color:var(--text-secondary);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.3px}.banner-info td{color:var(--text-heading)}.banner-info td a{color:#3b82f6;text-decoration:none;word-break:break-all}.banner-info td a:hover{text-decoration:underline}.banner-info .mono{font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;background:var(--mono-bg);padding:2px 6px;border-radius:4px}.btn-copy{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(59,130,246,.3)}.btn-copy:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(59,130,246,.4)}.btn-copy:active{transform:translateY(0)}.btn-copy.copied{background:linear-gradient(135deg,#10b981 0%,#059669 100%)}.screenshots-section{border-top:1px solid var(--border-color);padding-top:24px}.screenshots-section h3{font-size:14px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}.screenshots-stack{display:flex;flex-direction:column;gap:20px}.screenshot-item{background:var(--bg-screenshot);border:1px solid var(--border-color);border-radius:12px;overflow:hidden}.screenshot-item.size-mobile{width:33.333%}.screenshot-item.size-tablet{width:66.666%}.screenshot-item.size-desktop{width:100%}.screenshot-item.error{border-color:${isDark ? '#7f1d1d' : '#fecaca'};background:${isDark ? '#3b1f1f' : '#fef2f2'}}.screenshot-header{padding:12px 16px;background:var(--bg-card);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center}.screenshot-item.error .screenshot-header{background:${isDark ? '#3b1f1f' : '#fef2f2'};border-bottom-color:${isDark ? '#7f1d1d' : '#fecaca'}}.screenshot-width{font-size:14px;font-weight:600;color:var(--text-heading)}.screenshot-error{padding:20px 16px;color:${isDark ? '#f87171' : '#dc2626'};font-size:13px;text-align:center}.screenshot-image{padding:12px}.screenshot-image img{width:100%;border-radius:8px;display:block}.validation-panel{position:fixed;top:16px;right:16px;width:300px;max-height:60vh;background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:none;z-index:1000}.validation-panel.show{display:block}.validation-panel-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border-color);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary)}.validation-panel-close{background:none;border:none;color:var(--text-secondary);font-size:16px;cursor:pointer}.validation-panel-list{list-style:none;margin:0;padding:8px 12px;max-height:calc(60vh - 44px);overflow:auto;display:flex;flex-direction:column;gap:6px}.validation-panel-list a{color:#3b82f6;text-decoration:none;font-size:12px}.validation-panel-list a:hover{text-decoration:underline}.anchor-target{scroll-margin-top:120px}.back-to-top{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;border:none;padding:10px 16px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.3);opacity:0;pointer-events:none;transition:opacity .2s ease}.back-to-top.show{opacity:1;pointer-events:auto}.footer{text-align:center;padding:24px;color:var(--text-secondary);font-size:13px}@media(max-width:768px){.header{padding:24px}.header h1{font-size:24px}.header-meta{gap:12px}.banner-header{flex-direction:column;align-items:flex-start}.screenshot-item.size-mobile,.screenshot-item.size-tablet{width:100%}.validation-panel{left:16px;right:16px;width:auto}}</style>
+  <style>
+    .report-layout {
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .report-content {
+      min-width: 0;
+    }
+    .category-nav {
+      position: sticky;
+      top: 14px;
+      align-self: start;
+      max-height: calc(100vh - 28px);
+      overflow: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .category-nav-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.35px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+    .category-nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .category-nav-link {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      text-decoration: none;
+      background: ${isDark ? 'rgba(148, 163, 184, 0.08)' : '#f8fafc'};
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .category-nav-link:hover,
+    .category-nav-link:focus {
+      border-color: ${isDark ? 'rgba(125, 211, 252, 0.65)' : '#7dd3fc'};
+      background: ${isDark ? 'rgba(14, 165, 233, 0.15)' : '#e0f2fe'};
+      outline: none;
+    }
+    .category-nav-link.fail {
+      border-color: ${isDark ? 'rgba(248, 113, 113, 0.55)' : '#fca5a5'};
+      background: ${isDark ? 'rgba(239, 68, 68, 0.18)' : '#fef2f2'};
+    }
+    .category-nav-link.fail:hover,
+    .category-nav-link.fail:focus {
+      border-color: ${isDark ? 'rgba(252, 165, 165, 0.9)' : '#ef4444'};
+      background: ${isDark ? 'rgba(239, 68, 68, 0.24)' : '#fee2e2'};
+    }
+    .category-nav-link.active {
+      border-color: ${isDark ? 'rgba(125, 211, 252, 0.9)' : '#0284c7'};
+      background: ${isDark ? 'rgba(14, 165, 233, 0.2)' : '#dbeafe'};
+      box-shadow: inset 0 0 0 1px ${isDark ? 'rgba(125, 211, 252, 0.45)' : 'rgba(2, 132, 199, 0.25)'};
+    }
+    .category-nav-link.fail.active {
+      border-color: ${isDark ? 'rgba(252, 165, 165, 0.95)' : '#dc2626'};
+      background: ${isDark ? 'rgba(239, 68, 68, 0.28)' : '#fee2e2'};
+      box-shadow: inset 0 0 0 1px ${isDark ? 'rgba(252, 165, 165, 0.45)' : 'rgba(220, 38, 38, 0.2)'};
+    }
+    .category-nav-label {
+      display: block;
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .category-nav-meta {
+      display: block;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .category-nav-fail {
+      display: inline-block;
+      margin-top: 5px;
+      border-radius: 999px;
+      border: 1px solid ${isDark ? 'rgba(248, 113, 113, 0.85)' : '#ef4444'};
+      background: ${isDark ? 'rgba(127, 29, 29, 0.45)' : '#fee2e2'};
+      color: ${isDark ? '#fecaca' : '#991b1b'};
+      padding: 1px 7px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.35px;
+      line-height: 1.35;
+    }
+    .banner-card:target {
+      border-color: ${isDark ? 'rgba(14,165,233,0.75)' : '#38bdf8'};
+      box-shadow: 0 0 0 2px ${isDark ? 'rgba(14,165,233,0.30)' : 'rgba(56,189,248,0.25)'};
+    }
+    @media (max-width: 980px) {
+      .report-layout {
+        display: block;
+      }
+      .category-nav {
+        position: static;
+        max-height: none;
+        margin-bottom: 16px;
+      }
+      .category-nav-list {
+        max-height: 260px;
+        overflow: auto;
+      }
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" id="report-top">
     <div class="header">
       <h1>Banner Test Report ${validationSummary ? '📊' : ''}</h1>
       <div class="header-meta">
@@ -181,14 +305,33 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
     </div>
     ` : ''}
 
-    ${groups.map((group, groupIdx) => {
+    <div class="report-layout">
+      <aside class="category-nav" aria-label="Category navigation">
+        <div class="category-nav-title">Jump To Category</div>
+        ${categoriesWithIssues > 0 ? `<div class="category-nav-meta">${escapeHtml(categoriesWithIssues)} categories with issues</div>` : ''}
+        <div class="category-nav-list">
+          <a class="category-nav-link" href="#report-top">
+            <span class="category-nav-label">Top of report</span>
+          </a>
+          ${groupsWithAnchors.map((group) => `
+          <a class="category-nav-link ${group.hasIssue ? 'fail' : ''}" href="#${escapeHtml(group.anchorId)}">
+            <span class="category-nav-label">${escapeHtml(group.categoryPath)}</span>
+            <span class="category-nav-meta">${escapeHtml(group.cultureText)}</span>
+            ${group.hasIssue ? '<span class="category-nav-fail">Issue</span>' : ''}
+          </a>
+          `).join('')}
+        </div>
+      </aside>
+
+      <div class="report-content">
+    ${groupsWithAnchors.map((group) => {
     const allErrors = group.items.every(i => i.error);
     const hasErrors = group.items.some(i => i.error) || isValidationFailure(group.validation);
     const statusClass = allErrors ? 'error' : hasErrors ? 'partial' : 'success';
     const statusText = allErrors ? 'Failed' : hasErrors ? 'Partial' : 'Success';
     const targetText = group.target && group.target.toLowerCase() === '_blank' ? 'New Tab' : 'Same Tab';
     const linkDisplay = stripDomain(group.href);
-    const anchorId = `banner-${groupIdx + 1}`;
+    const anchorId = group.anchorId;
 
     return `
     <div class="banner-card anchor-target" id="${anchorId}">
@@ -305,6 +448,8 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
       </div>
     </div>`;
   }).join('')}
+      </div>
+    </div>
 
     <div class="footer">
       Generated by Melaleuca Unified Tester
@@ -455,6 +600,52 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
         validationPanel.setAttribute('aria-hidden', 'true');
       });
     }
+
+    (() => {
+      const navLinks = Array.from(document.querySelectorAll('.category-nav-link[href^="#"]'));
+      if (navLinks.length === 0) return;
+
+      const sections = Array.from(document.querySelectorAll('.banner-card.anchor-target[id]'));
+      const linkByHash = new Map(navLinks.map((link) => [link.getAttribute('href'), link]));
+
+      const setActive = (hash) => {
+        navLinks.forEach((link) => link.classList.remove('active'));
+        const activeLink = linkByHash.get(hash);
+        if (activeLink) activeLink.classList.add('active');
+      };
+
+      const updateActiveFromScroll = () => {
+        if (window.scrollY < 120) {
+          setActive('#report-top');
+          return;
+        }
+
+        const threshold = window.innerHeight * 0.22;
+        let activeSection = sections[0] || null;
+        for (const section of sections) {
+          if (section.getBoundingClientRect().top - threshold <= 0) {
+            activeSection = section;
+          } else {
+            break;
+          }
+        }
+
+        if (activeSection && activeSection.id) {
+          setActive('#' + activeSection.id);
+        }
+      };
+
+      navLinks.forEach((link) => {
+        link.addEventListener('click', () => {
+          const hash = link.getAttribute('href');
+          if (hash) setActive(hash);
+        });
+      });
+
+      window.addEventListener('scroll', updateActiveFromScroll, { passive: true });
+      window.addEventListener('resize', updateActiveFromScroll);
+      updateActiveFromScroll();
+    })();
 
     const backToTop = document.getElementById('back-to-top');
     if (backToTop) {

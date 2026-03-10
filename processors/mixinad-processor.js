@@ -742,6 +742,7 @@ export class MixInAdProcessor extends BaseProcessor {
                 width,
                 culture: meta.culture,
                 category: meta.category,
+                order: meta.order ?? null,
                 mainCategory: meta.mainCategory,
                 environment: meta.environment || 'stage',
                 url
@@ -945,6 +946,7 @@ export class MixInAdProcessor extends BaseProcessor {
                             width,
                             culture: job.culture,
                             category: job.category,
+                            order: job.order ?? null,
                             mainCategory: job.mainCategory,
                             environment: options.environment,
                             url: job.url

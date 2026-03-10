@@ -909,6 +909,7 @@ export class BannerProcessor extends BaseProcessor {
           width,
           category: job.category || '',
           culture: job.culture || '',
+          order: job.order ?? null,
           mainCategory: job.mainCategory || '',
           environment: options.environment || 'stage',
           url: job.url
@@ -1281,8 +1282,9 @@ export class BannerProcessor extends BaseProcessor {
               error: true,
               message: err.message,
               width,
-              culture: job.category,
+              culture: job.culture,
               category: job.category,
+              order: job.order ?? null,
               mainCategory: job.mainCategory,
               environment: options.environment,
               url: job.url
