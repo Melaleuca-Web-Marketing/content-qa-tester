@@ -104,17 +104,16 @@ export class BaseProcessor extends EventEmitter {
       args: launchArgs
     });
 
-    log('info', 'Browser launch args', { args: launchArgs });
-
-    log('info', 'Browser launched successfully');
-    log('info', 'Browser version', await this.browser.version());
+    log('debug', 'Browser launch args', { args: launchArgs });
+    log('debug', 'Browser launched successfully');
+    log('debug', 'Browser version', await this.browser.version());
 
     return this.browser;
   }
 
   // Create browser context with viewport settings
   async createContext(contextOptions = {}) {
-    log('info', 'Creating browser context...');
+    log('debug', 'Creating browser context...');
 
     const defaultOptions = {
       viewport: { width: 1920, height: 1080 }
@@ -125,13 +124,13 @@ export class BaseProcessor extends EventEmitter {
       ...contextOptions
     });
 
-    log('info', 'Browser context created');
+    log('debug', 'Browser context created');
     return this.context;
   }
 
   // Create a new page
   async createPage() {
-    log('info', 'Creating new page...');
+    log('debug', 'Creating new page...');
     this.page = await this.context.newPage();
 
     // Add console listener for debugging
@@ -145,7 +144,7 @@ export class BaseProcessor extends EventEmitter {
       log('debug', `[PAGE ERROR] ${err.message}`);
     });
 
-    log('info', 'Page created successfully');
+    log('debug', 'Page created successfully');
     return this.page;
   }
 
@@ -339,8 +338,8 @@ export class BaseProcessor extends EventEmitter {
     const pageLoadTimeout = timeouts.pageLoad || 30000;
     const loginWait = timeouts.loginWait || 10000;
 
-    log('info', 'Starting login process...');
-    log('info', 'Step 1: Navigating to home page...', { url: baseUrl });
+    log('debug', 'Starting login process...');
+    log('debug', 'Step 1: Navigating to home page...', { url: baseUrl });
 
     this.emit('progress', {
       type: 'login',
@@ -357,7 +356,7 @@ export class BaseProcessor extends EventEmitter {
 
       await this.handleMicrosoftAuthIfNeeded(environment, username, password);
 
-      log('info', 'Step 2: Looking for Sign In button on home page...');
+      log('debug', 'Step 2: Looking for Sign In button on home page...');
       this.emit('progress', {
         type: 'login',
         status: 'Clicking Sign In button'
@@ -418,9 +417,9 @@ export class BaseProcessor extends EventEmitter {
         return { success: false, error: 'Sign In button not found on home page' };
       }
 
-      log('info', 'Clicked Sign In button');
+      log('debug', 'Clicked Sign In button');
 
-      log('info', 'Step 3: Waiting for login form to load...');
+      log('debug', 'Step 3: Waiting for login form to load...');
       this.emit('progress', {
         type: 'login',
         status: 'Waiting for login form'
@@ -429,7 +428,7 @@ export class BaseProcessor extends EventEmitter {
       await this.page.waitForSelector(loginSelectors.loginUsernameField, { timeout: Math.max(loginWait, 15000) });
       await this.page.waitForTimeout(1000);
 
-      log('info', 'Step 4: Entering credentials...');
+      log('debug', 'Step 4: Entering credentials...');
       this.emit('progress', {
         type: 'login',
         status: 'Entering credentials'
@@ -438,7 +437,7 @@ export class BaseProcessor extends EventEmitter {
       await this.page.fill(loginSelectors.loginUsernameField, username);
       await this.page.fill(loginSelectors.loginPasswordField, password);
 
-      log('info', 'Step 5: Submitting login form...');
+      log('debug', 'Step 5: Submitting login form...');
       this.emit('progress', {
         type: 'login',
         status: 'Submitting login'
@@ -446,7 +445,7 @@ export class BaseProcessor extends EventEmitter {
 
       await this.page.click(loginSelectors.loginSubmitButton);
 
-      log('info', 'Step 6: Waiting for login to complete...');
+      log('debug', 'Step 6: Waiting for login to complete...');
       this.emit('progress', {
         type: 'login',
         status: 'Loading profile...'
@@ -478,7 +477,7 @@ export class BaseProcessor extends EventEmitter {
       }
 
       const currentUrl = this.page.url();
-      log('info', 'Current URL after login attempt:', { url: currentUrl });
+      log('debug', 'Current URL after login attempt:', { url: currentUrl });
 
       if (loginSelectors.loginErrorMessage) {
         const errorEl = await this.page.$(loginSelectors.loginErrorMessage);

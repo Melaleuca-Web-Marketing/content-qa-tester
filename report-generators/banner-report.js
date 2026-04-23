@@ -2,6 +2,7 @@
 
 import { config } from '../config.js';
 import { validateResults } from '../utils/excel-validation.js';
+import { log } from '../utils/logger.js';
 
 export function generateBannerReport(results, captureDuration, theme = 'dark', excelValidation = null) {
   if (!results || !results.length) {
@@ -13,14 +14,14 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
   let validationSummary = null;
   let excelFilename = null;
 
-  console.log('[Banner Report] Excel Validation received:', excelValidation ? 'YES' : 'NO');
-  if (excelValidation) {
-    console.log('[Banner Report] Excel Validation enabled:', excelValidation.enabled);
-    console.log('[Banner Report] Excel Validation data rows:', excelValidation.data?.length || 0);
-  }
+  log('debug', '[Banner Report] Excel validation settings', {
+    received: Boolean(excelValidation),
+    enabled: Boolean(excelValidation?.enabled),
+    rowCount: excelValidation?.data?.length || 0
+  });
 
   if (excelValidation && excelValidation.enabled && excelValidation.data) {
-    console.log('[Banner Report] Running validation...');
+    log('debug', '[Banner Report] Running validation');
     validatedResults = validateResults(results, excelValidation.data, 'category-banner');
     excelFilename = excelValidation.filename || 'Unknown';
   }
@@ -106,7 +107,7 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
   const hasValidationFailures = failedItems.length > 0;
   if (excelValidation && excelValidation.enabled && excelValidation.data) {
     validationSummary = buildGroupValidationSummary(groups);
-    console.log('[Banner Report] Validation complete. Summary:', validationSummary);
+    log('debug', '[Banner Report] Validation complete', validationSummary);
   }
   const totalBanners = groups.length;
   const failedBanners = groups.filter((group) => {

@@ -43,6 +43,14 @@ export function redact(value, options = {}) {
       return val;
     }
 
+    if (val instanceof Error) {
+      return {
+        name: val.name,
+        message: truncateString(val.message, maxStringLength),
+        stack: truncateString(val.stack, maxStringLength)
+      };
+    }
+
     if (seen.has(val)) return '[Circular]';
     seen.add(val);
 

@@ -285,7 +285,7 @@ export class BannerProcessor extends BaseProcessor {
       }, { selector: config.banner.selector, maxOverflow: 6 });
 
       if (result?.applied) {
-        log('info', `[${label}] Chevron width normalized`, {
+        log('debug', `[${label}] Chevron width normalized`, {
           width,
           ...result
         });
@@ -512,7 +512,7 @@ export class BannerProcessor extends BaseProcessor {
           anchorStyle: data.anchorStyle
         };
 
-      log('info', '[BANNER-DIAG] Layout snapshot', payload);
+      log('debug', '[BANNER-DIAG] Layout snapshot', payload);
     } catch (err) {
       log('warn', '[BANNER-DIAG] Failed to collect layout snapshot', {
         width,
@@ -596,7 +596,7 @@ export class BannerProcessor extends BaseProcessor {
       ...(Object.keys(mergedHeaders).length > 0 ? { extraHTTPHeaders: mergedHeaders } : {})
     });
 
-    log('info', 'Mobile emulation context created', {
+    log('debug', 'Mobile emulation context created', {
       deviceScaleFactor: defaultOptions.deviceScaleFactor,
       userAgent: defaultOptions.userAgent || 'default',
       platform: emulation.platform || 'default',
@@ -608,7 +608,7 @@ export class BannerProcessor extends BaseProcessor {
 
   async createMobilePage() {
     if (!this.mobileContext) return null;
-    log('info', 'Creating mobile emulation page...');
+    log('debug', 'Creating mobile emulation page...');
     this.mobilePage = await this.mobileContext.newPage();
 
     this.mobilePage.on('console', msg => {
@@ -623,7 +623,7 @@ export class BannerProcessor extends BaseProcessor {
 
     await this.applyEmulationOverrides(this.mobilePage, this.mobileEmulation, 'MOBILE-EMU');
 
-    log('info', 'Mobile emulation page created successfully');
+    log('debug', 'Mobile emulation page created successfully');
     return this.mobilePage;
   }
 
@@ -722,7 +722,7 @@ export class BannerProcessor extends BaseProcessor {
       }
     }, overrides);
 
-    log('info', `[${label}] Applied emulation overrides`, overrides);
+    log('debug', `[${label}] Applied emulation overrides`, overrides);
   }
 
   async syncCookiesToMobile() {
@@ -803,7 +803,7 @@ export class BannerProcessor extends BaseProcessor {
     const desktopWidth = 1920;
     const loadWidth = desktopFirst ? desktopWidth : (initialWidth || widths[0]);
 
-    log('info', `[${captureLabel}] Loading page at ${loadWidth}px before capturing widths`, { category: job.category });
+    log('debug', `[${captureLabel}] Loading page at ${loadWidth}px before capturing widths`, { category: job.category });
     await page.setViewportSize({ width: loadWidth, height: captureHeight });
 
     await page.goto(job.url, {
@@ -816,7 +816,7 @@ export class BannerProcessor extends BaseProcessor {
     await page.waitForTimeout(1000);
     await this.setScrollbarVisibility(true, page);
     await page.waitForTimeout(100);
-    log('info', `[${captureLabel}] Page and fonts loaded at ${loadWidth}px`, { category: job.category });
+    log('debug', `[${captureLabel}] Page and fonts loaded at ${loadWidth}px`, { category: job.category });
 
     const msAuthHandled = await this.handleMicrosoftAuthIfNeeded(options.environment, options.username, options.password, page);
     if (msAuthHandled) {
@@ -835,7 +835,7 @@ export class BannerProcessor extends BaseProcessor {
       if (this.shouldStop) break;
 
       const width = widths[i];
-      log('info', `  [${captureLabel}] Capturing at ${width}px`, { category: job.category });
+      log('debug', `  [${captureLabel}] Capturing at ${width}px`, { category: job.category });
 
       try {
         await page.setViewportSize({ width, height: captureHeight });
@@ -927,7 +927,7 @@ export class BannerProcessor extends BaseProcessor {
     }
 
     const results = [];
-    log('info', `Capturing banner for ${job.category} at ${widths.length} widths (optimized)`, { url: job.url });
+    log('debug', `Capturing banner for ${job.category} at ${widths.length} widths (optimized)`, { url: job.url });
 
     try {
       const useMobileEmulation = this.mobileEmulation?.enabled && this.mobilePage;
@@ -985,7 +985,7 @@ export class BannerProcessor extends BaseProcessor {
 
   // Capture banner at a specific width
   async captureAtWidth(url, width, meta = {}) {
-    log('info', `Capturing banner at ${width}px`, { url });
+    log('debug', `Capturing banner at ${width}px`, { url });
 
     const page = this.page;
     if (!page) {

@@ -171,7 +171,7 @@ export class SortOrderProcessor extends BaseProcessor {
     }
 
     if (lastCulture !== job.culture) {
-      log('info', 'Switching culture for logged-in session', {
+      log('debug', 'Switching culture for logged-in session', {
         from: lastCulture,
         to: job.culture,
         url: baseUrl
@@ -1419,7 +1419,7 @@ export class SortOrderProcessor extends BaseProcessor {
   }
 
   async captureSortsAtWidth(url, width, meta = {}) {
-    log('info', `Capturing sort order data at ${width}px`, { url });
+    log('debug', `Capturing sort order data at ${width}px`, { url });
 
     const page = this.page;
     if (!page) {
@@ -1502,7 +1502,7 @@ export class SortOrderProcessor extends BaseProcessor {
 
       const gridData = await this.collectGridData(page);
       const domSignalSummary = this.summarizeProductSignals(gridData.products);
-      log('info', 'SortOrder DOM extraction summary', {
+      log('debug', 'SortOrder DOM extraction summary', {
         category: meta.category,
         culture: meta.culture,
         width,
@@ -1514,7 +1514,7 @@ export class SortOrderProcessor extends BaseProcessor {
       }
 
       const bestFamilySnapshot = this.selectBestFamilyMaps(categoryApiSnapshots);
-      log('info', 'SortOrder category API enrichment snapshot', {
+      log('debug', 'SortOrder category API enrichment snapshot', {
         category: meta.category,
         culture: meta.culture,
         width,
@@ -1539,14 +1539,14 @@ export class SortOrderProcessor extends BaseProcessor {
           rules: []
         };
       const enrichedSignalSummary = this.summarizeProductSignals(enrichedProducts);
-      log('info', 'SortOrder enriched product summary', {
+      log('debug', 'SortOrder enriched product summary', {
         category: meta.category,
         culture: meta.culture,
         width,
         ...enrichedSignalSummary
       });
       if (validationEnabled) {
-        log('info', 'SortOrder business validation summary', {
+        log('debug', 'SortOrder business validation summary', {
           category: meta.category,
           culture: meta.culture,
           width,
@@ -1561,7 +1561,7 @@ export class SortOrderProcessor extends BaseProcessor {
           }))
         });
       } else {
-        log('info', 'SortOrder business validation skipped', {
+        log('debug', 'SortOrder business validation skipped', {
           category: meta.category,
           culture: meta.culture,
           width

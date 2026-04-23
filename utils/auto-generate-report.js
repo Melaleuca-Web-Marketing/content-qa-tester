@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { formatTimestamp } from './format-timestamp.js';
 import { saveToHistory } from './history.js';
+import { log } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,7 +28,10 @@ export function autoGenerateReport(processor, reportGenerator, mode, userId = nu
       const excelValidation = options.excelValidation || null;
       const customTestName = typeof options.testName === 'string' ? options.testName.trim() : '';
 
-      console.log('[Auto-Generate-Report] Excel Validation:', excelValidation ? `Enabled (${excelValidation.data?.length || 0} rows)` : 'Disabled');
+      log('debug', '[Auto-Generate-Report] Excel validation settings', {
+        enabled: Boolean(excelValidation),
+        rowCount: excelValidation?.data?.length || 0
+      });
 
       const { html, name } = reportGenerator(results, duration, theme, excelValidation);
 

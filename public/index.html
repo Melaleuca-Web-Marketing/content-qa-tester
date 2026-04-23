@@ -1389,6 +1389,25 @@
       return urlWithUser;
     };
 
+    const urlDebugLogs = new URLSearchParams(window.location.search).get('debugLogs');
+    let storedDebugLogs = null;
+    try {
+      storedDebugLogs = window.localStorage.getItem('testerDebugLogs');
+    } catch (err) {
+      storedDebugLogs = null;
+    }
+    const debugLoggingEnabled = urlDebugLogs === '1' || storedDebugLogs === '1';
+    const debugLog = (...args) => {
+      if (debugLoggingEnabled) {
+        console.log(...args);
+      }
+    };
+    const debugWarn = (...args) => {
+      if (debugLoggingEnabled) {
+        console.warn(...args);
+      }
+    };
+
     // Logging wrapper for fetch (only logs important operations, not status polls)
     const originalFetch = window.fetch;
     window.fetch = function (url, options = {}) {
@@ -1398,12 +1417,12 @@
       // Only log non-status requests
       if (!isStatusPoll) {
         const hasUserId = options.headers && options.headers['X-User-Id'];
-        console.log(`[Fetch] ${method} ${url} | userId in headers: ${hasUserId ? options.headers['X-User-Id'] : '(none)'}`);
+          debugLog(`[Fetch] ${method} ${url} | userId in headers: ${hasUserId ? options.headers['X-User-Id'] : '(none)'}`);
       }
 
       return originalFetch.apply(this, arguments).then(response => {
         if (!isStatusPoll) {
-          console.log(`[Fetch Response] ${method} ${url} | Status: ${response.status}`);
+          debugLog(`[Fetch Response] ${method} ${url} | Status: ${response.status}`);
         }
         return response;
       }).catch(error => {
@@ -1435,7 +1454,7 @@
         warningTextEl.textContent = 'Failed to initialize user session. Multi-user isolation disabled.';
         warningEl.classList.add('show');
       } else {
-        console.log(`[Session] User ID: ${userId} | Storage: ${status}`);
+        debugLog(`[Session] User ID: ${userId} | Storage: ${status}`);
       }
     })();
 
@@ -1468,7 +1487,7 @@
       };
 
       ws.onclose = () => {
-        console.log('WebSocket connection closed');
+        debugLog('WebSocket connection closed');
       };
     })();
 
@@ -1733,7 +1752,7 @@
 
             if (status.isRunning && !jobStates[tool]) {
               // New job started
-              console.log(`[Dashboard] Job started: ${tool} | userId: ${userId || '(none)'}`);
+              debugLog(`[Dashboard] Job started: ${tool} | userId: ${userId || '(none)'}`);
               jobStartTimes[tool] = startedAt || Date.now();
               resetEtaCache(tool);
               jobStates[tool] = status;
@@ -1953,7 +1972,7 @@
         try {
           const response = await fetch(api(`/api/${tool}/stop`), { method: 'POST', headers: withUserHeaders() });
           if (response.ok) {
-            console.log(`${tool} job stopped`);
+            debugLog(`${tool} job stopped`);
             setTimeout(updateAllStatuses, 500);
           }
         } catch (err) {
@@ -1966,7 +1985,7 @@
         try {
           const response = await fetch(api(`/api/${tool}/resume`), { method: 'POST', headers: withUserHeaders() });
           if (response.ok) {
-            console.log(`${tool} job resumed`);
+            debugLog(`${tool} job resumed`);
             // Update the job state to show it's resuming
             if (jobStates[tool]) {
               jobStates[tool].message = 'Resuming...';
@@ -1995,7 +2014,7 @@
             resetEtaCache(tool);
             resetCredentialErrorNotified(tool);
             jobStates[tool] = null;
-            console.log(`[Dashboard] Job completed via WebSocket: ${tool}`, {
+            debugLog(`[Dashboard] Job completed via WebSocket: ${tool}`, {
               'data.type': data.type,
               'data.isRunning': data.isRunning,
               'condition': data.type === 'completed' ? 'type===completed' : '!isRunning'
@@ -2039,7 +2058,7 @@
             if (!data.options?.testName) {
               setTimeout(updateAllStatuses, 300);
             }
-            console.log(`[Dashboard] Job started via WebSocket: ${tool}`);
+            debugLog(`[Dashboard] Job started via WebSocket: ${tool}`);
           }
           renderDashboard();
         } else if (type.endsWith('-error')) {
@@ -2057,7 +2076,7 @@
       // Reduced polling - WebSocket is primary, HTTP is backup (60s interval)
       setInterval(updateAllStatuses, 60000);
 
-      console.log('[Dashboard] Using WebSocket for real-time updates, HTTP polling every 60s as backup');
+      debugLog('[Dashboard] Using WebSocket for real-time updates, HTTP polling every 60s as backup');
     })();
 
     // Job History Management
@@ -2080,12 +2099,12 @@
       // Fetch history from server
       async function fetchHistory() {
         try {
-          console.log(`[History] Fetching history | userId: ${userId || '(none)'}`);
+          debugLog(`[History] Fetching history | userId: ${userId || '(none)'}`);
           const response = await fetch(api('/api/history'), { headers: withUserHeaders() });
 
           if (!response.ok) {
             if (response.status === 429) {
-              console.warn('[History] Rate limit exceeded, keeping existing history');
+              debugWarn('[History] Rate limit exceeded, keeping existing history');
               return; // Keep existing history, don't clear it
             }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -2095,7 +2114,7 @@
           if (data && data.history && Array.isArray(data.history)) {
             history = data.history;
             historyLimit = data.limit;
-            console.log(`[History] Received ${history.length} history entries from server`);
+            debugLog(`[History] Received ${history.length} history entries from server`);
             document.getElementById('history-limit').value = historyLimit;
           } else {
             console.error('[History] Invalid response format:', data);
@@ -2248,7 +2267,7 @@
 
           if (!response.ok) {
             if (response.status === 429) {
-              console.warn('[History] Rate limit exceeded on markAsRead, will retry later');
+              debugWarn('[History] Rate limit exceeded on markAsRead, will retry later');
               return; // Don't update UI, keep current state
             }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -2292,9 +2311,9 @@
       window.clearHistory = async function () {
         if (!confirm('Are you sure you want to clear all job history?')) return;
         try {
-          console.log(`[History] Clearing all history | userId: ${userId || '(none)'}`);
+          debugLog(`[History] Clearing all history | userId: ${userId || '(none)'}`);
           await fetch(api('/api/history'), { method: 'DELETE', headers: withUserHeaders() });
-          console.log(`[History] Clear request sent, reloading history`);
+          debugLog('[History] Clear request sent, reloading history');
           loadHistory();
         } catch (err) {
           console.error('[History] Error clearing history:', err);

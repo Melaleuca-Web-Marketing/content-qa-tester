@@ -110,7 +110,7 @@ export class PDPProcessor extends BaseProcessor {
     });
 
     if (accordionCount > 0) {
-      log('info', `Opened ${accordionCount} accordions`);
+      log('debug', `Opened ${accordionCount} accordions`);
       // Wait for accordion animations to complete
       await this.page.waitForTimeout(500);
     }
@@ -122,7 +122,7 @@ export class PDPProcessor extends BaseProcessor {
     const widths = this.currentOptions?.screenWidths || config.pdp.screenWidths;
 
     for (const width of widths) {
-      log('info', `Capturing screenshot at ${width}px width`);
+      log('debug', `Capturing screenshot at ${width}px width`);
 
       this.emit('progress', {
         type: 'pdp-screenshot',
@@ -151,7 +151,7 @@ export class PDPProcessor extends BaseProcessor {
         data: `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`
       });
 
-      log('info', `Screenshot captured at ${width}px`);
+      log('debug', `Screenshot captured at ${width}px`);
     }
 
     return screenshots;
@@ -516,7 +516,7 @@ export class PDPProcessor extends BaseProcessor {
               }
             });
 
-            log('info', `Captured screenshot for section ${section.index}`, {
+            log('debug', `Captured screenshot for section ${section.index}`, {
               sectionId: section.sectionId,
               width: boundingBox.width,
               height: boundingBox.height
@@ -573,7 +573,7 @@ export class PDPProcessor extends BaseProcessor {
     const options = this.currentOptions;
     const url = buildPdpUrl(options.environment, options.region, culture, sku);
 
-    log('info', `Processing SKU ${currentIndex}/${total}`, { sku, culture, url });
+    log('debug', `Processing SKU ${currentIndex}/${total}`, { sku, culture, url });
 
     this.emit('progress', {
       type: 'pdp-start',
@@ -601,14 +601,14 @@ export class PDPProcessor extends BaseProcessor {
     };
 
     try {
-      log('info', `Navigating to URL: ${url}`);
+      log('debug', `Navigating to URL: ${url}`);
 
       const response = await this.page.goto(url, {
         waitUntil: 'load',
         timeout: config.pdp.timeouts.pageLoad
       });
 
-      log('info', 'Page navigation complete', {
+      log('debug', 'Page navigation complete', {
         status: response?.status(),
         url: response?.url()
       });
@@ -623,11 +623,11 @@ export class PDPProcessor extends BaseProcessor {
       }
 
       // Step 1: Open all accordions so content is visible
-      log('info', 'Opening all accordions...');
+      log('debug', 'Opening all accordions...');
       await this.openAllAccordions();
 
       // Step 2: Capture screenshots at all viewport widths
-      log('info', 'Capturing screenshots at all viewport widths...');
+      log('debug', 'Capturing screenshots at all viewport widths...');
       this.emit('progress', {
         type: 'pdp-status',
         sku,
@@ -639,7 +639,7 @@ export class PDPProcessor extends BaseProcessor {
       });
 
       result.screenshots = await this.captureScreenshots();
-      log('info', `Captured ${result.screenshots.length} screenshots`);
+      log('debug', `Captured ${result.screenshots.length} screenshots`);
 
       if (this.shouldStop) {
         log('info', 'Capture cancelled by user');
@@ -652,7 +652,7 @@ export class PDPProcessor extends BaseProcessor {
       await this.page.waitForTimeout(500);
 
       // Step 4: Detect content type
-      log('info', 'Detecting content type...');
+      log('debug', 'Detecting content type...');
       this.emit('progress', {
         type: 'pdp-status',
         sku,
@@ -665,11 +665,11 @@ export class PDPProcessor extends BaseProcessor {
 
       const contentTypeResult = await this.detectContentType();
       result.contentType = contentTypeResult.type;
-      log('info', `Content type: ${result.contentType}`, { reason: contentTypeResult.reason });
+      log('debug', `Content type: ${result.contentType}`, { reason: contentTypeResult.reason });
 
       // Step 5: Extract section data based on content type
       if (result.contentType === 'pdp') {
-        log('info', 'Extracting PDP sections...');
+        log('debug', 'Extracting PDP sections...');
         this.emit('progress', {
           type: 'pdp-status',
           sku,
@@ -681,11 +681,11 @@ export class PDPProcessor extends BaseProcessor {
         });
 
         const extractedSections = await this.extractSections();
-        log('info', `Extracted ${extractedSections.length} sections`);
+        log('debug', `Extracted ${extractedSections.length} sections`);
 
         // Step 5: Capture desktop screenshots of each section
         if (extractedSections.length > 0) {
-          log('info', 'Capturing section screenshots...');
+          log('debug', 'Capturing section screenshots...');
           this.emit('progress', {
             type: 'pdp-status',
             sku,
@@ -703,17 +703,17 @@ export class PDPProcessor extends BaseProcessor {
           await this.page.waitForTimeout(500);
 
           result.sections = await this.captureSectionScreenshots(extractedSections);
-          log('info', `Captured screenshots for ${result.sections.length} sections`);
+          log('debug', `Captured screenshots for ${result.sections.length} sections`);
         } else {
           result.sections = extractedSections;
         }
       } else if (result.contentType === 'longDescription') {
-        log('info', 'Extracting long description...');
+        log('debug', 'Extracting long description...');
         result.longDescription = await this.extractLongDescription();
       }
 
       result.success = true;
-      log('info', `SKU ${sku} processed successfully`);
+      log('debug', `SKU ${sku} processed successfully`);
 
       this.emit('progress', {
         type: 'pdp-complete',
@@ -813,14 +813,14 @@ export class PDPProcessor extends BaseProcessor {
           }
 
           const sku = options.skus[i];
-          log('info', `\n--- Processing SKU ${sku} (${culture}) ---`);
+          log('debug', `\n--- Processing SKU ${sku} (${culture}) ---`);
           const result = await this.processSku(sku, runIndex + 1, totalRuns, culture);
           this.results.push(result);
           runIndex += 1;
 
           // Wait between SKUs
           if (runIndex < totalRuns && !this.shouldStop) {
-            log('info', `Waiting ${config.pdp.timeouts.betweenSkus}ms before next SKU...`);
+            log('debug', `Waiting ${config.pdp.timeouts.betweenSkus}ms before next SKU...`);
             await this.page.waitForTimeout(config.pdp.timeouts.betweenSkus);
           }
         }

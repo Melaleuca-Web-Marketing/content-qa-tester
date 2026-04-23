@@ -343,8 +343,10 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
   }
 
   logExcel('info', `[Excel Validation] Validating ${capturedResults.length} results against ${excelData.length} Excel rows (type: ${type})`);
+  const validatedResults = [];
+  const notFoundCounts = new Map();
 
-  return capturedResults.map(result => {
+  for (const result of capturedResults) {
     const culture = result.culture || '';
 
     // Find matching Excel row
@@ -353,14 +355,27 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
     if (!match) {
       const resultMainCat = normalizeText(result.mainCategory || '');
       const resultSubcat = normalizeText(result.category || result.subcategory || '');
-      logExcel('warn', `[Excel Validation] ❌ NOT FOUND - Main: "${resultMainCat}", Sub: "${resultSubcat}", Culture: ${culture}`);
-      return {
+      const key = `${resultMainCat}|${resultSubcat}|${culture}`;
+      const existing = notFoundCounts.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        notFoundCounts.set(key, {
+          mainCategory: resultMainCat,
+          subcategory: resultSubcat,
+          culture,
+          count: 1
+        });
+      }
+
+      validatedResults.push({
         ...result,
         validation: {
           status: 'not-found',
           message: 'No matching row found in Excel'
         }
-      };
+      });
+      continue;
     }
 
     const linkInfo = resolveExpectedLink(match, culture);
@@ -427,7 +442,37 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
         comparisons
       }
     };
-  });
+    validatedResults.push({
+      ...result,
+      validation: {
+        status: allMatch ? 'pass' : 'fail',
+        expected: {
+          link: linkInfo.value,
+          target: match.target,
+          position: match.position,
+          sku: expectedSkus.join(', ')
+        },
+        comparisons
+      }
+    });
+  }
+
+  if (notFoundCounts.size > 0) {
+    const groups = Array.from(notFoundCounts.values())
+      .sort((a, b) => b.count - a.count || a.culture.localeCompare(b.culture))
+      .slice(0, 20);
+    const totalNotFound = Array.from(notFoundCounts.values()).reduce((sum, item) => sum + item.count, 0);
+    logExcel(
+      'warn',
+      `[Excel Validation] ${totalNotFound} results did not match Excel rows across ${notFoundCounts.size} unique category/culture combinations`,
+      {
+        groups,
+        truncated: notFoundCounts.size > groups.length
+      }
+    );
+  }
+
+  return validatedResults;
 }
 
 /**

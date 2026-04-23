@@ -3,12 +3,14 @@
 import fs from 'fs';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { log } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DATA_DIR = process.env.TESTER_DATA_DIR || resolve(__dirname, '..');
 const HISTORY_FILE = join(DATA_DIR, 'history.json');
 const DEFAULT_HISTORY_LIMIT = 10;
+let historyStoreCache = null;
 
 function normalizeStore(raw) {
   if (!raw) {
@@ -27,37 +29,45 @@ function normalizeStore(raw) {
 }
 
 function readHistoryStore() {
+  if (historyStoreCache) {
+    return historyStoreCache;
+  }
   try {
     if (fs.existsSync(HISTORY_FILE)) {
       const raw = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
-      return normalizeStore(raw);
+      historyStoreCache = normalizeStore(raw);
+      return historyStoreCache;
     }
   } catch (e) {
-    console.error('Error loading history:', e);
+    log('error', 'Error loading history', e);
   }
-  return { entries: [], limits: {} };
+  historyStoreCache = { entries: [], limits: {} };
+  return historyStoreCache;
 }
 
 function writeHistoryStore(store) {
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(store, null, 2));
+  historyStoreCache = normalizeStore(store);
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(historyStoreCache, null, 2));
 }
 
 export function loadHistory(userId = null) {
   const store = readHistoryStore();
-  console.log(`[History] loadHistory | userId: ${userId || '(all)'} | Total entries in store: ${store.entries.length}`);
   if (!userId) {
-    console.log(`[History] loadHistory | Returning ALL ${store.entries.length} entries (no userId filter)`);
+    log('debug', '[History] Loaded history entries', { userId: '(all)', count: store.entries.length });
     return store.entries;
   }
   const filtered = store.entries.filter(entry => entry.userId === userId);
-  console.log(`[History] loadHistory | userId: ${userId} | Filtered to ${filtered.length} entries for this user`);
+  log('debug', '[History] Loaded history entries', {
+    userId,
+    count: filtered.length,
+    totalEntries: store.entries.length
+  });
   return filtered;
 }
 
 export function saveToHistory(entry, userId = null) {
   const store = readHistoryStore();
   const scopedUserId = userId || 'anonymous';
-  console.log(`[History] saveToHistory | userId: ${scopedUserId} | Entry: ${entry.filename || 'unknown'}`);
   const entryWithUser = { ...entry, userId: scopedUserId, read: false };
   store.entries.unshift(entryWithUser);
 
@@ -72,6 +82,12 @@ export function saveToHistory(entry, userId = null) {
   });
 
   writeHistoryStore(store);
+  log('debug', '[History] Saved entry', {
+    userId: scopedUserId,
+    filename: entry.filename || 'unknown',
+    retainedEntriesForUser: Math.min(userCount, limit),
+    limit
+  });
 }
 
 export function getHistoryLimit(userId = null, storeOverride = null) {
@@ -99,45 +115,44 @@ export function setHistoryLimit(userId, limit) {
 export function deleteFromHistory(filename, userId = null) {
   const store = readHistoryStore();
   const initialLength = store.entries.length;
-  console.log(`[History] deleteFromHistory | filename: ${filename} | userId: ${userId || '(any)'} | Total entries: ${initialLength}`);
   store.entries = store.entries.filter(entry => {
     if (entry.filename !== filename) return true;
-    if (userId && entry.userId !== userId) {
-      console.log(`[History] deleteFromHistory | Skipping entry with different userId: ${entry.userId}`);
-      return true;
-    }
+    if (userId && entry.userId !== userId) return true;
     return false;
   });
 
   if (store.entries.length < initialLength) {
     writeHistoryStore(store);
+    log('debug', '[History] Deleted entry', {
+      filename,
+      userId: userId || '(any)',
+      totalEntries: store.entries.length
+    });
     return true;
   }
+  log('debug', '[History] Entry not found for delete', { filename, userId: userId || '(any)' });
   return false;
 }
 
 export function clearHistory(userId = null) {
   const store = readHistoryStore();
-  console.log(`[History] clearHistory | userId: ${userId || '(all)'} | Current total: ${store.entries.length} entries`);
   if (!userId) {
-    console.log(`[History] clearHistory | Clearing ALL entries (no userId specified)`);
     store.entries = [];
     writeHistoryStore(store);
+    log('debug', '[History] Cleared all entries');
     return true;
   }
   const beforeCount = store.entries.length;
   store.entries = store.entries.filter(entry => entry.userId !== userId);
   const afterCount = store.entries.length;
   const deletedCount = beforeCount - afterCount;
-  console.log(`[History] clearHistory | userId: ${userId} | Deleted ${deletedCount} entries | Remaining: ${afterCount}`);
   writeHistoryStore(store);
+  log('debug', '[History] Cleared entries for user', { userId, deletedCount, remaining: afterCount });
   return true;
 }
 
 export function markAsRead(filename, userId = null) {
   const store = readHistoryStore();
-  console.log(`[History] markAsRead | filename: ${filename} | userId: ${userId || '(any)'}`);
-
   let found = false;
   store.entries = store.entries.map(entry => {
     if (entry.filename === filename && (!userId || entry.userId === userId)) {
@@ -151,9 +166,9 @@ export function markAsRead(filename, userId = null) {
 
   if (found) {
     writeHistoryStore(store);
-    console.log(`[History] markAsRead | Entry marked as read`);
+    log('debug', '[History] Marked entry as read', { filename, userId: userId || '(any)' });
     return true;
   }
-  console.log(`[History] markAsRead | Entry not found or already read`);
+  log('debug', '[History] Entry not found or already read', { filename, userId: userId || '(any)' });
   return false;
 }

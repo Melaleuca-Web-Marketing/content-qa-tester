@@ -16,8 +16,8 @@ export class SkuProcessor extends BaseProcessor {
       return { success: false, error: 'Invalid environment or region' };
     }
 
-    log('info', 'Starting login process...');
-    log('info', 'Step 1: Navigating to home page...', { url: baseUrl });
+    log('debug', 'Starting login process...');
+    log('debug', 'Step 1: Navigating to home page...', { url: baseUrl });
 
     this.emit('progress', {
       type: 'login',
@@ -38,7 +38,7 @@ export class SkuProcessor extends BaseProcessor {
       await this.handleMicrosoftAuthIfNeeded(environment, username, password);
 
       // Step 2: Click Sign In button on home page
-      log('info', 'Step 2: Looking for Sign In button on home page...');
+      log('debug', 'Step 2: Looking for Sign In button on home page...');
       this.emit('progress', {
         type: 'login',
         status: 'Clicking Sign In button'
@@ -51,36 +51,36 @@ export class SkuProcessor extends BaseProcessor {
       }
 
       await signInBtn.click();
-      log('info', 'Clicked Sign In button');
+      log('debug', 'Clicked Sign In button');
 
       // Step 3: Wait for login form to appear
-      log('info', 'Step 3: Waiting for login form to load...');
+      log('debug', 'Step 3: Waiting for login form to load...');
       this.emit('progress', {
         type: 'login',
         status: 'Waiting for login form'
       });
 
       await this.page.waitForSelector(config.sku.selectors.loginUsernameField, { timeout: 15000 });
-      log('info', 'Login form loaded');
+      log('debug', 'Login form loaded');
 
       // Wait a moment for form to be ready
       await this.page.waitForTimeout(1000);
 
       // Step 4: Fill in credentials
-      log('info', 'Step 4: Entering credentials...');
+      log('debug', 'Step 4: Entering credentials...');
       this.emit('progress', {
         type: 'login',
         status: 'Entering credentials'
       });
 
-      log('info', 'Filling in username...');
+      log('debug', 'Filling in username...');
       await this.page.fill(config.sku.selectors.loginUsernameField, username);
 
-      log('info', 'Filling in password...');
+      log('debug', 'Filling in password...');
       await this.page.fill(config.sku.selectors.loginPasswordField, password);
 
       // Step 5: Submit the form
-      log('info', 'Step 5: Submitting login form...');
+      log('debug', 'Step 5: Submitting login form...');
       this.emit('progress', {
         type: 'login',
         status: 'Submitting login'
@@ -89,7 +89,7 @@ export class SkuProcessor extends BaseProcessor {
       await this.page.click(config.sku.selectors.loginSubmitButton);
 
       // Step 6: Wait for login to complete
-      log('info', 'Step 6: Waiting for login to complete...');
+      log('debug', 'Step 6: Waiting for login to complete...');
       this.emit('progress', {
         type: 'login',
         status: 'Loading profile...'
@@ -123,7 +123,7 @@ export class SkuProcessor extends BaseProcessor {
       }
 
       const currentUrl = this.page.url();
-      log('info', 'Current URL after login attempt:', { url: currentUrl });
+      log('debug', 'Current URL after login attempt:', { url: currentUrl });
 
       // Check for error message on the form
       const errorEl = await this.page.$(config.sku.selectors.loginErrorMessage);
@@ -180,7 +180,7 @@ export class SkuProcessor extends BaseProcessor {
 
   // Extract product data from page
   async extractProductData() {
-    log('info', 'Extracting product data from page...');
+    log('debug', 'Extracting product data from page...');
 
     try {
       const result = await this.page.evaluate((selectors) => {
@@ -332,7 +332,7 @@ export class SkuProcessor extends BaseProcessor {
         };
       }, config.sku.selectors);
 
-      log('info', 'Product data extracted', { name: result.name, price: result.price, exists: result.exists });
+      log('debug', 'Product data extracted', { name: result.name, price: result.price, exists: result.exists });
       return result;
     } catch (err) {
       log('error', 'Failed to extract product data', { error: err.message });
@@ -464,13 +464,13 @@ export class SkuProcessor extends BaseProcessor {
 
   // Perform add to cart action
   async addToCart() {
-    log('info', 'Attempting to add to cart...');
+    log('debug', 'Attempting to add to cart...');
 
     try {
       const opened = await this.expandConfiguratorAccordions();
       const selections = await this.selectConfiguratorOptions();
       if (opened > 0 || selections > 0) {
-        log('info', 'Prepared configurator selections', { opened, selections });
+        log('debug', 'Prepared configurator selections', { opened, selections });
         await this.page.waitForTimeout(300);
       }
 
@@ -483,15 +483,15 @@ export class SkuProcessor extends BaseProcessor {
         }
 
         if (attempt > 0) {
-          log('info', 'Retrying Add to Cart after selecting options...');
+          log('debug', 'Retrying Add to Cart after selecting options...');
         } else {
-          log('info', 'Clicking Add to Cart button...');
+          log('debug', 'Clicking Add to Cart button...');
         }
 
         await addToCartBtn.click();
 
         try {
-          log('info', 'Waiting for cart shelf or error message...');
+          log('debug', 'Waiting for cart shelf or error message...');
           await Promise.race([
             this.page.waitForSelector(config.sku.selectors.cartShelf, {
               state: 'visible',
@@ -524,7 +524,7 @@ export class SkuProcessor extends BaseProcessor {
             || await this.page.$(config.sku.selectors.addedToCartMessage);
           const message = headerEl ? await headerEl.textContent() : 'Added to cart';
 
-          log('info', 'Cart shelf appeared - success', { message: message.trim() });
+          log('debug', 'Cart shelf appeared - success', { message: message.trim() });
 
           const closeBtn = await visibleShelf.$(config.sku.selectors.closeShelfButton)
             || await this.page.$(config.sku.selectors.closeShelfButton);
@@ -544,7 +544,7 @@ export class SkuProcessor extends BaseProcessor {
             if (attempt === 0) {
               const newSelections = await this.selectConfiguratorOptions();
               if (newSelections > 0) {
-                log('info', 'Selected configurator options after error', { selections: newSelections });
+                log('debug', 'Selected configurator options after error', { selections: newSelections });
                 await this.page.waitForTimeout(300);
                 continue;
               }
@@ -571,7 +571,7 @@ export class SkuProcessor extends BaseProcessor {
     const wantsTopScreenshot = options.topScreenshot === true;
     const wantsFullScreenshot = options.fullScreenshot && !wantsTopScreenshot;
 
-    log('info', `Processing SKU ${currentIndex}/${total}`, { sku, culture, url });
+    log('debug', `Processing SKU ${currentIndex}/${total}`, { sku, culture, url });
 
     this.emit('progress', {
       type: 'sku-start',
@@ -599,40 +599,40 @@ export class SkuProcessor extends BaseProcessor {
     };
 
     try {
-      log('info', `Navigating to URL: ${url}`);
+      log('debug', `Navigating to URL: ${url}`);
 
       const response = await this.page.goto(url, {
         waitUntil: 'load',
         timeout: config.sku.timeouts.pageLoad
       });
 
-      log('info', 'Page navigation complete', {
+      log('debug', 'Page navigation complete', {
         status: response?.status(),
         url: response?.url()
       });
 
-      log('info', 'Waiting for product details section...');
+      log('debug', 'Waiting for product details section...');
       try {
         await this.page.waitForSelector('.o-productDetails', { timeout: 10000 });
-        log('info', 'Product details section found');
+        log('debug', 'Product details section found');
       } catch (e) {
         log('warn', `Product details section not found for SKU ${sku}, continuing anyway...`);
       }
 
-      log('info', `Waiting ${config.sku.timeouts.screenshotDelay}ms for page to settle...`);
+      log('debug', `Waiting ${config.sku.timeouts.screenshotDelay}ms for page to settle...`);
       await this.page.waitForTimeout(config.sku.timeouts.screenshotDelay);
 
       // First SKU needs extra time for image gallery to fully initialize
       // (subsequent SKUs benefit from betweenSkus delay which allows the browser/page to warm up)
       if (currentIndex === 1 && wantsFullScreenshot) {
-        log('info', 'First SKU - waiting for main product image to load...');
+        log('debug', 'First SKU - waiting for main product image to load...');
         try {
           await this.page.waitForFunction(() => {
             const mainImg = document.querySelector('.m-prodMedia__image');
             return mainImg && mainImg.complete && mainImg.naturalWidth > 0;
           }, { timeout: 3000 });
           await this.page.waitForTimeout(300);
-          log('info', 'Main product image confirmed loaded');
+          log('debug', 'Main product image confirmed loaded');
         } catch (e) {
           log('warn', 'Main product image load check timed out, continuing anyway');
         }
@@ -644,7 +644,7 @@ export class SkuProcessor extends BaseProcessor {
         return result;
       }
 
-      log('info', 'Extracting product data...');
+      log('debug', 'Extracting product data...');
       this.emit('progress', {
         type: 'sku-status',
         sku,
@@ -674,14 +674,14 @@ export class SkuProcessor extends BaseProcessor {
       }
 
       result.data = productData;
-      log('info', 'Product data extracted successfully', { name: productData.name });
+      log('debug', 'Product data extracted successfully', { name: productData.name });
 
       // Capture screenshot
         if (wantsTopScreenshot || wantsFullScreenshot) {
-          log('info', 'Preparing page for screenshot...');
+          log('debug', 'Preparing page for screenshot...');
           await this.prepareForScreenshot();
           if (currentIndex === 1) {
-            log('info', 'First SKU - allowing extra time for images to settle before screenshot');
+            log('debug', 'First SKU - allowing extra time for images to settle before screenshot');
             await this.page.waitForTimeout(750);
           }
           this.emit('progress', {
@@ -698,7 +698,7 @@ export class SkuProcessor extends BaseProcessor {
             if (wantsTopScreenshot) {
               const topSection = await this.page.$(config.sku.selectors.pdpTopSection);
               if (topSection) {
-                log('info', 'Capturing top PDP section screenshot...');
+                log('debug', 'Capturing top PDP section screenshot...');
                 screenshotBuffer = await topSection.screenshot({ type: 'jpeg', quality: 80 });
                 result.screenshotType = 'top';
               } else {
@@ -707,7 +707,7 @@ export class SkuProcessor extends BaseProcessor {
             }
 
             if (!screenshotBuffer && wantsFullScreenshot) {
-              log('info', 'Capturing full page screenshot...');
+              log('debug', 'Capturing full page screenshot...');
               screenshotBuffer = await this.page.screenshot({
                 fullPage: true,
                 type: 'jpeg',
@@ -718,7 +718,7 @@ export class SkuProcessor extends BaseProcessor {
 
             if (screenshotBuffer) {
               result.screenshot = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
-              log('info', 'Screenshot captured successfully');
+              log('debug', 'Screenshot captured successfully');
             }
         }
 
@@ -730,7 +730,7 @@ export class SkuProcessor extends BaseProcessor {
 
       // Add to cart if requested
       if (options.addToCart) {
-        log('info', 'Adding to cart...');
+        log('debug', 'Adding to cart...');
         this.emit('progress', {
           type: 'sku-status',
           sku,
@@ -742,11 +742,11 @@ export class SkuProcessor extends BaseProcessor {
         });
 
         result.addToCartResult = await this.addToCart();
-        log('info', 'Add to cart result', result.addToCartResult);
+        log('debug', 'Add to cart result', result.addToCartResult);
       }
 
       result.success = true;
-      log('info', `SKU ${sku} processed successfully`);
+      log('debug', `SKU ${sku} processed successfully`);
 
       this.emit('progress', {
         type: 'sku-complete',
@@ -850,14 +850,14 @@ export class SkuProcessor extends BaseProcessor {
           }
 
           const sku = options.skus[i];
-          log('info', `\n--- Processing SKU ${sku} (${culture}) ---`);
+          log('debug', `\n--- Processing SKU ${sku} (${culture}) ---`);
           const result = await this.processSku(sku, runIndex + 1, totalRuns, culture);
           this.results.push(result);
           runIndex += 1;
 
           // Wait between SKUs
           if (runIndex < totalRuns && !this.shouldStop) {
-            log('info', `Waiting ${config.sku.timeouts.betweenSkus}ms before next SKU...`);
+            log('debug', `Waiting ${config.sku.timeouts.betweenSkus}ms before next SKU...`);
             await this.page.waitForTimeout(config.sku.timeouts.betweenSkus);
           }
         }

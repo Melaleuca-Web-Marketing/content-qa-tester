@@ -1,6 +1,7 @@
 // utils/broadcast.js
 
 import { WebSocketServer } from 'ws';
+import { log } from './logger.js';
 
 export const wsClients = new Set();
 
@@ -25,16 +26,22 @@ export function initWebSocket(server, options = {}) {
     }
 
     wsClients.add(ws);
-    console.log(`[WebSocket] Client connected | userId: ${ws.userId || '(none - using anonymous)'} | Total clients: ${wsClients.size}`);
+    log('debug', '[WebSocket] Client connected', {
+      userId: ws.userId || '(none - using anonymous)',
+      totalClients: wsClients.size
+    });
 
     ws.on('error', (err) => {
-      console.error('WebSocket error:', err);
+      log('error', 'WebSocket error', err);
       wsClients.delete(ws);
     });
 
     ws.on('close', () => {
       wsClients.delete(ws);
-      console.log(`[WebSocket] Client disconnected | userId: ${ws.userId || '(none)'} | Remaining clients: ${wsClients.size}`);
+      log('debug', '[WebSocket] Client disconnected', {
+        userId: ws.userId || '(none)',
+        remainingClients: wsClients.size
+      });
     });
   });
 }
@@ -49,7 +56,7 @@ export function broadcast(message, userId = null) {
       try {
         client.send(data);
       } catch (err) {
-        console.error('Error broadcasting to client:', err);
+        log('error', 'Error broadcasting to client', err);
         wsClients.delete(client);
       }
     }

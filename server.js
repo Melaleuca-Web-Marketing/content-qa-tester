@@ -30,6 +30,7 @@ import { cleanupOldReports, getReportStats } from './utils/report-cleanup.js';
 import { LaneJobScheduler } from './utils/lane-job-scheduler.js';
 import { JobStateStore } from './utils/job-state-store.js';
 import { SessionLaneStore } from './utils/session-lane-store.js';
+import { log } from './utils/logger.js';
 import { z } from 'zod';
 import crypto from 'crypto';
 
@@ -199,6 +200,24 @@ const jobStateStore = new JobStateStore(JOB_STATE_FILE, {
 jobStateStore.load();
 jobStateStore.markInFlightAsInterrupted();
 
+let flushedDurableState = false;
+function flushDurableState() {
+  if (flushedDurableState) return;
+  flushedDurableState = true;
+  jobStateStore.flush();
+  sessionLaneStore.saveNow();
+}
+
+process.once('beforeExit', flushDurableState);
+process.once('SIGINT', () => {
+  flushDurableState();
+  process.exit(0);
+});
+process.once('SIGTERM', () => {
+  flushDurableState();
+  process.exit(0);
+});
+
 function summarizeQueueOptions(options) {
   if (!options || typeof options !== 'object') return null;
   const summary = {
@@ -326,7 +345,7 @@ function attachProcessorEvents(processor, tool, userId) {
     // Merge status event data with current processor status
     // This ensures isRunning and other fields are always included
     const fullStatus = { ...processor.getStatus(), ...data };
-    console.log(`[Server] Broadcasting ${tool} status:`, {
+    log('debug', `[Server] Broadcasting ${tool} status`, {
       type: fullStatus.type,
       isRunning: fullStatus.isRunning,
       statusType: fullStatus.statusType,
@@ -1518,9 +1537,8 @@ router.use('/reports', express.static(REPORTS_DIR));
 
 router.get('/api/history', (req, res) => {
   const userId = getUserId(req) || 'anonymous';
-  console.log(`[API] GET /api/history | userId: ${userId} | Requesting user's history`);
   const history = loadHistory(userId);
-  console.log(`[API] GET /api/history | userId: ${userId} | Returning ${history.length} entries`);
+  log('debug', '[API] Returning history entries', { userId, count: history.length });
   res.json({ history, limit: getHistoryLimit(userId) });
 });
 
@@ -1538,7 +1556,7 @@ router.post('/api/history/limit', (req, res) => {
 router.delete('/api/history/:filename', (req, res) => {
   const userId = getUserId(req) || 'anonymous';
   const { filename } = req.params;
-  console.log(`[API] DELETE /api/history/${filename} | userId: ${userId} | Deleting single entry`);
+  log('debug', '[API] Deleting history entry', { userId, filename });
 
   // Validate filename to prevent path traversal
   if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
@@ -1574,7 +1592,7 @@ router.delete('/api/history/:filename', (req, res) => {
 router.post('/api/history/:filename/read', (req, res) => {
   const userId = getUserId(req) || 'anonymous';
   const { filename } = req.params;
-  console.log(`[API] POST /api/history/${filename}/read | userId: ${userId}`);
+  log('debug', '[API] Marking history entry as read', { userId, filename });
 
   // Validate filename
   if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
@@ -1595,7 +1613,7 @@ router.post('/api/history/:filename/read', (req, res) => {
 router.delete('/api/history', (req, res) => {
   const userId = getUserId(req) || 'anonymous';
   const deleteReports = req.query.deleteReports === 'true';
-  console.log(`[API] DELETE /api/history | userId: ${userId} | Clearing ALL history for this user | deleteReports: ${deleteReports}`);
+  log('debug', '[API] Clearing history entries', { userId, deleteReports });
 
   if (deleteReports) {
     const history = loadHistory(userId);

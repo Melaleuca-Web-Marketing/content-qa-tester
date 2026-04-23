@@ -592,7 +592,7 @@ export class PSLPProcessor extends BaseProcessor {
       return;
     }
 
-    log('info', 'Priming Monthly Specials slides', { dotCount: dots.length });
+    log('debug', 'Priming Monthly Specials slides', { dotCount: dots.length });
     for (let i = 0; i < dots.length; i++) {
       await dots[i].evaluate((el) => el.click()).catch(() => { });
       await this.page.waitForTimeout(400);

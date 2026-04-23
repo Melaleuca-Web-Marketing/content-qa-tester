@@ -2,13 +2,17 @@
 // Durable job metadata store for queue and execution lifecycle.
 
 import fs from 'fs';
+import { log } from './logger.js';
 
 export class JobStateStore {
   constructor(filePath, options = {}) {
     this.filePath = filePath;
     this.maxEntries = Number.isFinite(options.maxEntries) ? options.maxEntries : 5000;
+    this.saveDebounceMs = Number.isFinite(options.saveDebounceMs) ? options.saveDebounceMs : 250;
     this.jobs = [];
     this.loaded = false;
+    this.dirty = false;
+    this.saveTimer = null;
   }
 
   load() {
@@ -25,12 +29,12 @@ export class JobStateStore {
         .filter((entry) => entry && entry.id)
         .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
     } catch (err) {
-      console.error('[JobStateStore] Failed to load state file', err);
+      log('error', '[JobStateStore] Failed to load state file', err);
       this.jobs = [];
     }
   }
 
-  save() {
+  saveNow() {
     this.jobs = this.jobs
       .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
       .slice(0, this.maxEntries);
@@ -39,7 +43,40 @@ export class JobStateStore {
       updatedAt: Date.now(),
       jobs: this.jobs
     };
-    fs.writeFileSync(this.filePath, JSON.stringify(payload, null, 2), 'utf8');
+    try {
+      fs.writeFileSync(this.filePath, JSON.stringify(payload, null, 2), 'utf8');
+    } catch (err) {
+      log('error', '[JobStateStore] Failed to write state file', err);
+    }
+  }
+
+  save(force = false) {
+    if (force) {
+      this.dirty = false;
+      if (this.saveTimer) {
+        clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
+      this.saveNow();
+      return;
+    }
+
+    this.dirty = true;
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      if (!this.dirty) return;
+      this.dirty = false;
+      this.saveNow();
+    }, this.saveDebounceMs);
+
+    if (typeof this.saveTimer.unref === 'function') {
+      this.saveTimer.unref();
+    }
+  }
+
+  flush() {
+    this.save(true);
   }
 
   findIndex(jobId) {
@@ -86,7 +123,7 @@ export class JobStateStore {
       };
     });
     if (changed) {
-      this.save();
+      this.save(true);
     }
   }
 

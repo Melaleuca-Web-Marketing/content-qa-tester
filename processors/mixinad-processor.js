@@ -138,7 +138,7 @@ export class MixInAdProcessor extends BaseProcessor {
         }
 
         if (lastCulture !== job.culture) {
-            log('info', 'Switching culture for logged-in session', {
+            log('debug', 'Switching culture for logged-in session', {
                 from: lastCulture,
                 to: job.culture,
                 url: baseUrl
@@ -562,7 +562,7 @@ export class MixInAdProcessor extends BaseProcessor {
 
     // Capture all mix-in ads at a specific width
     async captureAtWidth(url, width, meta = {}) {
-        log('info', `Capturing mix-in ads at ${width}px`, { url });
+        log('debug', `Capturing mix-in ads at ${width}px`, { url });
 
         const page = this.page;
         if (!page) {
@@ -630,7 +630,7 @@ export class MixInAdProcessor extends BaseProcessor {
 
             // If no ads found, return informational result (not an error)
             if (adsInfo.length === 0) {
-                log('info', `No mix-in ads found on page at ${width}px`);
+                log('debug', `No mix-in ads found on page at ${width}px`);
                 return [{
                     width,
                     adIndex: 0,
@@ -653,7 +653,7 @@ export class MixInAdProcessor extends BaseProcessor {
             for (let i = 0; i < adsInfo.length; i++) {
                 const adInfo = adsInfo[i];
 
-                log('info', `Capturing ad ${i + 1} of ${adsInfo.length} at ${width}px`);
+                log('debug', `Capturing ad ${i + 1} of ${adsInfo.length} at ${width}px`);
 
                 // Scroll ad into view
                 await page.evaluate(({ index, selector }) => {

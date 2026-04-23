@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { log } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,21 +38,21 @@ export function cleanupOldReports(reportsDir, daysToKeep = 30) {
         if (age > maxAge) {
           fs.unlinkSync(filePath);
           deleted++;
-          console.log(`[Cleanup] Deleted old report: ${file}`);
+          log('debug', '[Cleanup] Deleted old report', { file });
         } else {
           kept++;
         }
       } catch (err) {
-        console.error(`[Cleanup] Error processing ${file}:`, err.message);
+        log('error', `[Cleanup] Error processing ${file}`, { error: err.message });
         errors++;
       }
     }
   } catch (err) {
-    console.error('[Cleanup] Error reading reports directory:', err.message);
+    log('error', '[Cleanup] Error reading reports directory', { error: err.message });
     return { deleted: 0, kept: 0, errors: 1 };
   }
 
-  console.log(`[Cleanup] Summary: ${deleted} deleted, ${kept} kept, ${errors} errors`);
+  log('info', '[Cleanup] Summary', { deleted, kept, errors });
   return { deleted, kept, errors };
 }
 
@@ -84,7 +85,7 @@ export function getReportStats(reportsDir) {
       newestDate: htmlFiles.length > 0 ? new Date(newestDate).toISOString() : null
     };
   } catch (err) {
-    console.error('[Cleanup] Error getting report stats:', err.message);
+    log('error', '[Cleanup] Error getting report stats', { error: err.message });
     return null;
   }
 }
