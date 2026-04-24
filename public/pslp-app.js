@@ -29,6 +29,7 @@ function toggleTheme() {
 
 let configData = null;
 let isCapturing = false;
+let isQueued = false;
 let captureHadError = false;
 let captureErrorMessage = '';
 let jobSummary = '';
@@ -98,6 +99,31 @@ const passedCountEl = document.getElementById('passed-count');
 const failedCountEl = document.getElementById('failed-count');
 const clearActivityBtn = document.getElementById('clear-activity');
 
+function isQueuedStatus(status) {
+  return status?.type === 'queued' ||
+    status?.statusType === 'queued' ||
+    Number(status?.queue?.queuedInLane || 0) > 0;
+}
+
+function formatQueueDetail(status = {}) {
+  const queue = status.queue || {};
+  const position = status.position ?? status.queuePosition ?? queue.queuedGlobal;
+  const running = status.running ?? queue.runningGlobal;
+  const limit = status.limit ?? queue.globalConcurrencyLimit;
+  const parts = [];
+
+  if (Number.isFinite(position) && position > 0) {
+    parts.push(`Position ${position}`);
+  }
+  if (Number.isFinite(running) && Number.isFinite(limit) && limit > 0) {
+    parts.push(`${running}/${limit} running`);
+  }
+
+  return parts.length > 0
+    ? parts.join(' | ')
+    : 'Waiting for an available PSLP worker';
+}
+
 async function init() {
   try {
     await loadConfig();
@@ -123,7 +149,9 @@ async function checkStatus() {
     });
     const status = await response.json();
 
-    if (status.isRunning) {
+    if (isQueuedStatus(status)) {
+      setUIQueued(formatQueueDetail(status));
+    } else if (status.isRunning) {
       isCapturing = true;
       setUICapturing();
       setStatusRunning('Job in progress', 'Reconnected to running job');
@@ -843,8 +871,13 @@ function handleResult(data) {
 }
 
 function handleStatusUpdate(data) {
-    switch (data.type) {
+    switch (data.type || data.statusType) {
+      case 'queued':
+        setUIQueued(formatQueueDetail(data));
+        break;
+
       case 'started':
+        isQueued = false;
         isCapturing = true;
         captureHadError = false;
         captureErrorMessage = '';
@@ -866,14 +899,16 @@ function handleStatusUpdate(data) {
 
     case 'cancelled':
       isCapturing = false;
+      isQueued = false;
       setUIIdle();
       captureStartTime = null;
-      setStatusIdle('Capture cancelled', 'Operation was cancelled by user');
+      setStatusIdle('Capture cancelled', data.message === 'Removed from queue' ? data.message : 'Operation was cancelled by user');
       if (saveReportBtn) saveReportBtn.disabled = true;
       break;
 
       case 'completed':
         isCapturing = false;
+        isQueued = false;
         isWaitingForResume = false;
         setUIIdle();
         captureStartTime = null;
@@ -1254,6 +1289,10 @@ function formatCultureProgress(progress) {
 }
 
 async function startCapture() {
+  if (isCapturing || isQueued) {
+    return;
+  }
+
   const testName = testNameInput ? testNameInput.value.trim() : '';
   const components = getSelectedComponents();
   const widths = getSelectedWidths();
@@ -1329,6 +1368,12 @@ async function startCapture() {
   }
 
   try {
+    isQueued = false;
+    startCaptureBtn.disabled = true;
+    stopCaptureBtn.disabled = false;
+    if (saveReportBtn) saveReportBtn.disabled = true;
+    setStatusRunning('Starting capture...', 'Submitting PSLP job');
+
     const response = await fetch(api('/api/pslp/start'), {
       method: 'POST',
       headers: {
@@ -1342,15 +1387,30 @@ async function startCapture() {
 
     if (!response.ok) {
       if (response.status === 409) {
-        alert('A PSLP job is already running. Please wait for it to complete or stop it first.');
+        const message = result.error || result.message || 'PSLP capture already in progress';
+        if (/queued/i.test(message)) {
+          setUIQueued(formatQueueDetail(result));
+        } else {
+          setUIIdle();
+          setStatusError('PSLP job already running', message);
+        }
         await checkStatus();
       } else {
+        setUIIdle();
         setStatusError('Failed to start', result.error || 'Unknown error');
       }
       return;
     }
 
+    if (result.queued || result.alreadyQueued) {
+      setUIQueued(formatQueueDetail(result));
+    } else {
+      setUICapturing();
+      setStatusRunning('Starting capture...', result.message || 'PSLP capture started');
+    }
+
   } catch (err) {
+    setUIIdle();
     setStatusError('Connection error', err.message);
   }
 }
@@ -1452,6 +1512,7 @@ async function resumeCapture() {
 }
 
 function setUICapturing() {
+  isQueued = false;
   startCaptureBtn.disabled = true;
   stopCaptureBtn.disabled = false;
   if (saveReportBtn) saveReportBtn.disabled = true;
@@ -1462,8 +1523,20 @@ function setUICapturing() {
   currentStepInfo.style.display = 'none';
 }
 
+function setUIQueued(detail) {
+  isQueued = true;
+  isCapturing = false;
+  startCaptureBtn.disabled = true;
+  stopCaptureBtn.disabled = false;
+  if (saveReportBtn) saveReportBtn.disabled = true;
+  progressContainer.style.display = 'none';
+  currentStepInfo.style.display = 'none';
+  setStatusRunning('Queued', detail || 'Waiting for an available PSLP worker');
+}
+
 function setUIIdle() {
   isCapturing = false;
+  isQueued = false;
   startCaptureBtn.disabled = false;
   stopCaptureBtn.disabled = true;
   progressContainer.style.display = 'none';

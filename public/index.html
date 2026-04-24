@@ -1696,6 +1696,33 @@
         return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
       }
 
+      function isQueuedStatus(status) {
+        return status?.type === 'queued' ||
+          status?.statusType === 'queued' ||
+          Number(status?.queue?.queuedInLane || 0) > 0;
+      }
+
+      function isActiveStatus(status) {
+        return Boolean(status && (status.isRunning || isQueuedStatus(status)));
+      }
+
+      function formatQueueDetail(status = {}) {
+        const queue = status.queue || {};
+        const position = status.position ?? status.queuePosition ?? queue.queuedGlobal;
+        const running = status.running ?? queue.runningGlobal;
+        const limit = status.limit ?? queue.globalConcurrencyLimit;
+        const parts = [];
+
+        if (Number.isFinite(position) && position > 0) {
+          parts.push(`Position ${position}`);
+        }
+        if (Number.isFinite(running) && Number.isFinite(limit) && limit > 0) {
+          parts.push(`${running}/${limit} running`);
+        }
+
+        return parts.length > 0 ? parts.join(' | ') : 'Waiting for an available worker';
+      }
+
       function getEtaText(tool, status, needsAttention) {
         if (!status || !status.isRunning || needsAttention) {
           resetEtaCache(tool);
@@ -1750,13 +1777,15 @@
             const status = await response.json();
             const startedAt = Number.isFinite(status.startedAt) ? status.startedAt : null;
 
-            if (status.isRunning && !jobStates[tool]) {
+            const isActive = isActiveStatus(status);
+
+            if (isActive && !jobStates[tool]) {
               // New job started
-              debugLog(`[Dashboard] Job started: ${tool} | userId: ${userId || '(none)'}`);
-              jobStartTimes[tool] = startedAt || Date.now();
+              debugLog(`[Dashboard] Job active: ${tool} | userId: ${userId || '(none)'}`);
+              jobStartTimes[tool] = status.isRunning ? (startedAt || Date.now()) : null;
               resetEtaCache(tool);
               jobStates[tool] = status;
-            } else if (status.isRunning && jobStates[tool]) {
+            } else if (isActive && jobStates[tool]) {
               if (startedAt && (!jobStartTimes[tool] || Math.abs(jobStartTimes[tool] - startedAt) > 1000)) {
                 jobStartTimes[tool] = startedAt;
               }
@@ -1767,7 +1796,7 @@
                 // Preserve existing progress if new status doesn't have it
                 progress: status.progress || jobStates[tool].progress
               };
-            } else if (!status.isRunning && jobStates[tool]) {
+            } else if (!isActive && jobStates[tool]) {
               // Job finished
               jobStartTimes[tool] = null;
               resetEtaCache(tool);
@@ -1784,8 +1813,8 @@
 
       // Render the dashboard
       function renderDashboard() {
-        const runningJobs = Object.entries(jobStates).filter(([_, status]) => status !== null && status.isRunning);
-        const count = runningJobs.length;
+        const activeJobs = Object.entries(jobStates).filter(([_, status]) => isActiveStatus(status));
+        const count = activeJobs.length;
 
         jobCount.textContent = count;
         // Always keep dashboard visible
@@ -1802,11 +1831,11 @@
           jobCards.innerHTML = `
             <div class="job-empty-state">
               <span class="empty-icon">✨</span>
-              <span>No jobs currently running</span>
+              <span>No jobs currently running or queued</span>
             </div>
           `;
         } else {
-          runningJobs.forEach(([tool, status]) => {
+          activeJobs.forEach(([tool, status]) => {
             const config = toolConfig[tool];
             const card = createJobCard(tool, config, status);
             jobCards.appendChild(card);
@@ -1825,6 +1854,7 @@
         const isWaitingForAuth = status.statusType === 'waiting-for-auth' ||
           (status.message && status.message.includes('Please sign in'));
         const isWaitingForCredentials = status.statusType === 'waiting-for-credentials';
+        const isQueued = isQueuedStatus(status);
         const needsAttention = isWaitingForAuth || isWaitingForCredentials;
 
         // Add appropriate classes
@@ -1838,7 +1868,10 @@
         let errorIndicator = '';
 
         // If waiting for credentials, show error indicator
-        if (isWaitingForCredentials) {
+        if (isQueued) {
+          progressText = 'Queued';
+          detailText = formatQueueDetail(status);
+        } else if (isWaitingForCredentials) {
           errorIndicator = `
             <div class="credential-error-indicator">
               <span class="error-icon">⚠️</span>
@@ -2006,9 +2039,10 @@
 
         if (type.endsWith('-progress') || type.endsWith('-status')) {
           const tool = type.split('-')[0];
+          const isQueued = isQueuedStatus(data);
 
           // Check if job completed
-          if (data.type === 'completed' || !data.isRunning) {
+          if (data.type === 'completed' || data.type === 'cancelled' || (!data.isRunning && !isQueued)) {
             // Job finished - clear state and reset credential error flag
             jobStartTimes[tool] = null;
             resetEtaCache(tool);
@@ -2046,9 +2080,11 @@
             if (!jobStates[tool].options?.testName) {
               setTimeout(updateAllStatuses, 300);
             }
-          } else if (data.isRunning) {
+          } else if (data.isRunning || isQueued) {
             // Job just started - initialize state and reset credential error flag
-            jobStartTimes[tool] = Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
+            jobStartTimes[tool] = data.isRunning
+              ? (Number.isFinite(data.startedAt) ? data.startedAt : Date.now())
+              : null;
             resetEtaCache(tool);
             resetCredentialErrorNotified(tool);
             jobStates[tool] = {

@@ -50,7 +50,8 @@ const parsePositiveInt = (value, fallback) => {
   const parsed = parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
-const DEFAULT_TOOL_CONCURRENCY = parsePositiveInt(process.env.TESTER_TOOL_CONCURRENCY, 2);
+// Stress tests are commonly one job per tester; per-lane limits still prevent duplicate jobs from one session.
+const DEFAULT_TOOL_CONCURRENCY = parsePositiveInt(process.env.TESTER_TOOL_CONCURRENCY, 12);
 const TOOL_QUEUE_LIMIT = parsePositiveInt(process.env.TESTER_TOOL_QUEUE_LIMIT, 50);
 const DEFAULT_LANE_TOOL_CONCURRENCY = parsePositiveInt(process.env.TESTER_LANE_TOOL_CONCURRENCY, 1);
 const TOOL_CONCURRENCY = {
@@ -275,6 +276,9 @@ const queueScheduler = new LaneJobScheduler({
 });
 
 function enqueueToolJob({ tool, userId, processor, options, startFn }) {
+  if (processor && !processor.isRunning && options) {
+    processor.currentOptions = options;
+  }
   return queueScheduler.enqueue({
     tool,
     laneId: userId || 'anonymous',
@@ -291,8 +295,30 @@ function cancelQueuedJob(userId, tool) {
   return queueScheduler.cancelQueued(userId || 'anonymous', tool);
 }
 
-function isToolJobQueued(userId, tool) {
-  return queueScheduler.hasQueuedJob(userId || 'anonymous', tool);
+function buildQueuedStartResponse(queueResult, message) {
+  return {
+    ok: true,
+    queued: true,
+    alreadyQueued: queueResult.alreadyQueued === true,
+    jobId: queueResult.jobId,
+    position: queueResult.position,
+    lanePosition: queueResult.lanePosition,
+    running: queueResult.running,
+    limit: queueResult.limit,
+    laneLimit: queueResult.laneLimit,
+    message
+  };
+}
+
+function buildStartedResponse(queueResult, message) {
+  return {
+    ok: true,
+    jobId: queueResult.jobId,
+    running: queueResult.running,
+    limit: queueResult.limit,
+    laneLimit: queueResult.laneLimit,
+    message
+  };
 }
 
 function normalizeUserId(value) {
@@ -690,9 +716,6 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
   if (skuProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'SKU capture already in progress' });
   }
-  if (isToolJobQueued(effectiveUserId, 'sku')) {
-    return res.status(409).json({ error: 'SKU capture already queued' });
-  }
 
   const queueResult = enqueueToolJob({
     tool: 'sku',
@@ -718,19 +741,13 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
   }
 
   // Broadcast immediate status update via WebSocket
-  broadcast({ type: 'sku-status', data: skuProcessor.getStatus() }, effectiveUserId);
+  broadcast({ type: 'sku-status', data: getProcessorStatus(effectiveUserId, 'sku') }, effectiveUserId);
 
   if (queueResult.queued) {
-    return res.json({
-      ok: true,
-      queued: true,
-      jobId: queueResult.jobId,
-      position: queueResult.position,
-      message: 'SKU capture queued'
-    });
+    return res.json(buildQueuedStartResponse(queueResult, 'SKU capture queued'));
   }
 
-  res.json({ ok: true, jobId: queueResult.jobId, message: 'SKU capture started' });
+  res.json(buildStartedResponse(queueResult, 'SKU capture started'));
 }));
 
 router.post('/api/sku/stop', (req, res) => {
@@ -820,9 +837,6 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
   if (bannerProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Banner capture already in progress' });
   }
-  if (isToolJobQueued(effectiveUserId, 'banner')) {
-    return res.status(409).json({ error: 'Banner capture already queued' });
-  }
 
   const options = {
     testName: normalizedTestName || null,
@@ -866,19 +880,13 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
   }
 
   // Broadcast immediate status update via WebSocket
-  broadcast({ type: 'banner-status', data: bannerProcessor.getStatus() }, effectiveUserId);
+  broadcast({ type: 'banner-status', data: getProcessorStatus(effectiveUserId, 'banner') }, effectiveUserId);
 
   if (queueResult.queued) {
-    return res.json({
-      ok: true,
-      queued: true,
-      jobId: queueResult.jobId,
-      position: queueResult.position,
-      message: 'Banner capture queued'
-    });
+    return res.json(buildQueuedStartResponse(queueResult, 'Banner capture queued'));
   }
 
-  res.json({ ok: true, jobId: queueResult.jobId, message: 'Banner capture started' });
+  res.json(buildStartedResponse(queueResult, 'Banner capture started'));
 }));
 
 router.post('/api/banner/stop', (req, res) => {
@@ -964,9 +972,6 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
   if (pslpProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'PSLP capture already in progress' });
   }
-  if (isToolJobQueued(effectiveUserId, 'pslp')) {
-    return res.status(409).json({ error: 'PSLP capture already queued' });
-  }
 
   const options = {
     testName: normalizedTestName || null,
@@ -1009,19 +1014,13 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
   }
 
   // Broadcast immediate status update via WebSocket
-  broadcast({ type: 'pslp-status', data: pslpProcessor.getStatus() }, effectiveUserId);
+  broadcast({ type: 'pslp-status', data: getProcessorStatus(effectiveUserId, 'pslp') }, effectiveUserId);
 
   if (queueResult.queued) {
-    return res.json({
-      ok: true,
-      queued: true,
-      jobId: queueResult.jobId,
-      position: queueResult.position,
-      message: 'PSLP capture queued'
-    });
+    return res.json(buildQueuedStartResponse(queueResult, 'PSLP capture queued'));
   }
 
-  res.json({ ok: true, jobId: queueResult.jobId, message: 'PSLP capture started' });
+  res.json(buildStartedResponse(queueResult, 'PSLP capture started'));
 }));
 
 router.post('/api/pslp/stop', (req, res) => {
@@ -1113,9 +1112,6 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   if (mixinAdProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Mix-In Ad capture already in progress' });
   }
-  if (isToolJobQueued(effectiveUserId, 'mixinad')) {
-    return res.status(409).json({ error: 'Mix-In Ad capture already queued' });
-  }
 
   const options = {
     testName: normalizedTestName || null,
@@ -1159,19 +1155,13 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
   }
 
   // Broadcast immediate status update via WebSocket
-  broadcast({ type: 'mixinad-status', data: mixinAdProcessor.getStatus() }, effectiveUserId);
+  broadcast({ type: 'mixinad-status', data: getProcessorStatus(effectiveUserId, 'mixinad') }, effectiveUserId);
 
   if (queueResult.queued) {
-    return res.json({
-      ok: true,
-      queued: true,
-      jobId: queueResult.jobId,
-      position: queueResult.position,
-      message: 'Mix-In Ad capture queued'
-    });
+    return res.json(buildQueuedStartResponse(queueResult, 'Mix-In Ad capture queued'));
   }
 
-  res.json({ ok: true, jobId: queueResult.jobId, message: 'Mix-In Ad capture started' });
+  res.json(buildStartedResponse(queueResult, 'Mix-In Ad capture started'));
 }));
 
 router.post('/api/mixinad/stop', (req, res) => {
@@ -1255,9 +1245,6 @@ router.post('/api/sortorder/start', asyncHandler(async (req, res) => {
   if (sortOrderProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'Sort order capture already in progress' });
   }
-  if (isToolJobQueued(effectiveUserId, 'sortorder')) {
-    return res.status(409).json({ error: 'Sort order capture already queued' });
-  }
 
   const options = {
     testName: normalizedTestName || null,
@@ -1296,19 +1283,13 @@ router.post('/api/sortorder/start', asyncHandler(async (req, res) => {
     });
   }
 
-  broadcast({ type: 'sortorder-status', data: sortOrderProcessor.getStatus() }, effectiveUserId);
+  broadcast({ type: 'sortorder-status', data: getProcessorStatus(effectiveUserId, 'sortorder') }, effectiveUserId);
 
   if (queueResult.queued) {
-    return res.json({
-      ok: true,
-      queued: true,
-      jobId: queueResult.jobId,
-      position: queueResult.position,
-      message: 'Sort order capture queued'
-    });
+    return res.json(buildQueuedStartResponse(queueResult, 'Sort order capture queued'));
   }
 
-  res.json({ ok: true, jobId: queueResult.jobId, message: 'Sort order capture started' });
+  res.json(buildStartedResponse(queueResult, 'Sort order capture started'));
 }));
 
 router.post('/api/sortorder/stop', (req, res) => {
@@ -1411,9 +1392,6 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
   if (pdpProcessor.getStatus().isRunning) {
     return res.status(409).json({ error: 'PDP capture already in progress' });
   }
-  if (isToolJobQueued(effectiveUserId, 'pdp')) {
-    return res.status(409).json({ error: 'PDP capture already queued' });
-  }
 
   const queueResult = enqueueToolJob({
     tool: 'pdp',
@@ -1439,19 +1417,13 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
   }
 
   // Broadcast immediate status update via WebSocket
-  broadcast({ type: 'pdp-status', data: pdpProcessor.getStatus() }, effectiveUserId);
+  broadcast({ type: 'pdp-status', data: getProcessorStatus(effectiveUserId, 'pdp') }, effectiveUserId);
 
   if (queueResult.queued) {
-    return res.json({
-      ok: true,
-      queued: true,
-      jobId: queueResult.jobId,
-      position: queueResult.position,
-      message: 'PDP capture queued'
-    });
+    return res.json(buildQueuedStartResponse(queueResult, 'PDP capture queued'));
   }
 
-  res.json({ ok: true, jobId: queueResult.jobId, message: 'PDP capture started' });
+  res.json(buildStartedResponse(queueResult, 'PDP capture started'));
 }));
 
 router.post('/api/pdp/stop', (req, res) => {

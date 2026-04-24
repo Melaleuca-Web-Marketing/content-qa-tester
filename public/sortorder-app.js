@@ -2,6 +2,7 @@
 
 let configData = null;
 let isCapturing = false;
+let isQueued = false;
 let isWaitingForResume = false;
 let isWaitingForCredentials = false;
 let captureStartTime = null;
@@ -67,6 +68,31 @@ const bannerRegionToSkuRegion = {
 
 let skuToBannerCultureMap = {};
 let bannerToSkuCultureMap = {};
+
+function isQueuedStatus(status) {
+  return status?.type === 'queued' ||
+    status?.statusType === 'queued' ||
+    Number(status?.queue?.queuedInLane || 0) > 0;
+}
+
+function formatQueueDetail(status = {}) {
+  const queue = status.queue || {};
+  const position = status.position ?? status.queuePosition ?? queue.queuedGlobal;
+  const running = status.running ?? queue.runningGlobal;
+  const limit = status.limit ?? queue.globalConcurrencyLimit;
+  const parts = [];
+
+  if (Number.isFinite(position) && position > 0) {
+    parts.push(`Position ${position}`);
+  }
+  if (Number.isFinite(running) && Number.isFinite(limit) && limit > 0) {
+    parts.push(`${running}/${limit} running`);
+  }
+
+  return parts.length > 0
+    ? parts.join(' | ')
+    : 'Waiting for an available Sort Order worker';
+}
 
 async function init() {
   try {
@@ -531,6 +557,7 @@ function updateProgressBar(completed, total) {
 }
 
 function setUICapturing() {
+  isQueued = false;
   startCaptureBtn.disabled = true;
   stopCaptureBtn.disabled = false;
   progressContainer.style.display = 'block';
@@ -539,8 +566,18 @@ function setUICapturing() {
   progressEta.textContent = 'ETR: --:--';
 }
 
+function setUIQueued(detail) {
+  isQueued = true;
+  isCapturing = false;
+  startCaptureBtn.disabled = true;
+  stopCaptureBtn.disabled = false;
+  progressContainer.style.display = 'none';
+  setStatusRunning('Queued', detail || 'Waiting for an available Sort Order worker');
+}
+
 function setUIIdle() {
   isCapturing = false;
+  isQueued = false;
   startCaptureBtn.disabled = false;
   stopCaptureBtn.disabled = true;
   progressContainer.style.display = 'none';
@@ -606,8 +643,13 @@ function handleProgress(data) {
 }
 
 function handleStatusUpdate(data) {
-  switch (data.type) {
+  switch (data.type || data.statusType) {
+    case 'queued':
+      setUIQueued(formatQueueDetail(data));
+      break;
+
     case 'started':
+      isQueued = false;
       isCapturing = true;
       captureStartTime = Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
       setUICapturing();
@@ -651,7 +693,10 @@ function handleStatusUpdate(data) {
     case 'cancelled':
       setUIIdle();
       captureStartTime = null;
-      setStatusIdle('Capture cancelled', `${data.successCount || 0} completed before cancellation`);
+      setStatusIdle(
+        'Capture cancelled',
+        data.message === 'Removed from queue' ? data.message : `${data.successCount || 0} completed before cancellation`
+      );
       break;
 
     case 'completed': {
@@ -880,7 +925,9 @@ async function checkStatus() {
     });
     const status = await response.json();
 
-    if (status.isRunning) {
+    if (isQueuedStatus(status)) {
+      setUIQueued(formatQueueDetail(status));
+    } else if (status.isRunning) {
       isCapturing = true;
       setUICapturing();
       setStatusRunning('Job in progress', 'Reconnected to running job');
@@ -912,6 +959,10 @@ async function checkStatus() {
 }
 
 async function startCapture() {
+  if (isCapturing || isQueued) {
+    return;
+  }
+
   const testName = testNameInput ? testNameInput.value.trim() : '';
   const environment = envSelect.value;
   const region = getRequestRegion();
@@ -953,6 +1004,11 @@ async function startCapture() {
   }
 
   try {
+    isQueued = false;
+    startCaptureBtn.disabled = true;
+    stopCaptureBtn.disabled = false;
+    setStatusRunning('Starting capture...', 'Submitting Sort Order job');
+
     const response = await fetch(api('/api/sortorder/start'), {
       method: 'POST',
       headers: {
@@ -965,14 +1021,29 @@ async function startCapture() {
 
     if (!response.ok) {
       if (response.status === 409) {
-        alert('A sort order job is already running. Stop it first or wait for completion.');
+        const message = result.error || result.message || 'Sort order capture already in progress';
+        if (/queued/i.test(message)) {
+          setUIQueued(formatQueueDetail(result));
+        } else {
+          setUIIdle();
+          setStatusError('Sort order job already running', message);
+        }
         await checkStatus();
       } else {
+        setUIIdle();
         setStatusError('Failed to start', result.error || 'Unknown error');
       }
       return;
     }
+
+    if (result.queued || result.alreadyQueued) {
+      setUIQueued(formatQueueDetail(result));
+    } else {
+      setUICapturing();
+      setStatusRunning('Starting capture...', result.message || 'Sort order capture started');
+    }
   } catch (err) {
+    setUIIdle();
     setStatusError('Connection error', err.message);
   }
 }
