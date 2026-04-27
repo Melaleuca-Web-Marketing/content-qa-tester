@@ -8,6 +8,14 @@ import { validateSingleResult } from '../utils/excel-validation.js';
 import { getMemoryUsageMB, checkMemoryThreshold } from '../utils/memory-monitor.js';
 import { getSingleton } from '../utils/singleton.js';
 
+function isTransientNavigationError(err) {
+  const message = String(err?.message || err || '').toLowerCase();
+  return message.includes('execution context was destroyed')
+    || message.includes('most likely because of a navigation')
+    || message.includes('frame was detached')
+    || message.includes('navigation failed because page was closed');
+}
+
 export class BannerProcessor extends BaseProcessor {
   constructor() {
     super('Banner');
@@ -23,63 +31,76 @@ export class BannerProcessor extends BaseProcessor {
    */
   async _detectBannerElement(includeScrollOffset = false, page = this.page) {
     if (!page) return { found: false };
-    const result = await page.evaluate(({ selector, includeScroll }) => {
-      const el =
-        document.querySelector(selector) ||
-        document.querySelector('[data-testid="container-fullWidthBanner"]') ||
-        document.querySelector('.m-fwBanner');
+    const maxAttempts = 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const result = await page.evaluate(({ selector, includeScroll }) => {
+          const el =
+            document.querySelector(selector) ||
+            document.querySelector('[data-testid="container-fullWidthBanner"]') ||
+            document.querySelector('.m-fwBanner');
 
-      if (!el) return { found: false };
+          if (!el) return { found: false };
 
-      const anchor = el.closest('a') || el;
-      anchor.scrollIntoView({ block: 'center', inline: 'center' });
+          const anchor = el.closest('a') || el;
+          anchor.scrollIntoView({ block: 'center', inline: 'center' });
 
-      const rect = anchor.getBoundingClientRect();
+          const rect = anchor.getBoundingClientRect();
 
-      let imageSrc = '';
-      const bgDiv = el.querySelector('.m-fwBanner__bg');
-      if (bgDiv) {
-        const bg = window.getComputedStyle(bgDiv).backgroundImage;
-        imageSrc = bg.match(/url\(['"]?([^'"]+)['"]?\)/)?.[1] || '';
+          let imageSrc = '';
+          const bgDiv = el.querySelector('.m-fwBanner__bg');
+          if (bgDiv) {
+            const bg = window.getComputedStyle(bgDiv).backgroundImage;
+            imageSrc = bg.match(/url\(['"]?([^'"]+)['"]?\)/)?.[1] || '';
+          }
+
+          if (!imageSrc) {
+            const img = anchor.querySelector('img');
+            imageSrc = img?.currentSrc || img?.src || '';
+          }
+
+          const imageAlt = anchor.querySelector('img')?.alt || anchor.getAttribute('aria-label') || '';
+
+          const response = {
+            found: true,
+            rect: {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height
+            },
+            href: anchor?.href || '',
+            target: anchor?.target || '',
+            imageSrc,
+            imageAlt
+          };
+
+          // Optionally include page coordinates with scroll offsets
+          if (includeScroll) {
+            const scrollX = window.scrollX || document.documentElement.scrollLeft || 0;
+            const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+            response.pageRect = {
+              x: rect.x + scrollX,
+              y: rect.y + scrollY,
+              width: rect.width,
+              height: rect.height
+            };
+          }
+
+          return response;
+        }, { selector: config.banner.selector, includeScroll: includeScrollOffset });
+
+        return result;
+      } catch (err) {
+        if (!isTransientNavigationError(err) || attempt === maxAttempts - 1) {
+          throw err;
+        }
+        await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(750);
       }
+    }
 
-      if (!imageSrc) {
-        const img = anchor.querySelector('img');
-        imageSrc = img?.currentSrc || img?.src || '';
-      }
-
-      const imageAlt = anchor.querySelector('img')?.alt || anchor.getAttribute('aria-label') || '';
-
-      const response = {
-        found: true,
-        rect: {
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height
-        },
-        href: anchor?.href || '',
-        target: anchor?.target || '',
-        imageSrc,
-        imageAlt
-      };
-
-      // Optionally include page coordinates with scroll offsets
-      if (includeScroll) {
-        const scrollX = window.scrollX || document.documentElement.scrollLeft || 0;
-        const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
-        response.pageRect = {
-          x: rect.x + scrollX,
-          y: rect.y + scrollY,
-          width: rect.width,
-          height: rect.height
-        };
-      }
-
-      return response;
-    }, { selector: config.banner.selector, includeScroll: includeScrollOffset });
-
-    return result;
+    return { found: false };
   }
 
   // Detect banner on page and get its info
@@ -89,23 +110,45 @@ export class BannerProcessor extends BaseProcessor {
 
   async setScrollbarVisibility(hidden, page = this.page) {
     if (!page) return;
-    await page.evaluate((hide) => {
-      const styleId = 'banner-hide-scrollbars';
-      const existing = document.getElementById(styleId);
-      if (hide) {
-        if (existing) return;
-        const style = document.createElement('style');
-        style.id = styleId;
-        style.textContent = `
-          * { scrollbar-width: none !important; }
-          *::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
-          html, body { overflow: hidden !important; }
-        `;
-        document.head.appendChild(style);
-      } else if (existing) {
-        existing.remove();
+    try {
+      await page.evaluate((hide) => {
+        const styleId = 'banner-hide-scrollbars';
+        const existing = document.getElementById(styleId);
+        if (hide) {
+          if (existing) return;
+          const style = document.createElement('style');
+          style.id = styleId;
+          style.textContent = `
+            * { scrollbar-width: none !important; }
+            *::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+            html, body { overflow: hidden !important; }
+          `;
+          document.head.appendChild(style);
+        } else if (existing) {
+          existing.remove();
+        }
+      }, hidden);
+    } catch (err) {
+      log('warn', 'Scrollbar visibility update failed', { error: err.message });
+    }
+  }
+
+  async waitForFontsReady(page = this.page, label = 'CAPTURE') {
+    if (!page) return;
+    const maxAttempts = 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await page.evaluate(() => document.fonts?.ready || Promise.resolve());
+        return;
+      } catch (err) {
+        if (!isTransientNavigationError(err) || attempt === maxAttempts - 1) {
+          log('warn', `[${label}] Font readiness check failed`, { error: err.message });
+          return;
+        }
+        await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(750);
       }
-    }, hidden);
+    }
   }
 
   getBannerDiagnosticsMode() {
@@ -812,7 +855,7 @@ export class BannerProcessor extends BaseProcessor {
     });
     await page.waitForTimeout(config.banner.timeouts.pageLoad);
 
-    await page.evaluate(() => document.fonts.ready);
+    await this.waitForFontsReady(page, captureLabel);
     await page.waitForTimeout(1000);
     await this.setScrollbarVisibility(true, page);
     await page.waitForTimeout(100);
@@ -825,7 +868,7 @@ export class BannerProcessor extends BaseProcessor {
         timeout: config.banner.timeouts.singleCapture
       });
       await page.waitForTimeout(config.banner.timeouts.pageLoad);
-      await page.evaluate(() => document.fonts.ready);
+      await this.waitForFontsReady(page, captureLabel);
       await page.waitForTimeout(500);
       await this.setScrollbarVisibility(true, page);
       await page.waitForTimeout(50);
@@ -840,7 +883,7 @@ export class BannerProcessor extends BaseProcessor {
       try {
         await page.setViewportSize({ width, height: captureHeight });
         await page.waitForTimeout(config.banner.timeouts.pageLoad / 2);
-        await page.evaluate(() => document.fonts.ready);
+        await this.waitForFontsReady(page, captureLabel);
         await page.waitForTimeout(500);
         await this.setScrollbarVisibility(true, page);
         await page.waitForTimeout(50);

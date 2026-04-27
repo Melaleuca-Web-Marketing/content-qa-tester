@@ -429,19 +429,6 @@ export function validateResults(capturedResults, excelData, type = 'category-ban
       });
     }
 
-    return {
-      ...result,
-      validation: {
-        status: allMatch ? 'pass' : 'fail',
-        expected: {
-          link: linkInfo.value,
-          target: match.target,
-          position: match.position,
-          sku: expectedSkus.join(', ')
-        },
-        comparisons
-      }
-    };
     validatedResults.push({
       ...result,
       validation: {
