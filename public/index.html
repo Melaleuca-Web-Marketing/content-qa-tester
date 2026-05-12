@@ -7,127 +7,256 @@
   <title>Melaleuca Content QA Tester</title>
   <script src="base-path.js"></script>
   <link rel="stylesheet" href="shared.css">
-  <!-- Slick Carousel -->
-  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.css" />
-  <link rel="stylesheet" type="text/css"
-    href="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick-theme.css" />
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <script src="vendor/xlsx.full.min.js"></script>
   <script src="excel-validator.js"></script>
   <script src="user-session.js"></script>
   <style>
     .mode-selector {
-      margin-top: 32px;
-      padding: 30px 50px 48px 50px;
-    }
-
-    .mode-selector .slick-slide {
-      padding: 15px;
-      height: inherit !important;
-    }
-
-    .mode-selector .slick-slide>div {
-      height: 100%;
-      padding: 0 0 12px;
-    }
-
-    .mode-selector .slick-track {
-      display: flex !important;
-    }
-
-    .mode-selector .slick-list {
-      margin: 0 -10px;
-      padding: 24px 0 26px;
-    }
-
-    .mode-selector .slick-dots {
-      bottom: -18px;
-      display: flex !important;
-      justify-content: center;
-      gap: 10px;
-      padding: 0;
+      display: flex;
+      gap: 24px;
+      align-items: stretch;
       margin: 0;
-      left: 0;
-      right: 0;
-      width: 100%;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      padding: 12px 0 20px;
+      scroll-behavior: smooth;
+      scroll-padding-inline: 0;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: none;
     }
 
-    .mode-selector .slick-prev,
-    .mode-selector .slick-next {
-      width: 40px;
-      height: 40px;
-      background: var(--bg-item);
-      border: 2px solid var(--border-color);
+    .mode-selector::-webkit-scrollbar {
+      display: none;
+    }
+
+    .mode-carousel {
+      margin-top: 32px;
+      padding: 30px 52px 54px;
+      position: relative;
+    }
+
+    .mode-carousel-nav {
+      align-items: center;
+      background:
+        linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98));
+      border: 1px solid rgba(148, 163, 184, 0.38);
       border-radius: 50%;
-      z-index: 10;
-      transition: all 0.3s ease;
+      box-shadow:
+        0 12px 26px rgba(2, 6, 23, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      color: transparent;
+      display: flex;
+      font-size: 0;
+      height: 42px;
+      justify-content: center;
+      line-height: 1;
+      padding: 0;
+      position: absolute;
+      top: calc(50% - 18px);
+      transform: translateY(-50%);
+      transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+      width: 42px;
+      z-index: 2;
     }
 
-    .mode-selector .slick-prev:hover,
-    .mode-selector .slick-next:hover {
+    .mode-carousel-nav::before {
+      border-right: 3px solid #e2e8f0;
+      border-top: 3px solid #e2e8f0;
+      content: "";
+      display: block;
+      height: 10px;
+      width: 10px;
+    }
+
+    .mode-carousel-nav.prev::before {
+      transform: translateX(2px) rotate(-135deg);
+    }
+
+    .mode-carousel-nav.next::before {
+      transform: translateX(-2px) rotate(45deg);
+    }
+
+    .mode-carousel-nav:hover {
+      background:
+        linear-gradient(180deg, rgba(51, 65, 85, 0.98), rgba(30, 41, 59, 0.98));
+      border-color: rgba(148, 163, 184, 0.62);
+      box-shadow:
+        0 14px 30px rgba(2, 6, 23, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
+      transform: translateY(-50%) scale(1.03);
+    }
+
+    .mode-carousel-nav:focus {
+      outline: none;
+    }
+
+    .mode-carousel-nav:focus-visible {
+      border-color: rgba(34, 197, 94, 0.72);
+      box-shadow:
+        0 12px 26px rgba(2, 6, 23, 0.28),
+        0 0 0 3px rgba(34, 197, 94, 0.18);
+    }
+
+    .mode-carousel-nav.prev {
+      left: 0;
+    }
+
+    .mode-carousel-nav.next {
+      right: 0;
+    }
+
+    .mode-carousel-dots {
+      align-items: center;
+      bottom: 18px;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      left: 52px;
+      position: absolute;
+      right: 52px;
+    }
+
+    .mode-carousel-dot {
+      background: var(--text-muted);
+      border: none;
+      border-radius: 50%;
+      height: 12px;
+      opacity: 0.85;
+      padding: 0;
+      width: 12px;
+    }
+
+    .mode-carousel-dot.active {
       background: #10b981;
-      border-color: #10b981;
-    }
-
-    .mode-selector .slick-prev:before,
-    .mode-selector .slick-next:before {
-      color: var(--text-primary);
-      font-size: 20px;
       opacity: 1;
-    }
-
-    .mode-selector .slick-prev:hover:before,
-    .mode-selector .slick-next:hover:before {
-      color: white;
-    }
-
-    .mode-selector .slick-prev {
-      left: -10px;
-    }
-
-    .mode-selector .slick-next {
-      right: -10px;
-    }
-
-    .mode-selector .slick-dots li button:before {
-      color: var(--text-secondary);
-      font-size: 10px;
-      opacity: 0.5;
-    }
-
-    .mode-selector .slick-dots li.slick-active button:before {
-      color: #10b981;
-      opacity: 1;
-    }
-
-    @media (max-width: 600px) {
-      .mode-selector {
-        padding: 30px 30px 48px 30px;
-      }
     }
 
     .mode-card {
+      --card-accent: #10b981;
       background: var(--bg-item);
       border: 2px solid var(--border-color);
       border-radius: 16px;
-      margin: 0 10px;
+      flex: 0 0 calc((100% - 48px) / 3);
+      min-height: 0;
+      padding: 24px;
+      scroll-snap-align: start;
       text-align: center;
       cursor: pointer;
       transition: all 0.3s ease;
       text-decoration: none;
       color: inherit;
-      display: flex !important;
+      display: flex;
       flex-direction: column;
-      height: 100%;
+      isolation: isolate;
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
     }
 
-    .mode-selector .slick-slide a.mode-card {
-      padding: 15px !important;
+    .mode-card>* {
+      position: relative;
+      z-index: 2;
+    }
+
+    @media (max-width: 760px) {
+      .mode-card {
+        flex-basis: calc((100% - 24px) / 2);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .mode-carousel {
+        padding: 24px 42px 50px;
+      }
+
+      .mode-card {
+        flex-basis: 100%;
+      }
+
+      .mode-carousel-dots {
+        left: 42px;
+        right: 42px;
+      }
     }
 
     .mode-card:hover {
       border-color: #10b981;
       transform: translateY(-4px);
       box-shadow: 0 20px 40px rgba(16, 185, 129, 0.2);
+      z-index: 3;
+    }
+
+    .mode-card::before,
+    .mode-card::after {
+      background: var(--card-accent);
+      border-radius: 999px;
+      bottom: 28px;
+      content: "";
+      height: 5px;
+      left: 50%;
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      transform: translate(-50%, 16px) scale(0.6);
+      width: 5px;
+      z-index: 1;
+    }
+
+    .mode-card::before {
+      box-shadow:
+        -82px 10px 0 -1px var(--card-accent),
+        -55px 32px 0 0 var(--card-accent),
+        -26px 6px 0 -1px var(--card-accent),
+        22px 24px 0 0 var(--card-accent),
+        54px 8px 0 -1px var(--card-accent),
+        82px 30px 0 0 var(--card-accent);
+    }
+
+    .mode-card::after {
+      bottom: 42px;
+      box-shadow:
+        -68px 18px 0 0 var(--card-accent),
+        -36px 2px 0 -1px var(--card-accent),
+        -8px 28px 0 0 var(--card-accent),
+        34px 6px 0 -1px var(--card-accent),
+        70px 20px 0 0 var(--card-accent);
+      height: 4px;
+      width: 4px;
+    }
+
+    .mode-card:hover::before {
+      animation: modeParticleBurst 820ms cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+    }
+
+    .mode-card:hover::after {
+      animation: modeParticleBurst 920ms 90ms cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+    }
+
+    @keyframes modeParticleBurst {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, 18px) scale(0.45);
+      }
+
+      18% {
+        opacity: 0.72;
+      }
+
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -132px) scale(1);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mode-card:hover::before,
+      .mode-card:hover::after {
+        animation: none;
+      }
     }
 
     .mode-icon {
@@ -154,6 +283,7 @@
     }
 
     .mode-card.sku {
+      --card-accent: #22c55e;
       background: linear-gradient(180deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.05)), var(--bg-item);
     }
 
@@ -162,6 +292,7 @@
     }
 
     .mode-card.banner {
+      --card-accent: #6366f1;
       background: linear-gradient(180deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.05)), var(--bg-item);
     }
 
@@ -170,6 +301,7 @@
     }
 
     .mode-card.pslp {
+      --card-accent: #f59e0b;
       background: linear-gradient(180deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.05)), var(--bg-item);
     }
 
@@ -178,6 +310,7 @@
     }
 
     .mode-card.mixinad {
+      --card-accent: #ec4899;
       background: linear-gradient(180deg, rgba(236, 72, 153, 0.18), rgba(236, 72, 153, 0.05)), var(--bg-item);
     }
 
@@ -191,6 +324,7 @@
     }
 
     .mode-card.sortorder {
+      --card-accent: #06b6d4;
       background: linear-gradient(180deg, rgba(6, 182, 212, 0.18), rgba(6, 182, 212, 0.05)), var(--bg-item);
     }
 
@@ -204,6 +338,7 @@
     }
 
     .mode-card.pdp {
+      --card-accent: #a855f7;
       background: linear-gradient(180deg, rgba(168, 85, 247, 0.18), rgba(168, 85, 247, 0.05)), var(--bg-item);
     }
 
@@ -1189,95 +1324,100 @@
         <div id="excel-errors" style="display: none;"></div>
       </div>
 
-      <div class="mode-selector">
-        <a href="sku-tester.html" class="mode-card sku">
-          <div class="mode-icon">&#128230;</div>
-          <div class="mode-title">Test SKUs</div>
-          <div class="mode-description">
-            Navigate to product pages (PDPs), extract product data, capture screenshots, and optionally add products to
-            cart.
-          </div>
-          <div class="features">
-            <span class="feature-tag">Product Data</span>
-            <span class="feature-tag">Screenshots</span>
-            <span class="feature-tag">Add to Cart</span>
-            <span class="feature-tag">Login Support</span>
-          </div>
-        </a>
+      <div class="mode-carousel" data-mode-carousel>
+        <button class="mode-carousel-nav prev" type="button" data-mode-prev aria-label="Previous testing modes">&lsaquo;</button>
+        <div class="mode-selector" tabindex="0" aria-label="Testing modes">
+          <a href="sku-tester.html" class="mode-card sku">
+            <div class="mode-icon">&#128230;</div>
+            <div class="mode-title">Test SKUs</div>
+            <div class="mode-description">
+              Navigate to product pages (PDPs), extract product data, capture screenshots, and optionally add products to
+              cart.
+            </div>
+            <div class="features">
+              <span class="feature-tag">Product Data</span>
+              <span class="feature-tag">Screenshots</span>
+              <span class="feature-tag">Add to Cart</span>
+              <span class="feature-tag">Login Support</span>
+            </div>
+          </a>
 
-        <a href="banner-tester.html" class="mode-card banner">
-          <div class="mode-icon">&#128444;</div>
-          <div class="mode-title">Test Banners</div>
-          <div class="mode-description">
-            Capture category page banners at multiple viewport widths with mobile device emulation.
-          </div>
-          <div class="features">
-            <span class="feature-tag">Multiple Widths</span>
-            <span class="feature-tag">Mobile Emulation</span>
-            <span class="feature-tag">All Regions</span>
-            <span class="feature-tag">Categories</span>
-            <span class="feature-tag">Login Support</span>
-          </div>
-        </a>
+          <a href="banner-tester.html" class="mode-card banner">
+            <div class="mode-icon">&#128444;</div>
+            <div class="mode-title">Test Banners</div>
+            <div class="mode-description">
+              Capture category page banners at multiple viewport widths with mobile device emulation.
+            </div>
+            <div class="features">
+              <span class="feature-tag">Multiple Widths</span>
+              <span class="feature-tag">Mobile Emulation</span>
+              <span class="feature-tag">All Regions</span>
+              <span class="feature-tag">Categories</span>
+              <span class="feature-tag">Login Support</span>
+            </div>
+          </a>
 
-        <a href="pslp-tester.html" class="mode-card pslp">
-          <div class="mode-icon">&#127968;</div>
-          <div class="mode-title">Test PSLP</div>
-          <div class="mode-description">
-            Test Product Store Landing Page by capturing screenshots and extracting component data.
-          </div>
-          <div class="features">
-            <span class="feature-tag">8 Components</span>
-            <span class="feature-tag">6 Viewports</span>
-            <span class="feature-tag">Data Extraction</span>
-            <span class="feature-tag">Login Support</span>
-          </div>
-        </a>
+          <a href="pslp-tester.html" class="mode-card pslp">
+            <div class="mode-icon">&#127968;</div>
+            <div class="mode-title">Test PSLP</div>
+            <div class="mode-description">
+              Test Product Store Landing Page by capturing screenshots and extracting component data.
+            </div>
+            <div class="features">
+              <span class="feature-tag">8 Components</span>
+              <span class="feature-tag">6 Viewports</span>
+              <span class="feature-tag">Data Extraction</span>
+              <span class="feature-tag">Login Support</span>
+            </div>
+          </a>
 
-        <a href="mixinad-tester.html" class="mode-card mixinad">
-          <div class="mode-icon">&#128202;</div>
-          <div class="mode-title">Test Mix-In Ads</div>
-          <div class="mode-description">
-            Capture mix-in ads within category product grids at multiple viewport widths.
-          </div>
-          <div class="features">
-            <span class="feature-tag">Multiple Widths</span>
-            <span class="feature-tag">Mobile Emulation</span>
-            <span class="feature-tag">All Categories</span>
-            <span class="feature-tag">In-Grid Detection</span>
-            <span class="feature-tag">Login Support</span>
-          </div>
-        </a>
+          <a href="mixinad-tester.html" class="mode-card mixinad">
+            <div class="mode-icon">&#128202;</div>
+            <div class="mode-title">Test Mix-In Ads</div>
+            <div class="mode-description">
+              Capture mix-in ads within category product grids at multiple viewport widths.
+            </div>
+            <div class="features">
+              <span class="feature-tag">Multiple Widths</span>
+              <span class="feature-tag">Mobile Emulation</span>
+              <span class="feature-tag">All Categories</span>
+              <span class="feature-tag">In-Grid Detection</span>
+              <span class="feature-tag">Login Support</span>
+            </div>
+          </a>
 
-        <a href="sortorder-tester.html" class="mode-card sortorder">
-          <div class="mode-icon">&#8645;</div>
-          <div class="mode-title">Test Sort Orders</div>
-          <div class="mode-description">
-            Validate category sorting behavior and include mix-in ad positions after using Show All.
-          </div>
-          <div class="features">
-            <span class="feature-tag">Sort Validation</span>
-            <span class="feature-tag">Show All</span>
-            <span class="feature-tag">Mix-In Ads</span>
-            <span class="feature-tag">Multi Width</span>
-            <span class="feature-tag">Login Support</span>
-          </div>
-        </a>
+          <a href="sortorder-tester.html" class="mode-card sortorder">
+            <div class="mode-icon">&#8645;</div>
+            <div class="mode-title">Test Sort Orders</div>
+            <div class="mode-description">
+              Validate category sorting behavior and include mix-in ad positions after using Show All.
+            </div>
+            <div class="features">
+              <span class="feature-tag">Sort Validation</span>
+              <span class="feature-tag">Show All</span>
+              <span class="feature-tag">Mix-In Ads</span>
+              <span class="feature-tag">Multi Width</span>
+              <span class="feature-tag">Login Support</span>
+            </div>
+          </a>
 
-        <a href="pdp-tester.html" class="mode-card pdp">
-          <div class="mode-icon">&#128196;</div>
-          <div class="mode-title">Test PDPs</div>
-          <div class="mode-description">
-            Test Product Detail Page content by analyzing the "About This Product" section across viewports.
-          </div>
-          <div class="features">
-            <span class="feature-tag">Content Detection</span>
-            <span class="feature-tag">Section Analysis</span>
-            <span class="feature-tag">6 Viewports</span>
-            <span class="feature-tag">Image/Link Extraction</span>
-            <span class="feature-tag">Login Support</span>
-          </div>
-        </a>
+          <a href="pdp-tester.html" class="mode-card pdp">
+            <div class="mode-icon">&#128196;</div>
+            <div class="mode-title">Test PDPs</div>
+            <div class="mode-description">
+              Test Product Detail Page content by analyzing the "About This Product" section across viewports.
+            </div>
+            <div class="features">
+              <span class="feature-tag">Content Detection</span>
+              <span class="feature-tag">Section Analysis</span>
+              <span class="feature-tag">6 Viewports</span>
+              <span class="feature-tag">Image/Link Extraction</span>
+              <span class="feature-tag">Login Support</span>
+            </div>
+          </a>
+        </div>
+        <button class="mode-carousel-nav next" type="button" data-mode-next aria-label="Next testing modes">&rsaquo;</button>
+        <div class="mode-carousel-dots" aria-label="Testing mode carousel pages"></div>
       </div>
 
       </div>
@@ -1976,16 +2116,16 @@
             </div>
             ${actionButtons}
           </div>
-          <div class="job-status">${progressText}</div>
-          ${detailText ? `<div class="job-detail">${detailText}</div>` : ''}
+          <div class="job-status">${escapeHtml(progressText)}</div>
+          ${detailText ? `<div class="job-detail">${escapeHtml(detailText)}</div>` : ''}
           <div class="job-progress">
             <div class="job-progress-bar" style="width: ${progressPercent}%"></div>
           </div>
           <div class="job-meta">
-            <span>🌐 ${envBadge}</span>
-            <span>🌍 ${cultureBadge}</span>
+            <span>🌐 ${escapeHtml(envBadge)}</span>
+            <span>🌍 ${escapeHtml(cultureBadge)}</span>
             <span>${progressPercent}% complete</span>
-            <span>${etaText}</span>
+            <span>${escapeHtml(etaText)}</span>
           </div>
         `;
 
@@ -2210,11 +2350,11 @@
         // If culture is 'multi', show the cultures array if available
         if (report.culture === 'multi' && report.cultures && report.cultures.length > 0) {
           const cultureList = report.cultures.join(', ');
-          return `<span title="${cultureList}">🌍 ${report.cultures.length} cultures</span>`;
+          return `<span title="${escapeHtml(cultureList)}">🌍 ${report.cultures.length} cultures</span>`;
         }
 
         // Single culture
-        return `<span>🌍 ${report.culture}</span>`;
+        return `<span>🌍 ${escapeHtml(report.culture)}</span>`;
       }
 
       function renderHistory() {
@@ -2247,7 +2387,7 @@
         const timestampDate = new Date(report.timestamp);
         const timeAgo = formatTimeAgo(timestampDate);
         const readableTimestamp = formatReadableTimestamp(timestampDate);
-        const reportUrl = withUserQuery(api(`/api/reports/${report.filename}`));
+        const reportUrl = withUserQuery(api(`/api/reports/${encodeURIComponent(report.filename)}`));
         const downloadUrl = `${reportUrl}${reportUrl.includes('?') ? '&' : '?'}download=true`;
 
         // Folder icon: closed for unread, open for read
@@ -2264,20 +2404,20 @@
               ${isUnread ? '<span class="new-badge">NEW</span>' : ''}
             </div>
             <div class="history-meta">
-              <span>🌐 ${report.environment}</span>
+              <span>🌐 ${escapeHtml(report.environment)}</span>
               ${getCultureDisplay(report)}
               <span>🕒 ${escapeHtml(readableTimestamp)}</span>
-              <span>⏱️ ${timeAgo}</span>
+              <span>⏱️ ${escapeHtml(timeAgo)}</span>
             </div>
           </div>
           <div class="history-actions">
-            <a class="history-btn open-btn" href="${reportUrl}" target="_blank" data-filename="${report.filename}">
+            <a class="history-btn open-btn" href="${escapeHtml(reportUrl)}" target="_blank" rel="noopener noreferrer" data-filename="${escapeHtml(report.filename)}">
               ${folderIcon} Open
             </a>
-            <a class="history-btn download" href="${downloadUrl}" download data-filename="${report.filename}">
+            <a class="history-btn download" href="${escapeHtml(downloadUrl)}" download data-filename="${escapeHtml(report.filename)}">
               ⬇️ Download
             </a>
-            <button class="history-btn delete" onclick="deleteHistoryItem('${report.filename}')">
+            <button class="history-btn delete" data-filename="${escapeHtml(report.filename)}">
               🗑️ Delete
             </button>
           </div>
@@ -2286,9 +2426,11 @@
         // Add click handlers to mark as read when opened or downloaded
         const openBtn = item.querySelector('.open-btn');
         const downloadBtn = item.querySelector('.download');
+        const deleteBtn = item.querySelector('.delete');
 
         openBtn.addEventListener('click', () => markAsRead(report.filename));
         downloadBtn.addEventListener('click', () => markAsRead(report.filename));
+        deleteBtn.addEventListener('click', () => window.deleteHistoryItem(report.filename));
 
         return item;
       }
@@ -2368,6 +2510,15 @@
     })();
 
     // Excel Validation Management
+    function escapeExcelHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     (function initExcelValidation() {
       const toggle = document.getElementById('excel-toggle');
       const checkbox = document.getElementById('excel-toggle-checkbox');
@@ -2593,7 +2744,7 @@
         applyExcelParseResult(result, pending.file, previewDiv, errorsDiv);
       } catch (error) {
         console.error('Error processing Excel file:', error);
-        errorsDiv.innerHTML = `<div class="excel-error-item">Error processing file: ${error.message}</div>`;
+        errorsDiv.innerHTML = `<div class="excel-error-item">Error processing file: ${escapeExcelHtml(error.message)}</div>`;
         errorsDiv.style.display = 'block';
         document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">Error processing file</span>';
         localStorage.removeItem('excelValidationData');
@@ -2645,7 +2796,7 @@
       } else {
         errorsDiv.innerHTML = `
           <div style="font-weight: 600; margin-bottom: 8px;">Validation Errors:</div>
-          ${result.errors.map(err => `<div class="excel-error-item">- ${err}</div>`).join('')}
+          ${result.errors.map(err => `<div class="excel-error-item">- ${escapeExcelHtml(err)}</div>`).join('')}
         `;
         errorsDiv.style.display = 'block';
 
@@ -2676,7 +2827,7 @@
         }
       } catch (error) {
         console.error('Error processing Excel file:', error);
-        errorsDiv.innerHTML = `<div class="excel-error-item">Failed to process file: ${error.message}</div>`;
+        errorsDiv.innerHTML = `<div class="excel-error-item">Failed to process file: ${escapeExcelHtml(error.message)}</div>`;
         errorsDiv.style.display = 'block';
         document.getElementById('excel-file-info').innerHTML = '<span style="color: #ef4444; font-size: 14px;">Error processing file</span>';
         localStorage.removeItem('excelValidationData');
@@ -2708,14 +2859,14 @@
       if (p.seasonalCarousel > 0) contentTypes.push(`${p.seasonalCarousel} seasonal carousel`);
       if (p.brandCtaWindows > 0) contentTypes.push(`${p.brandCtaWindows} brand CTA`);
 
-      const warningIcon = p.unexpectedColumns ? '⚠️ ' : '';
-      const summary = contentTypes.join(' • ') || 'No content';
+      const warningLabel = p.unexpectedColumns ? 'Warning: ' : '';
+      const summary = contentTypes.join(' / ') || 'No content';
 
       fileInfoDiv.innerHTML = `
         <div style="flex: 1; min-width: 0;">
-          <div class="excel-file-name">${warningIcon}?o. ${dataToStore.filename}</div>
+          <div class="excel-file-name">${warningLabel}${escapeExcelHtml(dataToStore.filename)}</div>
           <div class="excel-file-details">
-            ${p.totalRows} rows ??? ${summary} ??? Uploaded ${timeAgo}
+            ${escapeExcelHtml(p.totalRows)} rows - ${escapeExcelHtml(summary)} - Uploaded ${escapeExcelHtml(timeAgo)}
           </div>
         </div>
         <button class="excel-details-button" type="button">See details</button>
@@ -2736,7 +2887,7 @@
       let previewHTML = `
         <div class="excel-preview-row">
           <span class="excel-preview-label">Sheet:</span>
-          <span>${p.sheetName}</span>
+          <span>${escapeExcelHtml(p.sheetName)}</span>
         </div>
         <div class="excel-preview-row">
           <span class="excel-preview-label">Total Rows:</span>
@@ -2756,7 +2907,7 @@
         previewHTML += `
           <div class="excel-preview-row">
             <span class="excel-preview-label">Format:</span>
-            <span>${getExcelFormatLabel(p.format)}</span>
+            <span>${escapeExcelHtml(getExcelFormatLabel(p.format))}</span>
           </div>
         `;
       }
@@ -2765,7 +2916,7 @@
         previewHTML += `
           <div class="excel-preview-row">
             <span class="excel-preview-label">Link Columns:</span>
-            <span>${p.linkColumns.join(', ')}</span>
+            <span>${escapeExcelHtml(p.linkColumns.join(', '))}</span>
           </div>
         `;
       }
@@ -2830,7 +2981,7 @@
         previewHTML += `
           <div class="excel-preview-row" style="color: #f59e0b; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color);">
             <span class="excel-preview-label">⚠️ Warning:</span>
-            <span>Unexpected columns found: <strong>${p.unexpectedColumns.join(', ')}</strong></span>
+            <span>Unexpected columns found: <strong>${escapeExcelHtml(p.unexpectedColumns.join(', '))}</strong></span>
           </div>
           <div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; padding-left: 8px;">
             These columns are not part of the standard Excel template and will be ignored during validation.
@@ -2881,45 +3032,76 @@
       return date.toLocaleDateString();
     }
 
-    // Initialize Slick Carousel for mode selector
     function initModeCarousel() {
-      const $carousel = $('.mode-selector');
-      if ($carousel.length && !$carousel.hasClass('slick-initialized')) {
-        $carousel.slick({
-          dots: true,
-          infinite: true,
-          speed: 300,
-          slidesToShow: 3,
-          slidesToScroll: 1,
-          responsive: [
-            {
-              breakpoint: 1100,
-              settings: {
-                slidesToShow: 2,
-                slidesToScroll: 1
-              }
-            },
-            {
-              breakpoint: 700,
-              settings: {
-                slidesToShow: 1,
-                slidesToScroll: 1
-              }
-            }
-          ]
+      const carousel = document.querySelector('[data-mode-carousel]');
+      if (!carousel) return;
+
+      const track = carousel.querySelector('.mode-selector');
+      const cards = Array.from(carousel.querySelectorAll('.mode-card'));
+      const prevButton = carousel.querySelector('[data-mode-prev]');
+      const nextButton = carousel.querySelector('[data-mode-next]');
+      const dotsContainer = carousel.querySelector('.mode-carousel-dots');
+      if (!track || cards.length === 0 || !prevButton || !nextButton || !dotsContainer) return;
+
+      let activeIndex = 0;
+
+      dotsContainer.innerHTML = cards.map((card, index) => `
+        <button class="mode-carousel-dot" type="button" aria-label="Show ${card.querySelector('.mode-title')?.textContent || `mode ${index + 1}`}" data-mode-index="${index}"></button>
+      `).join('');
+      const dots = Array.from(dotsContainer.querySelectorAll('.mode-carousel-dot'));
+
+      function getNearestIndex() {
+        const scrollLeft = track.scrollLeft;
+        return cards.reduce((nearest, card, index) => {
+          const currentDistance = Math.abs(card.offsetLeft - scrollLeft);
+          const nearestDistance = Math.abs(cards[nearest].offsetLeft - scrollLeft);
+          return currentDistance < nearestDistance ? index : nearest;
+        }, 0);
+      }
+
+      function updateActive(index = getNearestIndex()) {
+        activeIndex = Math.max(0, Math.min(cards.length - 1, index));
+        dots.forEach((dot, dotIndex) => {
+          const isActive = dotIndex === activeIndex;
+          dot.classList.toggle('active', isActive);
+          dot.setAttribute('aria-current', isActive ? 'true' : 'false');
         });
       }
+
+      function goToCard(index) {
+        const nextIndex = (index + cards.length) % cards.length;
+        cards[nextIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+        updateActive(nextIndex);
+      }
+
+      prevButton.addEventListener('click', () => goToCard(activeIndex - 1));
+      nextButton.addEventListener('click', () => goToCard(activeIndex + 1));
+      dots.forEach((dot) => {
+        dot.addEventListener('click', () => goToCard(Number(dot.dataset.modeIndex)));
+      });
+
+      track.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          goToCard(activeIndex - 1);
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          goToCard(activeIndex + 1);
+        }
+      });
+      track.addEventListener('scroll', () => {
+        window.requestAnimationFrame(() => updateActive());
+      }, { passive: true });
+      window.addEventListener('resize', () => updateActive());
+      updateActive(0);
     }
-  </script>
-  <!-- jQuery (required for Slick) -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <!-- Slick Carousel JS -->
-  <script src="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.min.js"></script>
-  <script>
-    // Initialize carousel after jQuery and Slick are loaded
-    $(document).ready(function () {
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initModeCarousel);
+    } else {
       initModeCarousel();
-    });
+    }
+
   </script>
 
   <!-- Sound Settings Modal -->

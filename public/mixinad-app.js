@@ -48,6 +48,26 @@ const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
 const userId = window.UserSession?.getId?.() || null;
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeHttpUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch {
+    return '';
+  }
+}
+
 // Log user session info
 if (userId) {
   const storageStatus = window.UserSession?.getStorageStatus?.() || 'unknown';
@@ -666,28 +686,34 @@ function renderCategoryTree() {
     return;
   }
 
-  categoryTree.innerHTML = regionConfig.categories.map(category => `
+  categoryTree.innerHTML = regionConfig.categories.map(category => {
+    const categoryName = String(category.name || '');
+    return `
     <div class="category-group">
       <div class="category-name">
-        <input type="checkbox" class="category-parent" data-category="${category.name}" checked>
-        <span>${category.name}</span>
+        <input type="checkbox" class="category-parent" data-category="${escapeHtml(categoryName)}" checked>
+        <span>${escapeHtml(categoryName)}</span>
       </div>
       <div class="category-items">
-        ${category.items.map(item => `
+        ${category.items.map(item => {
+          const itemLabel = String(item.label || '');
+          return `
           <label class="category-item">
-            <input type="checkbox" name="category" value="${category.name}|${item.label}" checked>
-            <span>${item.label}</span>
+            <input type="checkbox" name="category" value="${escapeHtml(`${categoryName}|${itemLabel}`)}" checked>
+            <span>${escapeHtml(itemLabel)}</span>
           </label>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   // Add parent checkbox toggle behavior
   categoryTree.querySelectorAll('.category-parent').forEach(parent => {
     parent.addEventListener('change', (e) => {
-      const categoryName = e.target.dataset.category;
-      const items = categoryTree.querySelectorAll(`input[value^="${categoryName}|"]`);
+      const group = e.target.closest('.category-group');
+      const items = group ? group.querySelectorAll('input[name="category"]') : [];
       items.forEach(item => item.checked = e.target.checked);
       savePreferences();
     });
@@ -1673,22 +1699,24 @@ function renderActivityFeed() {
 
   activityList.innerHTML = activityItems.map(item => {
     const icon = item.type === 'error' ? '❌' : (item.type === 'warning' ? '⚠️' : '✅');
-    const timeStr = formatActivityTime(item.timestamp);
-    const linkMarkup = item.url
-      ? `<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`
+    const timeStr = escapeHtml(formatActivityTime(item.timestamp));
+    const itemUrl = safeHttpUrl(item.url);
+    const linkMarkup = itemUrl
+      ? `<div class="activity-item-link"><a href="${escapeHtml(itemUrl)}" target="_blank" rel="noopener noreferrer">Open page</a></div>`
       : '';
     // Use categoryPath for grouped items, fallback to old format
-    const location = item.categoryPath
+    const location = escapeHtml(item.categoryPath
       ? `${item.culture} › ${item.categoryPath}`
-      : `${item.culture} › ${item.category}`;
+      : `${item.culture} › ${item.category}`);
 
     if (item.type === 'error') {
+      const detail = `${item.detail || ''} ${item.error ? '- ' + item.error : ''}`;
       return `
         <div class="activity-item error">
           <span class="activity-item-icon">${icon}</span>
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
-            <div class="activity-item-detail">${item.detail || ''} ${item.error ? '- ' + item.error : ''}</div>
+            <div class="activity-item-detail">${escapeHtml(detail)}</div>
             ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
@@ -1696,12 +1724,13 @@ function renderActivityFeed() {
       `;
     } else if (item.type === 'warning') {
       const issueText = item.issues ? item.issues.join(' • ') : '';
+      const detail = `${item.detail || ''} ${issueText ? '- ' + issueText : ''}`;
       return `
         <div class="activity-item warning">
           <span class="activity-item-icon">${icon}</span>
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
-            <div class="activity-item-detail">${item.detail || ''} ${issueText ? '- ' + issueText : ''}</div>
+            <div class="activity-item-detail">${escapeHtml(detail)}</div>
             ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
@@ -1713,7 +1742,7 @@ function renderActivityFeed() {
           <span class="activity-item-icon">${icon}</span>
           <div class="activity-item-content">
             <div class="activity-item-main">${location}</div>
-            <div class="activity-item-detail">${item.detail || 'Captured'}</div>
+            <div class="activity-item-detail">${escapeHtml(item.detail || 'Captured')}</div>
             ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>

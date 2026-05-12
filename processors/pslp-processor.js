@@ -784,6 +784,16 @@ export class PSLPProcessor extends BaseProcessor {
           display: block !important;
           float: none !important;
           height: auto !important;
+          opacity: 1 !important;
+          position: relative !important;
+          visibility: visible !important;
+          width: 100% !important;
+        }
+        .o-heroCarousel__slider .slick-slide:not(.slick-cloned) > div,
+        .o-seasonalCarousel__slider .slick-slide:not(.slick-cloned) > div {
+          display: block !important;
+          height: auto !important;
+          width: 100% !important;
         }
         .o-heroCarousel__slider .slick-list,
         .o-seasonalCarousel__slider .slick-list {
@@ -804,14 +814,13 @@ export class PSLPProcessor extends BaseProcessor {
   }
 
   async injectCarouselSlideArrows(width) {
+    await this.removeInjectedCarouselControls();
+
     // Only inject arrows for specific widths: 768, 992, 1210
     const arrowWidths = [768, 992, 1210];
     if (!arrowWidths.includes(width)) return;
 
     await this.page.evaluate((currentWidth) => {
-      // Remove any previously injected arrows
-      document.querySelectorAll('.pslp-injected-arrows').forEach(el => el.remove());
-
       // Width-specific sizing
       let buttonSize, marginSize;
       if (currentWidth === 1210) {
@@ -823,171 +832,190 @@ export class PSLPProcessor extends BaseProcessor {
         marginSize = 20;
       }
 
-      // Get all non-cloned hero carousel slides
-      const slides = document.querySelectorAll('.o-heroCarousel .slick-slide:not(.slick-cloned)');
+      const getSlidesForCarousel = (carousel) => {
+        const slides = Array.from(carousel.querySelectorAll('.o-heroCarousel__slider .slick-slide:not(.slick-cloned)'));
+        return slides.filter((slide) => !slide.closest('.slick-cloned'));
+      };
 
-      slides.forEach(slide => {
-        // Make the slide position relative for arrow positioning
-        slide.style.position = 'relative';
+      const getOverlayHost = (slide) => {
+        const candidates = [
+          slide.querySelector('.m-fwBanner'),
+          slide.querySelector('[data-testid="link-fullWidthBanner"]'),
+          slide.querySelector('a[href]'),
+          slide.firstElementChild,
+          slide
+        ].filter(Boolean);
 
-        // Create arrow container
-        const arrowContainer = document.createElement('div');
-        arrowContainer.className = 'pslp-injected-arrows';
-        arrowContainer.style.cssText = `
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          pointer-events: none;
-          z-index: 10;
-        `;
+        return candidates.find((candidate) => {
+          const tagName = candidate.tagName ? candidate.tagName.toLowerCase() : '';
+          if (['img', 'picture', 'source'].includes(tagName)) return false;
+          const rect = candidate.getBoundingClientRect();
+          return rect.width >= 100 && rect.height >= 80;
+        }) || slide;
+      };
 
-        // Common arrow button styles
-        const arrowBaseStyle = `
-          position: absolute;
-          top: 50%;
-          transform: translateY(-50%);
-          width: ${buttonSize}px;
-          height: ${buttonSize}px;
-          background-color: white;
-          border-radius: 50%;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-          pointer-events: none;
-        `;
+      const carouselRoots = Array.from(document.querySelectorAll('.o-heroCarousel'));
 
-        // SVG size scales with button
-        const svgSize = Math.round(buttonSize * 0.5);
+      carouselRoots.forEach((carousel) => {
+        const slides = getSlidesForCarousel(carousel);
+        if (slides.length === 0) return;
 
-        // Additional inset for 1210px width (moves entire button, not just content)
-        const insetAdjustment = currentWidth === 1210 ? 20 : 0;
+        slides.forEach((slide, slideIndex) => {
+          const overlayHost = getOverlayHost(slide);
+          const hostRect = overlayHost.getBoundingClientRect();
+          if (hostRect.width < 100 || hostRect.height < 80) return;
 
-        // Left arrow (prev)
-        const prevArrow = document.createElement('button');
-        prevArrow.className = 'pslp-arrow-prev';
-        prevArrow.setAttribute('aria-label', 'Previous Slide');
-        prevArrow.style.cssText = arrowBaseStyle + `left: ${marginSize + insetAdjustment}px;`;
-        prevArrow.innerHTML = `
-          <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M15 18L9 12L15 6" stroke="#3a913f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        `;
+          overlayHost.style.position = 'relative';
+          overlayHost.style.overflow = 'hidden';
 
-        // Right arrow (next)
-        const nextArrow = document.createElement('button');
-        nextArrow.className = 'pslp-arrow-next';
-        nextArrow.setAttribute('aria-label', 'Next Slide');
-        nextArrow.style.cssText = arrowBaseStyle + `right: ${marginSize + insetAdjustment}px;`;
-        nextArrow.innerHTML = `
-          <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 18L15 12L9 6" stroke="#3a913f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        `;
-
-        arrowContainer.appendChild(prevArrow);
-        arrowContainer.appendChild(nextArrow);
-        slide.appendChild(arrowContainer);
-
-        // Create navigation dots container with play button
-        const dotsNav = document.createElement('nav');
-        dotsNav.className = 'pslp-injected-dots';
-        dotsNav.style.cssText = `
-          position: absolute;
-          bottom: 16px;
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 15;
-          pointer-events: none;
-        `;
-
-        const dotsContainer = document.createElement('div');
-        dotsContainer.className = 'pslp-dots-container';
-        dotsContainer.style.cssText = `
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background-color: #000000;
-          height: 30px;
-          padding: 0 16px;
-          border-radius: 15px;
-        `;
-
-        // Play button with SVG triangle
-        const playButton = document.createElement('button');
-        playButton.className = 'pslp-play-button';
-        playButton.setAttribute('type', 'button');
-        playButton.setAttribute('aria-label', 'Stop automatic slide show.');
-        playButton.style.cssText = `
-          width: 14px;
-          height: 14px;
-          background: transparent;
-          border: none;
-          cursor: pointer;
-          margin-right: 8px;
-          padding: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        `;
-        playButton.innerHTML = `<svg width="10" height="12" viewBox="0 0 10 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0V12L10 6L0 0Z" fill="white"/></svg>`;
-
-        // Dots list
-        const dotsList = document.createElement('ul');
-        dotsList.className = 'pslp-dots-list';
-        dotsList.style.cssText = `
-          display: flex !important;
-          gap: 8px;
-          list-style: none !important;
-          list-style-type: none !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        `;
-
-        // Create dots matching the number of slides
-        const slideCount = slides.length;
-        for (let i = 0; i < slideCount; i++) {
-          const dotLi = document.createElement('li');
-          dotLi.style.cssText = `list-style: none !important; margin: 0 !important; padding: 0 !important;`;
-
-          const dotButton = document.createElement('button');
-          dotButton.setAttribute('type', 'button');
-          dotButton.setAttribute('aria-label', `Slide ${i + 1}`);
-          dotButton.style.cssText = `
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: ${i === 0 ? 'white' : 'rgba(255, 255, 255, 0.5)'};
-            border: none;
-            font-size: 0;
-            line-height: 0;
-            text-indent: -9999px;
-            overflow: hidden;
-            cursor: pointer;
-            padding: 0;
-            margin: 0;
+          // Create arrow container
+          const arrowContainer = document.createElement('div');
+          arrowContainer.className = 'pslp-injected-arrows';
+          arrowContainer.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 10;
           `;
 
-          dotLi.appendChild(dotButton);
-          dotsList.appendChild(dotLi);
-        }
+          // Common arrow button styles
+          const arrowBaseStyle = `
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: ${buttonSize}px;
+            height: ${buttonSize}px;
+            background-color: white;
+            border-radius: 50%;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            pointer-events: none;
+          `;
 
-        dotsContainer.appendChild(playButton);
-        dotsContainer.appendChild(dotsList);
-        dotsNav.appendChild(dotsContainer);
-        slide.appendChild(dotsNav);
+          // SVG size scales with button
+          const svgSize = Math.round(buttonSize * 0.5);
+
+          // Additional inset for 1210px width (moves entire button, not just content)
+          const insetAdjustment = currentWidth === 1210 ? 20 : 0;
+
+          // Left arrow (prev)
+          const prevArrow = document.createElement('div');
+          prevArrow.className = 'pslp-arrow-prev';
+          prevArrow.setAttribute('aria-hidden', 'true');
+          prevArrow.style.cssText = arrowBaseStyle + `left: ${marginSize + insetAdjustment}px;`;
+          prevArrow.innerHTML = `
+            <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 18L9 12L15 6" stroke="#3a913f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          `;
+
+          // Right arrow (next)
+          const nextArrow = document.createElement('div');
+          nextArrow.className = 'pslp-arrow-next';
+          nextArrow.setAttribute('aria-hidden', 'true');
+          nextArrow.style.cssText = arrowBaseStyle + `right: ${marginSize + insetAdjustment}px;`;
+          nextArrow.innerHTML = `
+            <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 18L15 12L9 6" stroke="#3a913f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          `;
+
+          arrowContainer.appendChild(prevArrow);
+          arrowContainer.appendChild(nextArrow);
+          overlayHost.appendChild(arrowContainer);
+
+          // Create navigation dots container with play indicator
+          const dotsNav = document.createElement('div');
+          dotsNav.className = 'pslp-injected-dots';
+          dotsNav.setAttribute('aria-hidden', 'true');
+          dotsNav.style.cssText = `
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 15;
+            pointer-events: none;
+          `;
+
+          const dotsContainer = document.createElement('div');
+          dotsContainer.className = 'pslp-dots-container';
+          dotsContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background-color: #000000;
+            height: 30px;
+            padding: 0 16px;
+            border-radius: 15px;
+          `;
+
+          // Play indicator with SVG triangle
+          const playButton = document.createElement('span');
+          playButton.className = 'pslp-play-button';
+          playButton.style.cssText = `
+            width: 14px;
+            height: 14px;
+            margin-right: 8px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+          `;
+          playButton.innerHTML = `<svg width="10" height="12" viewBox="0 0 10 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0V12L10 6L0 0Z" fill="white"/></svg>`;
+
+          // Dots list
+          const dotsList = document.createElement('div');
+          dotsList.className = 'pslp-dots-list';
+          dotsList.style.cssText = `
+            display: flex !important;
+            gap: 8px;
+            margin: 0 !important;
+            padding: 0 !important;
+          `;
+
+          // Create dots matching the number of slides in this carousel only.
+          for (let i = 0; i < slides.length; i++) {
+            const dot = document.createElement('span');
+            dot.className = 'pslp-slide-dot';
+            dot.style.cssText = `
+              width: 10px;
+              height: 10px;
+              border-radius: 50%;
+              background-color: ${i === slideIndex ? 'white' : 'rgba(255, 255, 255, 0.5)'};
+              display: block;
+              flex: 0 0 auto;
+            `;
+
+            dotsList.appendChild(dot);
+          }
+
+          dotsContainer.appendChild(playButton);
+          dotsContainer.appendChild(dotsList);
+          dotsNav.appendChild(dotsContainer);
+          overlayHost.appendChild(dotsNav);
+        });
       });
     }, width);
+  }
+
+  async removeInjectedCarouselControls() {
+    await this.page.evaluate(() => {
+      document.querySelectorAll('.pslp-injected-arrows, .pslp-injected-dots').forEach(el => el.remove());
+    });
   }
 
   async removeCarouselStacking() {
     await this.page.evaluate(() => {
       const style = document.getElementById('pslp-carousel-stack');
       if (style) style.remove();
+      document.querySelectorAll('.pslp-injected-arrows, .pslp-injected-dots').forEach(el => el.remove());
     });
   }
 }

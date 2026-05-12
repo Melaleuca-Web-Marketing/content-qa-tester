@@ -1,5 +1,7 @@
 // pdp-report.js - Generate HTML report for PDP test results
 
+import { renderExternalImage, renderExternalLink, safeImageSrc } from './report-safety.js';
+
 export function generatePdpReport(results, duration, theme = 'dark') {
   const timestamp = new Date().toISOString();
   const isDark = theme === 'dark';
@@ -170,12 +172,13 @@ ${screenshots.map((s) => {
   const sizeClass = s.width <= 576 ? 'size-mobile' : s.width < 1000 ? 'size-tablet' : 'size-desktop';
   const label = getScreenshotLabel(s.width);
   // Handle both full base64 data and just base64 string
-  const imgSrc = s.data.startsWith('data:') ? s.data : `data:image/jpeg;base64,${s.data}`;
+  const rawData = String(s.data || '');
+  const imgSrc = safeImageSrc(rawData.startsWith('data:') ? rawData : `data:image/jpeg;base64,${rawData}`, { allowData: true });
   return `
 <details class="screenshot-item ${sizeClass}">
 <summary>${s.width}px - ${label}</summary>
 <div class="screenshot-content">
-<img src="${imgSrc}" alt="Screenshot at ${s.width}px" loading="lazy">
+${imgSrc ? `<img src="${escapeHtml(imgSrc)}" alt="Screenshot at ${escapeHtml(s.width)}px" loading="lazy">` : '<div class="empty-state">Invalid screenshot data</div>'}
 </div>
 </details>`;
 }).join('')}
@@ -221,11 +224,16 @@ function renderSectionScreenshot(section) {
     return '<div class="empty-state" style="margin-bottom: 16px;">No screenshot available for this section.</div>';
   }
 
+  const screenshotSrc = safeImageSrc(section.screenshot, { allowData: true });
+  if (!screenshotSrc) {
+    return '<div class="empty-state" style="margin-bottom: 16px; color: #f59e0b;">Invalid screenshot data.</div>';
+  }
+
   return `
 <div style="margin-bottom: 16px;">
 <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px;">Section Screenshot (Desktop)</div>
 <div class="section-screenshot-container" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--bg-card-header);">
-<img src="${section.screenshot}" alt="Section ${section.index} screenshot" style="width: 100%; display: block;" loading="lazy">
+<img src="${escapeHtml(screenshotSrc)}" alt="Section ${escapeHtml(section.index)} screenshot" style="width: 100%; display: block;" loading="lazy">
 </div>
 </div>`;
 }
@@ -300,7 +308,7 @@ ${images.map((img) => {
 
   return `
 <div class="image-card">
-${imgUrl ? `<img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(altText)}" loading="lazy">` : '<div class="empty-state">No image URL</div>'}
+${imgUrl ? renderExternalImage(imgUrl, altText, { attrs: 'loading="lazy"', empty: '<div class="empty-state">Invalid image URL</div>' }) : '<div class="empty-state">No image URL</div>'}
 <div class="image-type">${typeLabel}${visibilityLabel}</div>
 ${imgUrl ? `<div class="image-url">${escapeHtml(imgUrl)}</div>` : ''}
 ${altText ? `<div class="image-alt">Alt: ${escapeHtml(altText)}</div>` : '<div class="image-alt" style="color: #f59e0b;">No alt text</div>'}
@@ -322,7 +330,7 @@ function renderSectionLinks(links) {
 <div class="link-list">
 ${links.map((link) => `
 <div class="link-item">
-<a class="link-url" href="${escapeHtml(link.url)}" target="_blank">${escapeHtml(link.url)}</a>
+${renderExternalLink(link.url, { className: 'link-url', empty: '<span class="link-url">N/A</span>' })}
 <div class="link-meta">
 <span>Behavior: ${link.target === 'new tab' ? 'Opens in New Tab' : 'Opens in Same Tab'}</span>
 </div>

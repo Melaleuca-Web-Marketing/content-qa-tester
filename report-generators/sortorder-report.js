@@ -1,5 +1,7 @@
 // sortorder-report.js - Generate HTML report for default category order capture results
 
+import { renderExternalImage, renderExternalLink } from './report-safety.js';
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -645,8 +647,6 @@ export function generateSortOrderReport(results, captureDuration, theme = 'dark'
 
       <div class="report-content">
     ${groupsWithAnchors.map((group) => {
-    const safeUrl = escapeHtml(group.url || '');
-
     return `
       <div class="group" id="${escapeHtml(group.anchorId)}">
         <div class="group-header">
@@ -654,7 +654,7 @@ export function generateSortOrderReport(results, captureDuration, theme = 'dark'
             <div class="group-title">${escapeHtml(group.categoryPath)}</div>
             <div class="group-meta">${escapeHtml(group.cultureText)}</div>
           </div>
-          <div class="group-meta">${safeUrl ? `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open category page</a>` : ''}</div>
+          <div class="group-meta">${renderExternalLink(group.url, { label: 'Open category page', empty: '' })}</div>
         </div>
         <div class="group-body">
           ${group.captures.map((capture, idx) => {
@@ -715,9 +715,10 @@ export function generateSortOrderReport(results, captureDuration, theme = 'dark'
               if (item.type === 'ad') {
                 const ad = item.ad || {};
                 const imageSrc = ad.imageSrc || '';
-                const adTitle = escapeHtml(ad.title || '(Untitled mix-in ad)');
+                const adTitleRaw = ad.title || '(Untitled mix-in ad)';
+                const adTitle = escapeHtml(adTitleRaw);
                 const adName = ad.href
-                  ? `<a href="${escapeHtml(ad.href)}" target="_blank" rel="noopener noreferrer">${adTitle}</a>`
+                  ? renderExternalLink(ad.href, { label: adTitleRaw })
                   : adTitle;
                 return `
                   <tr class="ad-row">
@@ -725,7 +726,7 @@ export function generateSortOrderReport(results, captureDuration, theme = 'dark'
                     <td><span class="type-pill ad">Mix-In Ad</span></td>
                     <td>
                       ${imageSrc
-                    ? `<img class="thumb" src="${escapeHtml(imageSrc)}" alt="${escapeHtml(ad.imageAlt || ad.title || '')}">`
+                    ? renderExternalImage(imageSrc, ad.imageAlt || ad.title || '', { className: 'thumb', empty: '<div class="thumb-placeholder">Invalid image</div>' })
                     : '<div class="thumb-placeholder">No image</div>'}
                     </td>
                     <td>${adName}</td>
@@ -741,9 +742,10 @@ export function generateSortOrderReport(results, captureDuration, theme = 'dark'
               const product = item.product || {};
               const imageSrc = product.imageSrc || '';
               const imageAlt = product.imageAlt || product.name || product.title || '';
-              const productName = escapeHtml(product.name || product.title || '');
+              const productNameRaw = product.name || product.title || '';
+              const productName = escapeHtml(productNameRaw);
               const nameWithLink = product.href
-                ? `<a href="${escapeHtml(product.href)}" target="_blank" rel="noopener noreferrer">${productName}</a>`
+                ? renderExternalLink(product.href, { label: productNameRaw })
                 : productName;
 
               return `
@@ -752,7 +754,7 @@ export function generateSortOrderReport(results, captureDuration, theme = 'dark'
                     <td><span class="type-pill product">Product</span></td>
                     <td>
                       ${imageSrc
-                    ? `<img class="thumb" src="${escapeHtml(imageSrc)}" alt="${escapeHtml(imageAlt)}">`
+                    ? renderExternalImage(imageSrc, imageAlt, { className: 'thumb', empty: '<div class="thumb-placeholder">Invalid image</div>' })
                     : '<div class="thumb-placeholder">No image</div>'}
                     </td>
                     <td>${nameWithLink}</td>

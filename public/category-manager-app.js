@@ -127,11 +127,31 @@ async function loadCategories() {
   }
 }
 
+function clearElement(element) {
+  if (!element) return;
+  while (element.firstChild) {
+    element.removeChild(element.firstChild);
+  }
+}
+
+function createButton(className, text, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.textContent = text;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
 // Render the UI
 function renderUI() {
   const regions = Object.keys(categoriesData);
   if (regions.length === 0) {
-    document.getElementById('category-content').innerHTML = '<p>No categories found.</p>';
+    const content = document.getElementById('category-content');
+    clearElement(content);
+    const empty = document.createElement('p');
+    empty.textContent = 'No categories found.';
+    content.appendChild(empty);
     return;
   }
 
@@ -149,22 +169,23 @@ function renderAddButtons() {
   const addButtonsContainer = document.getElementById('add-buttons');
   if (!addButtonsContainer) return;
 
-  addButtonsContainer.innerHTML = `
-    <button class="btn btn-primary" onclick="addCategory()">+ Add New Category</button>
-  `;
+  clearElement(addButtonsContainer);
+  addButtonsContainer.appendChild(createButton('btn btn-primary', '+ Add New Category', addCategory));
 }
 
 // Render region tabs
 function renderRegionTabs(regions) {
   const tabsContainer = document.getElementById('region-tabs');
-  tabsContainer.innerHTML = regions.map(region => `
-    <button 
-      class="region-tab ${region === currentRegion ? 'active' : ''}"
-      onclick="switchRegion('${region}')"
-    >
-      ${region}
-    </button>
-  `).join('');
+  clearElement(tabsContainer);
+
+  regions.forEach((region) => {
+    const button = createButton(
+      `region-tab ${region === currentRegion ? 'active' : ''}`,
+      region,
+      () => switchRegion(region)
+    );
+    tabsContainer.appendChild(button);
+  });
 }
 
 // Switch active region
@@ -179,70 +200,97 @@ function renderCategoryContent() {
   const categories = categoriesData[currentRegion] || {};
   const cultures = getCulturesForRegion(currentRegion);
 
-  const categoriesHTML = Object.entries(categories).map(([catName, items]) => `
-    <div class="category-card">
-      <div class="category-header">
-        <input 
-          type="text" 
-          class="input-field category-name" 
-          value="${escapeHtml(catName)}"
-          onchange="renameCategory('${escapeHtml(catName)}', this.value)"
-          style="font-size: 18px; font-weight: 600;"
-        />
-        <div class="category-actions">
-          <button class="btn btn-small btn-secondary" onclick="addSubcategory('${escapeHtml(catName)}')">+ Add Subcategory</button>
-          <button class="btn btn-small btn-danger" onclick="deleteCategory('${escapeHtml(catName)}')">Delete Category</button>
-        </div>
-      </div>
-      
-      <div class="subcategory-list">
-        ${items.map((item, idx) => {
-    const itemKey = `${catName}-${idx}`;
-    const isExpanded = expandedItems.has(itemKey);
-    const paths = item.paths || {};
-    // For backward compatibility, if item.path exists but no paths, use it as default
-    const defaultPath = item.path || '/productstore/path';
+  clearElement(contentContainer);
 
-    return `
-          <div class="subcategory-item-container">
-            <div class="subcategory-item-header">
-              <button class="expand-btn" onclick="toggleExpand('${escapeHtml(itemKey)}')">
-                ${isExpanded ? '▼' : '▶'}
-              </button>
-              <input 
-                type="text" 
-                class="input-field subcategory-label" 
-                value="${escapeHtml(item.label)}"
-                onchange="updateSubcategory('${escapeHtml(catName)}', ${idx}, 'label', this.value)"
-                placeholder="Label"
-              />
-              <span class="culture-count">${cultures.length} culture${cultures.length !== 1 ? 's' : ''}</span>
-              <button class="btn btn-small btn-danger" onclick="deleteSubcategory('${escapeHtml(catName)}', ${idx})">Delete</button>
-            </div>
-            ${isExpanded ? `
-            <div class="culture-paths">
-              ${cultures.map(culture => `
-                <div class="culture-path-row">
-                  <span class="culture-label">${culture.label}</span>
-                  <input 
-                    type="text" 
-                    class="input-field culture-path-input" 
-                    value="${escapeHtml(paths[culture.code] || defaultPath)}"
-                    onchange="updateCulturePath('${escapeHtml(catName)}', ${idx}, '${culture.code}', this.value)"
-                    placeholder="/productstore/path"
-                  />
-                </div>
-              `).join('')}
-            </div>
-            ` : ''}
-          </div>
-        `;
-  }).join('')}
-      </div>
-    </div>
-  `).join('');
+  Object.entries(categories).forEach(([catName, items]) => {
+    const card = document.createElement('div');
+    card.className = 'category-card';
 
-  contentContainer.innerHTML = categoriesHTML;
+    const header = document.createElement('div');
+    header.className = 'category-header';
+
+    const categoryInput = document.createElement('input');
+    categoryInput.type = 'text';
+    categoryInput.className = 'input-field category-name';
+    categoryInput.value = catName;
+    categoryInput.style.fontSize = '18px';
+    categoryInput.style.fontWeight = '600';
+    categoryInput.addEventListener('change', () => renameCategory(catName, categoryInput.value));
+    header.appendChild(categoryInput);
+
+    const actions = document.createElement('div');
+    actions.className = 'category-actions';
+    actions.appendChild(createButton('btn btn-small btn-secondary', '+ Add Subcategory', () => addSubcategory(catName)));
+    actions.appendChild(createButton('btn btn-small btn-danger', 'Delete Category', () => deleteCategory(catName)));
+    header.appendChild(actions);
+    card.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'subcategory-list';
+
+    items.forEach((item, idx) => {
+      const itemKey = `${catName}-${idx}`;
+      const isExpanded = expandedItems.has(itemKey);
+      const paths = item.paths || {};
+      const defaultPath = item.path || '/productstore/path';
+
+      const itemContainer = document.createElement('div');
+      itemContainer.className = 'subcategory-item-container';
+
+      const itemHeader = document.createElement('div');
+      itemHeader.className = 'subcategory-item-header';
+
+      itemHeader.appendChild(createButton('expand-btn', isExpanded ? 'v' : '>', () => toggleExpand(itemKey)));
+
+      const labelInput = document.createElement('input');
+      labelInput.type = 'text';
+      labelInput.className = 'input-field subcategory-label';
+      labelInput.value = item.label || '';
+      labelInput.placeholder = 'Label';
+      labelInput.addEventListener('change', () => updateSubcategory(catName, idx, 'label', labelInput.value));
+      itemHeader.appendChild(labelInput);
+
+      const cultureCount = document.createElement('span');
+      cultureCount.className = 'culture-count';
+      cultureCount.textContent = `${cultures.length} culture${cultures.length !== 1 ? 's' : ''}`;
+      itemHeader.appendChild(cultureCount);
+
+      itemHeader.appendChild(createButton('btn btn-small btn-danger', 'Delete', () => deleteSubcategory(catName, idx)));
+      itemContainer.appendChild(itemHeader);
+
+      if (isExpanded) {
+        const culturePaths = document.createElement('div');
+        culturePaths.className = 'culture-paths';
+
+        cultures.forEach((culture) => {
+          const row = document.createElement('div');
+          row.className = 'culture-path-row';
+
+          const label = document.createElement('span');
+          label.className = 'culture-label';
+          label.textContent = culture.label;
+          row.appendChild(label);
+
+          const pathInput = document.createElement('input');
+          pathInput.type = 'text';
+          pathInput.className = 'input-field culture-path-input';
+          pathInput.value = paths[culture.code] || defaultPath;
+          pathInput.placeholder = '/productstore/path';
+          pathInput.addEventListener('change', () => updateCulturePath(catName, idx, culture.code, pathInput.value));
+          row.appendChild(pathInput);
+
+          culturePaths.appendChild(row);
+        });
+
+        itemContainer.appendChild(culturePaths);
+      }
+
+      list.appendChild(itemContainer);
+    });
+
+    card.appendChild(list);
+    contentContainer.appendChild(card);
+  });
 }
 
 function getSaveErrorMessage(result) {
@@ -451,11 +499,11 @@ function renameCategory(oldName, newName) {
 
 // Delete category
 async function deleteCategory(catName) {
-  // First warning: affects all users
+  // First warning: affects this app instance
   const continueDelete = await showConfirmModal({
     icon: '⚠️',
     title: 'WARNING',
-    message: 'Deleting this category will affect ALL USERS of the Banner and Mix-In Ad testers.\n\nAll users will see this change immediately. Do you want to continue?',
+    message: 'Deleting this category updates the categories for this app instance.\n\nDo you want to continue?',
     confirmText: 'Continue',
     cancelText: 'Cancel',
     confirmStyle: 'btn-warning'
@@ -549,11 +597,11 @@ function updateSubcategory(catName, idx, field, value) {
 async function deleteSubcategory(catName, idx) {
   const subcategoryLabel = categoriesData[currentRegion][catName][idx].label;
 
-  // First warning: affects all users
+  // First warning: affects this app instance
   const continueDelete = await showConfirmModal({
     icon: '⚠️',
     title: 'WARNING',
-    message: 'Deleting this subcategory will affect ALL USERS of the Banner and Mix-In Ad testers.\n\nAll users will see this change immediately. Do you want to continue?',
+    message: 'Deleting this subcategory updates the categories for this app instance.\n\nDo you want to continue?',
     confirmText: 'Continue',
     cancelText: 'Cancel',
     confirmStyle: 'btn-warning'
@@ -613,7 +661,7 @@ async function saveCategories() {
     const confirmSave = await showConfirmModal({
       icon: '⚠️',
       title: 'WARNING',
-      message: 'Saving these changes will affect ALL USERS of the Banner and Mix-In Ad testers.\n\nAll users will see these changes immediately. Do you want to continue?',
+      message: 'Saving these changes updates the categories for this app instance.\n\nDo you want to continue?',
       confirmText: 'Continue',
       cancelText: 'Cancel',
       confirmStyle: 'btn-warning'
@@ -669,7 +717,7 @@ async function saveCategories() {
     }
 
     clearUnsaved();
-    showStatus('success', '✅ Categories saved successfully! Changes will apply to testers.');
+    showStatus('success', 'Categories saved successfully. Changes will apply to this app instance.');
   } catch (err) {
     showStatus('error', 'Failed to save: ' + err.message);
   }
@@ -695,13 +743,6 @@ function showStatus(type, message) {
   document.body.appendChild(statusDiv);
 
   setTimeout(() => statusDiv.remove(), 3000);
-}
-
-// Escape HTML
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 // Initialize on load

@@ -1,6 +1,7 @@
 // pslp-report.js - Generate HTML report for PSLP test results
 
 import { detectImageLocale } from '../utils/image-utils.js';
+import { renderExternalImage, renderExternalLink, safeImageSrc } from './report-safety.js';
 
 export function generatePslpReport(results, duration, theme = 'dark', excelValidation = null) {
   const timestamp = new Date().toISOString();
@@ -109,7 +110,7 @@ ${hasValidationFailures ? `
 <button class="validation-panel-close" id="validation-panel-close" type="button" aria-label="Close">X</button>
 </div>
 <ul class="validation-panel-list">
-${failedItems.map((item) => `<li><a href="#${item.id}">${escapeHtml(item.label)}</a></li>`).join('')}
+${failedItems.map((item) => `<li><a href="#${escapeHtml(item.id)}">${escapeHtml(item.label)}</a></li>`).join('')}
 </ul>
 </div>
 ` : ''}
@@ -123,10 +124,11 @@ ${summary.screenshots.length === 0
   : `<div class="screenshot-stack">
 ${summary.screenshots.map((s) => {
   const sizeClass = s.width <= 576 ? 'size-mobile' : s.width < 1000 ? 'size-tablet' : 'size-desktop';
+  const screenshotSrc = safeImageSrc(`data:image/jpeg;base64,${s.data || ''}`, { allowData: true });
   return `<details class="screenshot-item ${sizeClass}">
 <summary>${s.width}px - ${getScreenshotLabel(s.width)} Screenshot</summary>
 <div class="screenshot-content">
-<img src="data:image/jpeg;base64,${s.data}" alt="Screenshot at ${s.width}px">
+${screenshotSrc ? `<img src="${escapeHtml(screenshotSrc)}" alt="Screenshot at ${escapeHtml(s.width)}px">` : '<div class="empty-state">Invalid screenshot data</div>'}
 </div>
 </details>`;
 }).join('')}
@@ -470,15 +472,13 @@ function renderMonthlySpecials(data, validation, isDark) {
     const cards = items.map((item) => {
       const sku = item?.sku ? `SKU ${escapeHtml(item.sku)}` : 'SKU N/A';
       const name = item?.name ? escapeHtml(item.name) : 'Name unavailable';
-      const altText = item?.altText ? escapeHtml(item.altText) : null;
-      const link = item?.linkDirection ? escapeHtml(item.linkDirection) : null;
-      const imageUrl = item?.imageUrl ? escapeHtml(item.imageUrl) : null;
+      const altText = item?.altText ? String(item.altText) : '';
       return `<div class="monthly-card">
-${imageUrl ? `<img src="${imageUrl}" alt="${altText || 'Monthly special'}" loading="lazy">` : ''}
+${item?.imageUrl ? renderExternalImage(item.imageUrl, altText || 'Monthly special', { attrs: 'loading="lazy"' }) : ''}
 <div class="monthly-sku">${sku}</div>
 <div class="monthly-name">${name}</div>
-${altText ? `<div class="monthly-alt">Alt: ${altText}</div>` : ''}
-${link ? `<a class="url-link" href="${link}" target="_blank">${link}</a>` : '<div class="empty-state">No link</div>'}
+${altText ? `<div class="monthly-alt">Alt: ${escapeHtml(altText)}</div>` : ''}
+${renderExternalLink(item?.linkDirection, { className: 'url-link', empty: '<div class="empty-state">No link</div>' })}
 </div>`;
     }).join('');
 
@@ -497,9 +497,9 @@ function renderFeaturedCategories(data) {
   }
   return `<div class="featured-grid">${data.map((item) => `
 <div class="featured-card">
-${item.image ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.altText || 'Featured category')}">` : '<div class="empty-state">No image</div>'}
+${item.image ? renderExternalImage(item.image, item.altText || 'Featured category', { empty: '<div class="empty-state">Invalid image URL</div>' }) : '<div class="empty-state">No image</div>'}
 ${item.altText ? `<div class="featured-alt">Alt: ${escapeHtml(item.altText)}</div>` : ''}
-${item.linkDirection ? `<a href="${escapeHtml(item.linkDirection)}" target="_blank">${escapeHtml(item.linkDirection)}</a>` : '<div class="empty-state">No link</div>'}
+${renderExternalLink(item.linkDirection, { empty: '<div class="empty-state">No link</div>' })}
 </div>`).join('')}</div>`;
 }
 
@@ -566,15 +566,12 @@ function renderProductCarousel(data) {
 
 function renderImageCell(url, altText) {
   if (!url) return 'N/A';
-  const safeUrl = escapeHtml(url);
-  const safeAlt = altText ? escapeHtml(altText) : 'Image';
-  return `<div class="cell-stack"><a class="url-link" href="${safeUrl}" target="_blank">${safeUrl}</a><img src="${safeUrl}" alt="${safeAlt}" loading="lazy"></div>`;
+  return `<div class="cell-stack">${renderExternalLink(url, { className: 'url-link' })}${renderExternalImage(url, altText || 'Image', { attrs: 'loading="lazy"', empty: '<div class="empty-state">Invalid image URL</div>' })}</div>`;
 }
 
 function renderLinkCell(url) {
   if (!url) return 'N/A';
-  const safeUrl = escapeHtml(url);
-  return `<a class="url-link" href="${safeUrl}" target="_blank">${safeUrl}</a>`;
+  return renderExternalLink(url, { className: 'url-link' });
 }
 
 function renderAltText(altText) {

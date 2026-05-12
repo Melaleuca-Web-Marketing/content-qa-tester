@@ -45,6 +45,15 @@ const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
 const userId = window.UserSession?.getId?.() || null;
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Log user session info
 if (userId) {
   const storageStatus = window.UserSession?.getStorageStatus?.() || 'unknown';
@@ -1666,23 +1675,23 @@ function renderActivityFeed() {
       cssClass = 'success';
     }
 
-    const timeStr = formatActivityTime(item.timestamp);
+    const timeStr = escapeHtml(formatActivityTime(item.timestamp));
     const cultureLabel = item.culture ? ` (${item.culture})` : '';
-    const main = item.width
+    const main = escapeHtml(item.width
       ? `${item.component}${cultureLabel} @ ${item.width}px`
-      : `${item.component}${cultureLabel}`;
+      : `${item.component}${cultureLabel}`);
 
     // Build details section
     let detailsHTML = '';
 
     if (item.error) {
-      detailsHTML = `<div class="activity-item-detail">${item.error}</div>`;
+      detailsHTML = `<div class="activity-item-detail">${escapeHtml(item.error)}</div>`;
     } else if (item.issues && item.issues.length > 0) {
       detailsHTML = `
         <div class="activity-item-detail">
           <strong>Issues:</strong>
           <ul style="margin: 4px 0 0 20px; font-size: 12px;">
-            ${item.issues.map(issue => `<li>${issue}</li>`).join('')}
+            ${item.issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}
           </ul>
         </div>
       `;
@@ -1691,12 +1700,12 @@ function renderActivityFeed() {
         <div class="activity-item-detail">
           <strong>Warnings:</strong>
           <ul style="margin: 4px 0 0 20px; font-size: 12px;">
-            ${item.warnings.map(warning => `<li>${warning}</li>`).join('')}
+            ${item.warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}
           </ul>
         </div>
       `;
     } else if (item.detail) {
-      detailsHTML = `<div class="activity-item-detail">${item.detail}</div>`;
+      detailsHTML = `<div class="activity-item-detail">${escapeHtml(item.detail)}</div>`;
     } else {
       detailsHTML = `<div class="activity-item-detail">Captured successfully</div>`;
     }

@@ -3,6 +3,7 @@
 import { config } from '../config.js';
 import { validateResults } from '../utils/excel-validation.js';
 import { log } from '../utils/logger.js';
+import { renderExternalLink, safeImageSrc } from './report-safety.js';
 
 export function generateBannerReport(results, captureDuration, theme = 'dark', excelValidation = null) {
   if (!results || !results.length) {
@@ -411,7 +412,7 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
             ` : ''}
             <tr>
               <th>Page URL</th>
-              <td><a href="${escapeHtml(group.url || '')}" target="_blank">${escapeHtml(group.url || 'N/A')}</a></td>
+              <td>${renderExternalLink(group.url || '', { empty: 'N/A' })}</td>
             </tr>
           </table>
         </div>
@@ -431,14 +432,15 @@ export function generateBannerReport(results, captureDuration, theme = 'dark', e
               <div class="screenshot-error">${escapeHtml(item.message || 'Capture failed')}</div>
             </div>`;
       } else {
+        const imageSrc = safeImageSrc(item.image, { allowData: true });
         return `
             <div class="screenshot-item ${sizeClass}">
               <div class="screenshot-header">
                 <span class="screenshot-width">${item.width}px</span>
-                <button class="btn-copy" onclick="copyImage('${encodeURIComponent(item.image)}', this)">Copy Image</button>
+                ${imageSrc ? `<button class="btn-copy" onclick="copyImage('${encodeURIComponent(imageSrc)}', this)">Copy Image</button>` : ''}
               </div>
               <div class="screenshot-image">
-                <img src="${item.image}" alt="Banner at ${item.width}px">
+                ${imageSrc ? `<img src="${escapeHtml(imageSrc)}" alt="Banner at ${escapeHtml(item.width)}px">` : '<div class="screenshot-error">Invalid screenshot data</div>'}
               </div>
             </div>`;
       }

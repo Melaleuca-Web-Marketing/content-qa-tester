@@ -1,5 +1,7 @@
 // sku-report.js - Generate HTML report for SKU test results
 
+import { renderExternalImage, renderExternalLink } from './report-safety.js';
+
 export function generateSkuReport(results, duration, theme = 'dark') {
   const timestamp = new Date().toISOString();
   const skuSummaries = results.map((result) => {
@@ -34,9 +36,9 @@ export function generateSkuReport(results, duration, theme = 'dark') {
     <div class="header">
       <h1>SKU Test Report</h1>
       <div class="header-meta">
-        <span><strong>Environment:</strong> ${environment}</span>
-        <span><strong>Region:</strong> ${region.toUpperCase()}</span>
-        <span><strong>Culture:</strong> ${culture}</span>
+        <span><strong>Environment:</strong> ${escapeHtml(environment)}</span>
+        <span><strong>Region:</strong> ${escapeHtml(region.toUpperCase())}</span>
+        <span><strong>Culture:</strong> ${escapeHtml(culture)}</span>
         <span><strong>Generated:</strong> ${new Date(timestamp).toLocaleString()}</span>
       </div>
     </div>
@@ -63,7 +65,7 @@ export function generateSkuReport(results, duration, theme = 'dark') {
     ${skuSummaries.map(({ result: r, failed }, idx) => `
     <div class="sku-card">
       <div class="sku-header">
-        <h2>${escapeHtml(r.data?.name || 'Unknown Product')} <span class="sku-number">(SKU: ${r.sku})</span></h2>
+        <h2>${escapeHtml(r.data?.name || 'Unknown Product')} <span class="sku-number">(SKU: ${escapeHtml(r.sku)})</span></h2>
         <div class="sku-header-meta">
           <span class="culture-badge">${escapeHtml((r.culture || 'N/A').toUpperCase())}</span>
           <span class="status-badge ${failed ? 'error' : 'success'}">
@@ -78,7 +80,7 @@ export function generateSkuReport(results, duration, theme = 'dark') {
         <div class="product-grid">
           <div class="product-image">
             ${r.data.image
-        ? `<img src="${escapeHtml(r.data.image)}" alt="Product Image">`
+        ? renderExternalImage(r.data.image, 'Product Image', { empty: '<div class="no-image">Invalid image URL</div>' })
         : '<div class="no-image">No image available</div>'}
           </div>
           <div class="product-info">
@@ -109,7 +111,7 @@ export function generateSkuReport(results, duration, theme = 'dark') {
               </tr>
               <tr>
                 <th>URL</th>
-                <td><a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.url)}</a></td>
+                <td>${renderExternalLink(r.url, { empty: 'N/A' })}</td>
               </tr>
               <tr>
                 <th>Timestamp</th>
@@ -138,7 +140,7 @@ export function generateSkuReport(results, duration, theme = 'dark') {
           </button>
           <div class="screenshot-content" id="screenshot-${idx}">
             <div class="screenshot-container">
-              <img src="${r.screenshot}" alt="PDP Screenshot">
+              ${renderExternalImage(r.screenshot, 'PDP Screenshot', { allowData: true, empty: '<div class="no-image">Invalid screenshot data</div>' })}
             </div>
           </div>
         </div>

@@ -331,7 +331,7 @@ export class SortOrderProcessor extends BaseProcessor {
   getStampPriorityLabel(priority) {
     if (priority === 1) return 'LIMITED TIME';
     if (priority === 2) return 'NEW';
-    return 'OPEN-STOCK';
+    return 'OPEN STOCK';
   }
 
   buildSortOrderBusinessValidation(products) {
@@ -359,7 +359,6 @@ export class SortOrderProcessor extends BaseProcessor {
         || `pos:${product.position}`;
       const productStamp = this.normalizeMatchText(product.stamp);
       const productPriority = this.getStampPriority(productStamp);
-      const productSoldOut = Boolean(product.soldOut);
       if (!seenFamilies.has(familyKey)) {
         seenFamilies.add(familyKey);
         const record = {
@@ -373,10 +372,7 @@ export class SortOrderProcessor extends BaseProcessor {
           priorityPosition: product.position,
           prioritySku: this.normalizeMatchText(product.sku),
           priorityName: this.normalizeMatchText(product.name || product.title),
-          soldOut: productSoldOut,
-          soldOutText: this.normalizeMatchText(product.soldOutText),
-          productCount: 1,
-          soldOutProductCount: productSoldOut ? 1 : 0
+          productCount: 1
         };
         orderedFamilies.push(record);
         familyRecordsByKey.set(familyKey, record);
@@ -386,13 +382,6 @@ export class SortOrderProcessor extends BaseProcessor {
       const existing = familyRecordsByKey.get(familyKey);
       if (existing) {
         existing.productCount = Number(existing.productCount || 0) + 1;
-
-        if (productSoldOut) {
-          existing.soldOutProductCount = Number(existing.soldOutProductCount || 0) + 1;
-          if (!existing.soldOutText) {
-            existing.soldOutText = this.normalizeMatchText(product.soldOutText);
-          }
-        }
 
         // Use the highest-priority stamp seen in the family (LIMITED TIME > NEW > OTHER).
         if (productPriority < existing.priority) {
@@ -405,23 +394,10 @@ export class SortOrderProcessor extends BaseProcessor {
       }
     }
 
-    for (const family of orderedFamilies) {
-      const productCount = Number.isFinite(family.productCount) ? family.productCount : 1;
-      const soldOutProductCount = Number.isFinite(family.soldOutProductCount)
-        ? family.soldOutProductCount
-        : (family.soldOut ? 1 : 0);
-      // Family sold-out status requires all captured products in the family to be sold out.
-      family.soldOut = productCount > 0 && soldOutProductCount === productCount;
-      if (!family.soldOut) {
-        family.soldOutText = '';
-      }
-    }
-
-    const nonSoldOutFamilies = orderedFamilies.filter((item) => !item.soldOut);
     const stampPriorityViolations = [];
     let highestPrioritySeen = 1;
     const firstFamilyByPriority = new Map();
-    for (const family of nonSoldOutFamilies) {
+    for (const family of orderedFamilies) {
       if (!firstFamilyByPriority.has(family.priority)) {
         firstFamilyByPriority.set(family.priority, family);
       }
@@ -445,10 +421,9 @@ export class SortOrderProcessor extends BaseProcessor {
       }
     }
 
-    const limitedCount = nonSoldOutFamilies.filter((item) => item.priority === 1).length;
-    const newCount = nonSoldOutFamilies.filter((item) => item.priority === 2).length;
-    const otherCount = nonSoldOutFamilies.filter((item) => item.priority === 3).length;
-    const soldOutCount = orderedFamilies.filter((item) => item.soldOut).length;
+    const limitedCount = orderedFamilies.filter((item) => item.priority === 1).length;
+    const newCount = orderedFamilies.filter((item) => item.priority === 2).length;
+    const otherCount = orderedFamilies.filter((item) => item.priority === 3).length;
 
     const stampRulePass = stampPriorityViolations.length === 0;
     const transitionSummary = Array.from(new Set(
@@ -459,7 +434,7 @@ export class SortOrderProcessor extends BaseProcessor {
     const stampRuleMessage = stampRulePass
       ? 'All LIMITED TIME families appear first, followed by NEW families'
       : `${stampPriorityViolations.length} family ordering violation(s) found. `
-        + 'Expected order: LIMITED TIME -> NEW -> OPEN-STOCK. '
+        + 'Expected order: LIMITED TIME -> NEW -> OPEN STOCK. '
         + (transitionSummary.length > 0
           ? `Detected: ${transitionSummary.join(', ')}.`
           : 'Detected families out of expected stamp sequence.');
@@ -473,52 +448,12 @@ export class SortOrderProcessor extends BaseProcessor {
         limitedCount,
         newCount,
         otherCount,
-        familyCount: nonSoldOutFamilies.length,
-        skippedSoldOutFamilies: soldOutCount,
+        familyCount: orderedFamilies.length,
         violations: stampPriorityViolations.slice(0, 25)
       }
     };
 
-    const soldOutTailViolations = [];
-    let encounteredSoldOut = false;
-    for (const family of orderedFamilies) {
-      if (family.soldOut) {
-        encounteredSoldOut = true;
-        continue;
-      }
-
-      if (encounteredSoldOut) {
-        soldOutTailViolations.push({
-          position: family.position,
-          familyId: family.familyId || '',
-          sku: family.sku || '',
-          name: family.name || '',
-          stamp: family.stamp || '',
-          expectedGroup: 'SOLD OUT TAIL',
-          actualGroup: 'ACTIVE FAMILY'
-        });
-      }
-    }
-
-    const soldOutRulePass = soldOutTailViolations.length === 0;
-    const soldOutRuleMessage = soldOutRulePass
-      ? 'Sold-out families are grouped at the end of the sort order'
-      : `${soldOutTailViolations.length} active family/families found after sold-out families`;
-
-    const soldOutRule = {
-      id: 'sold-out-at-end',
-      title: 'Sold-Out Families At End',
-      pass: soldOutRulePass,
-      message: soldOutRuleMessage,
-      details: {
-        familyCount: orderedFamilies.length,
-        soldOutFamilyCount: soldOutCount,
-        activeFamilyCount: orderedFamilies.length - soldOutCount,
-        violations: soldOutTailViolations.slice(0, 25)
-      }
-    };
-
-    const rules = [stampRule, soldOutRule];
+    const rules = [stampRule];
     const allRulesPass = rules.every((rule) => rule.pass);
 
     return {

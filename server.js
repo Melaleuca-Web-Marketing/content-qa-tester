@@ -46,9 +46,17 @@ const DATA_DIR = process.env.TESTER_DATA_DIR || __dirname;
 const REPORTS_DIR = join(DATA_DIR, 'reports');
 const JOB_STATE_FILE = join(DATA_DIR, 'job-state.json');
 const SESSION_LANE_FILE = join(DATA_DIR, 'session-lanes.json');
+const LISTEN_HOST = process.env.TESTER_HOST || process.env.HOST || null;
 const parsePositiveInt = (value, fallback) => {
   const parsed = parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const parseBooleanFlag = (value, fallback = false) => {
+  if (value === undefined || value === null) return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
 };
 // Stress tests are commonly one job per tester; per-lane limits still prevent duplicate jobs from one session.
 const DEFAULT_TOOL_CONCURRENCY = parsePositiveInt(process.env.TESTER_TOOL_CONCURRENCY, 12);
@@ -70,21 +78,77 @@ const LANE_TOOL_CONCURRENCY = {
   sku: parsePositiveInt(process.env.TESTER_SKU_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
   pdp: parsePositiveInt(process.env.TESTER_PDP_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY)
 };
-const STRICT_EXECUTION_USER_ID = !['0', 'false', 'no', 'off'].includes(
-  String(process.env.TESTER_STRICT_EXECUTION_USER_ID ?? 'true').toLowerCase()
-);
+const STRICT_EXECUTION_USER_ID = parseBooleanFlag(process.env.TESTER_STRICT_EXECUTION_USER_ID, true);
 const JOB_STATE_MAX_ENTRIES = parsePositiveInt(process.env.TESTER_JOB_STATE_MAX_ENTRIES, 5000);
 const SESSION_TTL_HOURS = parsePositiveInt(process.env.TESTER_SESSION_TTL_HOURS, 24 * 7);
-const TRUST_CLIENT_USER_ID = !['0', 'false', 'no', 'off'].includes(
-  String(process.env.TESTER_TRUST_CLIENT_USER_ID ?? 'false').toLowerCase()
-);
+const TRUST_CLIENT_USER_ID = parseBooleanFlag(process.env.TESTER_TRUST_CLIENT_USER_ID, false);
 const SESSION_COOKIE_NAME = process.env.TESTER_SESSION_COOKIE_NAME || 'tester_sid';
-const SESSION_COOKIE_SECURE = !['0', 'false', 'no', 'off'].includes(
-  String(process.env.TESTER_SESSION_COOKIE_SECURE ?? 'false').toLowerCase()
+const IS_DESKTOP_APP = parseBooleanFlag(process.env.TESTER_DESKTOP, false);
+const DEFAULT_SESSION_COOKIE_SECURE = process.env.NODE_ENV === 'production' && !IS_DESKTOP_APP;
+const SESSION_COOKIE_SECURE = parseBooleanFlag(
+  process.env.TESTER_SESSION_COOKIE_SECURE,
+  DEFAULT_SESSION_COOKIE_SECURE
 );
+const TRUST_PROXY = parseBooleanFlag(process.env.TESTER_TRUST_PROXY, DEFAULT_SESSION_COOKIE_SECURE);
 const SESSION_MAX_ENTRIES = parsePositiveInt(process.env.TESTER_SESSION_MAX_ENTRIES, 10000);
+const REPORT_MAINTENANCE_ENABLED = parseBooleanFlag(process.env.TESTER_ENABLE_REPORT_MAINTENANCE, false);
+const EXCEL_VALIDATION_MAX_ROWS = parsePositiveInt(process.env.TESTER_EXCEL_VALIDATION_MAX_ROWS, 2000);
+const EXCEL_VALIDATION_MAX_STRING_LENGTH = parsePositiveInt(process.env.TESTER_EXCEL_VALIDATION_MAX_STRING_LENGTH, 1000);
+const EXCEL_VALIDATION_MAX_RAW_KEYS = parsePositiveInt(process.env.TESTER_EXCEL_VALIDATION_MAX_RAW_KEYS, 80);
+const EXCEL_VALIDATION_MAX_SKUS_PER_ROW = parsePositiveInt(process.env.TESTER_EXCEL_VALIDATION_MAX_SKUS_PER_ROW, 100);
+const EXCEL_VALIDATION_TYPES = [
+  'category-banner',
+  'mix-in-ad',
+  'monthly-specials',
+  'hero-carousel',
+  'variable-windows',
+  'full-width-banner',
+  'seasonal-carousel',
+  'brand-cta-windows'
+];
+
+const ExcelValidationRawSchema = z.record(
+  z.string().max(100),
+  z.union([
+    z.string().max(EXCEL_VALIDATION_MAX_STRING_LENGTH),
+    z.number(),
+    z.boolean(),
+    z.null()
+  ])
+).refine(
+  (value) => Object.keys(value).length <= EXCEL_VALIDATION_MAX_RAW_KEYS,
+  { message: `Raw row data may include at most ${EXCEL_VALIDATION_MAX_RAW_KEYS} columns` }
+).optional();
+
+const ExcelValidationRowSchema = z.object({
+  rowNumber: z.coerce.number().int().min(1).max(100000).optional(),
+  type: z.enum(EXCEL_VALIDATION_TYPES),
+  mainCategory: z.string().max(250).optional().default(''),
+  subcategory: z.string().max(250).optional().default(''),
+  bannerLink: z.string().max(EXCEL_VALIDATION_MAX_STRING_LENGTH).optional().default(''),
+  linkByCulture: z.record(
+    z.string().max(16),
+    z.string().max(EXCEL_VALIDATION_MAX_STRING_LENGTH)
+  ).optional(),
+  target: z.string().max(80).optional().default(''),
+  position: z.union([z.number().int().min(0).max(10000), z.null()]).optional().default(null),
+  skus: z.array(z.string().max(64)).max(EXCEL_VALIDATION_MAX_SKUS_PER_ROW).optional().default([]),
+  error: z.string().max(EXCEL_VALIDATION_MAX_STRING_LENGTH).optional(),
+  raw: ExcelValidationRawSchema
+}).strip();
+
+const ExcelValidationPayloadSchema = z.object({
+  enabled: z.literal(true),
+  filename: z.string().trim().min(1).max(255).optional().default('Unknown'),
+  format: z.enum(['us-ca', 'uk-eu', 'unknown']).nullable().optional(),
+  linkColumns: z.array(z.string().max(100)).max(20).nullable().optional(),
+  data: z.array(ExcelValidationRowSchema).min(1).max(EXCEL_VALIDATION_MAX_ROWS)
+}).strip();
 
 const app = express();
+if (TRUST_PROXY) {
+  app.set('trust proxy', 1);
+}
 const server = createServer(app);
 const router = express.Router();
 
@@ -136,7 +200,7 @@ const apiLimiter = rateLimit({
     const laneId = getUserId(req);
     if (laneId) return laneId;
     // Use library's ipKeyGenerator for proper IPv6 handling
-    return ipKeyGenerator(req);
+    return ipKeyGenerator(req.ip);
   }
 });
 
@@ -147,6 +211,82 @@ function parseJsonFile(filePath) {
   const raw = fs.readFileSync(filePath, 'utf8');
   const normalized = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
   return JSON.parse(normalized);
+}
+
+function buildContentSecurityPolicy() {
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "connect-src 'self' ws: wss:",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'"
+  ].join('; ');
+}
+
+function setSecurityHeaders(res) {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'no-referrer');
+  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.set('Content-Security-Policy', buildContentSecurityPolicy());
+  if (SESSION_COOKIE_SECURE) {
+    res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+}
+
+function getClientErrorPayload(err, fallback = 'Request failed') {
+  const payload = { error: fallback };
+  if (process.env.NODE_ENV === 'development' && err?.message) {
+    payload.message = err.message;
+  }
+  return payload;
+}
+
+function getClientErrorMessage(err, fallback = 'Operation failed') {
+  const message = String(err?.message || fallback)
+    .replace(/[A-Za-z]:\\[^\s"'<>]+/g, '[path]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return message.slice(0, 300) || fallback;
+}
+
+function formatValidationIssues(issues) {
+  return issues.slice(0, 6).map((issue) => {
+    const path = issue.path && issue.path.length > 0 ? issue.path.join('.') : 'excelValidation';
+    return `${path}: ${issue.message}`;
+  });
+}
+
+function attachExcelValidation(options, excelValidation, res) {
+  if (!excelValidation || excelValidation.enabled !== true) {
+    return true;
+  }
+
+  const parsed = ExcelValidationPayloadSchema.safeParse(excelValidation);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: 'Invalid Excel validation data',
+      message: `Excel validation data must include 1-${EXCEL_VALIDATION_MAX_ROWS} normalized rows with expected fields and bounded text sizes.`,
+      details: formatValidationIssues(parsed.error.issues)
+    });
+    return false;
+  }
+
+  options.excelValidation = parsed.data;
+  return true;
+}
+
+function normalizeSkuList(skus) {
+  return skus.map(sku => String(sku).trim()).filter(Boolean);
+}
+
+function hasUnsafeSkuValue(sku) {
+  return sku.length > 64 || /[<>"'`]/.test(sku);
 }
 
 function ensureCategoriesFile() {
@@ -181,6 +321,7 @@ function ensureCategoriesFile() {
 }
 
 router.use((req, res, next) => {
+  setSecurityHeaders(res);
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
@@ -520,8 +661,16 @@ router.get('/api/session', (req, res) => {
 // ============ Category Management API Routes ============
 
 // Zod schema for category validation
+const SafeCategoryNameSchema = z.string().min(1).max(100).refine(
+  value => !/[<>"'`]/.test(value),
+  { message: 'Name cannot contain HTML/script characters' }
+);
+const SafeCategoryLabelSchema = z.string().min(1).max(200).refine(
+  value => !/[<>"'`]/.test(value),
+  { message: 'Label cannot contain HTML/script characters' }
+);
 const CategoryItemSchema = z.object({
-  label: z.string().min(1).max(200),
+  label: SafeCategoryLabelSchema,
   path: z.string().regex(/^\/[\w\-\/]*$/).optional(),
   paths: z.record(z.string(), z.string().regex(/^\/[\w\-\/]*$/)).optional()
 }).refine(data => data.path || data.paths, {
@@ -529,9 +678,9 @@ const CategoryItemSchema = z.object({
 });
 
 const CategorySchema = z.record(
-  z.string().min(1).max(100), // Region name
+  SafeCategoryNameSchema, // Region name
   z.record(
-    z.string().min(1).max(100), // Category name
+    SafeCategoryNameSchema, // Category name
     z.array(CategoryItemSchema).min(1).max(100)
   )
 );
@@ -572,7 +721,7 @@ router.get('/api/categories', (req, res) => {
     }
   } catch (err) {
     console.error('Failed to read categories:', err);
-    res.status(500).json({ error: 'Failed to load categories', message: err.message });
+    res.status(500).json(getClientErrorPayload(err, 'Failed to load categories'));
   }
 });
 
@@ -650,7 +799,7 @@ router.post('/api/categories', express.json(), (req, res) => {
     });
   } catch (err) {
     console.error('Failed to save categories:', err);
-    res.status(500).json({ error: 'Failed to save categories', message: err.message });
+    res.status(500).json(getClientErrorPayload(err, 'Failed to save categories'));
   }
 });
 
@@ -672,8 +821,20 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'No SKUs provided' });
   }
 
+  const normalizedSkus = normalizeSkuList(skus);
+  if (normalizedSkus.length === 0) {
+    return res.status(400).json({ error: 'No SKUs provided' });
+  }
+
+  if (normalizedSkus.some(hasUnsafeSkuValue)) {
+    return res.status(400).json({
+      error: 'Invalid SKU',
+      message: 'SKUs must be 64 characters or fewer and cannot contain HTML/script characters.'
+    });
+  }
+
   // Prevent excessive SKU counts to avoid memory exhaustion
-  if (skus.length > 500) {
+  if (normalizedSkus.length > 500) {
     return res.status(400).json({
       error: 'Too many SKUs',
       message: 'Maximum 500 SKUs allowed per batch. Please split into smaller batches.'
@@ -695,7 +856,7 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
 
   const options = {
     testName: normalizedTestName || null,
-    skus: skus.map(s => String(s).trim()).filter(Boolean),
+    skus: normalizedSkus,
     environment: environment || 'production',
     region: region || 'us',
     culture: selectedCultures[0],
@@ -727,7 +888,7 @@ router.post('/api/sku/start', asyncHandler(async (req, res) => {
       broadcast({
         type: 'error',
         tool: 'sku',
-        data: { message: err.message, stack: err.stack }
+        data: { message: getClientErrorMessage(err, 'SKU capture failed') }
       }, effectiveUserId);
       throw err;
     })
@@ -855,10 +1016,7 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: errors.join(', ') });
   }
 
-  // Include Excel validation data if provided
-  if (excelValidation && excelValidation.enabled) {
-    options.excelValidation = excelValidation;
-  }
+  if (!attachExcelValidation(options, excelValidation, res)) return;
 
   const queueResult = enqueueToolJob({
     tool: 'banner',
@@ -867,7 +1025,7 @@ router.post('/api/banner/start', asyncHandler(async (req, res) => {
     options,
     startFn: () => bannerProcessor.start(options).catch(err => {
       console.error('Banner capture error:', err);
-      broadcast({ type: 'banner-error', data: { message: err.message } }, effectiveUserId);
+      broadcast({ type: 'banner-error', data: { message: getClientErrorMessage(err, 'Banner capture failed') } }, effectiveUserId);
       throw err;
     })
   });
@@ -990,9 +1148,7 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: errors.join(', ') });
   }
 
-  if (excelValidation && excelValidation.enabled) {
-    options.excelValidation = excelValidation;
-  }
+  if (!attachExcelValidation(options, excelValidation, res)) return;
 
   const queueResult = enqueueToolJob({
     tool: 'pslp',
@@ -1001,7 +1157,7 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
     options,
     startFn: () => pslpProcessor.start(options).catch(err => {
       console.error('PSLP capture error:', err);
-      broadcast({ type: 'pslp-error', data: { message: err.message } }, effectiveUserId);
+      broadcast({ type: 'pslp-error', data: { message: getClientErrorMessage(err, 'PSLP capture failed') } }, effectiveUserId);
       throw err;
     })
   });
@@ -1130,10 +1286,7 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: errors.join(', ') });
   }
 
-  // Include Excel validation data if provided
-  if (excelValidation && excelValidation.enabled) {
-    options.excelValidation = excelValidation;
-  }
+  if (!attachExcelValidation(options, excelValidation, res)) return;
 
   const queueResult = enqueueToolJob({
     tool: 'mixinad',
@@ -1142,7 +1295,7 @@ router.post('/api/mixinad/start', asyncHandler(async (req, res) => {
     options,
     startFn: () => mixinAdProcessor.start(options).catch(err => {
       console.error('Mix-In Ad capture error:', err);
-      broadcast({ type: 'mixinad-error', data: { message: err.message } }, effectiveUserId);
+      broadcast({ type: 'mixinad-error', data: { message: getClientErrorMessage(err, 'Mix-In Ad capture failed') } }, effectiveUserId);
       throw err;
     })
   });
@@ -1271,7 +1424,7 @@ router.post('/api/sortorder/start', asyncHandler(async (req, res) => {
     options,
     startFn: () => sortOrderProcessor.start(options).catch((err) => {
       console.error('Sort order capture error:', err);
-      broadcast({ type: 'sortorder-error', data: { message: err.message } }, effectiveUserId);
+      broadcast({ type: 'sortorder-error', data: { message: getClientErrorMessage(err, 'Sort order capture failed') } }, effectiveUserId);
       throw err;
     })
   });
@@ -1352,8 +1505,20 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'No SKUs provided' });
   }
 
+  const normalizedSkus = normalizeSkuList(skus);
+  if (normalizedSkus.length === 0) {
+    return res.status(400).json({ error: 'No SKUs provided' });
+  }
+
+  if (normalizedSkus.some(hasUnsafeSkuValue)) {
+    return res.status(400).json({
+      error: 'Invalid SKU',
+      message: 'SKUs must be 64 characters or fewer and cannot contain HTML/script characters.'
+    });
+  }
+
   // Prevent excessive SKU counts to avoid memory exhaustion
-  if (skus.length > 500) {
+  if (normalizedSkus.length > 500) {
     return res.status(400).json({
       error: 'Too many SKUs',
       message: 'Maximum 500 SKUs allowed per batch. Please split into smaller batches.'
@@ -1374,7 +1539,7 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
 
   const options = {
     testName: normalizedTestName || null,
-    skus: skus.map(s => String(s).trim()).filter(Boolean),
+    skus: normalizedSkus,
     environment: environment || 'production',
     region: region || 'us',
     culture: selectedCultures[0],
@@ -1403,7 +1568,7 @@ router.post('/api/pdp/start', asyncHandler(async (req, res) => {
       broadcast({
         type: 'error',
         tool: 'pdp',
-        data: { message: err.message, stack: err.stack }
+        data: { message: getClientErrorMessage(err, 'PDP capture failed') }
       }, effectiveUserId);
       throw err;
     })
@@ -1502,8 +1667,16 @@ router.get('/api/jobs/:jobId', (req, res) => {
 });
 
 // Auto-generate reports on completion (per-user processors are wired on creation)
+// Keep legacy /reports links behind the same checked report API instead of serving files statically.
+router.get('/reports/:filename', (req, res) => {
+  const { filename } = req.params;
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
 
-router.use('/reports', express.static(REPORTS_DIR));
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  return res.redirect(302, `../api/reports/${encodeURIComponent(filename)}${query}`);
+});
 
 // ============ Shared Routes ============
 
@@ -1607,6 +1780,36 @@ router.delete('/api/history', (req, res) => {
   res.json({ ok: true, message: 'History cleared' });
 });
 
+// ============ Report Cleanup Routes ============
+
+router.get('/api/reports/stats', (req, res) => {
+  if (!REPORT_MAINTENANCE_ENABLED) {
+    return res.status(403).json({ error: 'Report maintenance is disabled' });
+  }
+
+  const stats = getReportStats(REPORTS_DIR);
+  if (stats) {
+    res.json(stats);
+  } else {
+    res.status(500).json({ error: 'Failed to get report stats' });
+  }
+});
+
+router.post('/api/reports/cleanup', express.json(), (req, res) => {
+  if (!REPORT_MAINTENANCE_ENABLED) {
+    return res.status(403).json({ error: 'Report maintenance is disabled' });
+  }
+
+  const { daysToKeep = 30 } = req.body;
+
+  if (typeof daysToKeep !== 'number' || daysToKeep < 1) {
+    return res.status(400).json({ error: 'Invalid daysToKeep value' });
+  }
+
+  const result = cleanupOldReports(REPORTS_DIR, daysToKeep);
+  res.json({ ok: true, ...result });
+});
+
 // Download a report file
 router.get('/api/reports/:filename', (req, res) => {
   const userId = getUserId(req) || 'anonymous';
@@ -1636,28 +1839,6 @@ router.get('/api/reports/:filename', (req, res) => {
   res.sendFile(reportPath);
 });
 
-// ============ Report Cleanup Routes ============
-
-router.get('/api/reports/stats', (req, res) => {
-  const stats = getReportStats(REPORTS_DIR);
-  if (stats) {
-    res.json(stats);
-  } else {
-    res.status(500).json({ error: 'Failed to get report stats' });
-  }
-});
-
-router.post('/api/reports/cleanup', express.json(), (req, res) => {
-  const { daysToKeep = 30 } = req.body;
-
-  if (typeof daysToKeep !== 'number' || daysToKeep < 1) {
-    return res.status(400).json({ error: 'Invalid daysToKeep value' });
-  }
-
-  const result = cleanupOldReports(REPORTS_DIR, daysToKeep);
-  res.json({ ok: true, ...result });
-});
-
 
 // ============ Start Server ============
 
@@ -1682,10 +1863,7 @@ router.use((err, req, res, next) => {
   console.error('Express error:', err);
 
   // Send error response
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
+  res.status(err.status || 500).json(getClientErrorPayload(err, 'Internal server error'));
 });
 
 // Mount router at base path
@@ -1704,10 +1882,14 @@ if (autoCleanupDays && autoCleanupDays > 0) {
   console.log('[Startup] Auto-cleanup disabled (set TESTER_CLEANUP_DAYS to enable)');
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, LISTEN_HOST || undefined, () => {
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : PORT;
-  const url = `http://localhost:${port}${BASE_PATH}`;
+  const addressHost = typeof address === 'object' && address ? address.address : LISTEN_HOST;
+  const urlHost = !addressHost || addressHost === '::' || addressHost === '0.0.0.0'
+    ? 'localhost'
+    : addressHost;
+  const url = `http://${urlHost}:${port}${BASE_PATH}`;
   console.log('');
   console.log('='.repeat(50));
   console.log('  Melaleuca Content QA Tester');

@@ -272,27 +272,33 @@ function renderCategoryTree() {
     return;
   }
 
-  categoryTree.innerHTML = regionConfig.categories.map((category) => `
+  categoryTree.innerHTML = regionConfig.categories.map((category) => {
+    const categoryName = String(category.name || '');
+    return `
     <div class="category-group">
       <div class="category-name">
-        <input type="checkbox" class="category-parent" data-category="${category.name}" checked>
-        <span>${category.name}</span>
+        <input type="checkbox" class="category-parent" data-category="${escapeHtml(categoryName)}" checked>
+        <span>${escapeHtml(categoryName)}</span>
       </div>
       <div class="category-items">
-        ${category.items.map((item) => `
+        ${category.items.map((item) => {
+          const itemLabel = String(item.label || '');
+          return `
           <label class="category-item">
-            <input type="checkbox" name="category" value="${category.name}|${item.label}" checked>
-            <span>${item.label}</span>
+            <input type="checkbox" name="category" value="${escapeHtml(`${categoryName}|${itemLabel}`)}" checked>
+            <span>${escapeHtml(itemLabel)}</span>
           </label>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   categoryTree.querySelectorAll('.category-parent').forEach((parentCheckbox) => {
     parentCheckbox.addEventListener('change', (event) => {
-      const categoryName = event.target.dataset.category;
-      const children = categoryTree.querySelectorAll(`input[value^="${categoryName}|"]`);
+      const group = event.target.closest('.category-group');
+      const children = group ? group.querySelectorAll('input[name="category"]') : [];
       children.forEach((child) => {
         child.checked = event.target.checked;
       });
@@ -731,6 +737,15 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function safeHttpUrl(value) {
+  try {
+    const parsed = new URL(String(value || '').trim());
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch (err) {
+    return '';
+  }
+}
+
 function getCategoryPath(progress) {
   if (!progress) return '';
   return progress.mainCategory
@@ -793,8 +808,9 @@ function renderActivityFeed() {
     const issuesText = issues.length > 0
       ? `<div class="activity-item-detail">${issues.map((issue) => escapeHtml(issue)).join(' | ')}</div>`
       : '';
-    const linkMarkup = item.url
-      ? `<div class="activity-item-link"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open page</a></div>`
+    const itemUrl = safeHttpUrl(item.url);
+    const linkMarkup = itemUrl
+      ? `<div class="activity-item-link"><a href="${escapeHtml(itemUrl)}" target="_blank" rel="noopener noreferrer">Open page</a></div>`
       : '';
 
     return `

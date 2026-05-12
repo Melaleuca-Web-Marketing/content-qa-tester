@@ -31,6 +31,26 @@ const BASE_PATH = (window.__BASE_PATH || '').replace(/\/+$/, '');
 const api = (path) => `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
 const userId = window.UserSession?.getId?.() || null;
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeHttpUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch {
+    return '';
+  }
+}
+
 // Log user session info
 if (userId) {
   const storageStatus = window.UserSession?.getStorageStatus?.() || 'unknown';
@@ -1581,19 +1601,21 @@ function renderActivityFeed() {
 
   activityList.innerHTML = activityItems.map(item => {
     const icon = item.type === 'error' ? 'X' : 'OK';
-    const timeStr = formatActivityTime(item.timestamp);
+    const timeStr = escapeHtml(formatActivityTime(item.timestamp));
     const itemClass = item.type === 'error' ? 'error' : 'success';
-    const linkMarkup = item.url
-      ? `<div class="activity-item-link"><a href="${item.url}" target="_blank" rel="noopener">Open page</a></div>`
+    const itemUrl = safeHttpUrl(item.url);
+    const linkMarkup = itemUrl
+      ? `<div class="activity-item-link"><a href="${escapeHtml(itemUrl)}" target="_blank" rel="noopener noreferrer">Open page</a></div>`
       : '';
+    const skuLabel = escapeHtml(`SKU ${item.sku}${item.culture ? ` (${item.culture})` : ''}`);
 
     if (item.type === 'error') {
       return `
         <div class="activity-item error">
           <span class="activity-item-icon">${icon}</span>
           <div class="activity-item-content">
-            <div class="activity-item-main">SKU ${item.sku}${item.culture ? ` (${item.culture})` : ''}</div>
-            <div class="activity-item-detail">${item.error}</div>
+            <div class="activity-item-main">${skuLabel}</div>
+            <div class="activity-item-detail">${escapeHtml(item.error)}</div>
             ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
@@ -1609,8 +1631,8 @@ function renderActivityFeed() {
         <div class="activity-item ${itemClass}">
           <span class="activity-item-icon">${icon}</span>
           <div class="activity-item-content">
-            <div class="activity-item-main">SKU ${item.sku}${item.culture ? ` (${item.culture})` : ''}</div>
-            <div class="activity-item-detail">${details.join(' | ')}</div>
+            <div class="activity-item-main">${skuLabel}</div>
+            <div class="activity-item-detail">${escapeHtml(details.join(' | '))}</div>
             ${linkMarkup}
           </div>
           <span class="activity-item-time">${timeStr}</span>
