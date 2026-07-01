@@ -430,6 +430,14 @@ export const config = {
     },
 
     defaults: {
+      components: [
+        'heroCarousel',
+        'variableWindows',
+        'fullWidthBanner',
+        'monthlySpecials',
+        'seasonalCarousel',
+        'brandCTAWindows'
+      ]
     },
 
     timeouts: {

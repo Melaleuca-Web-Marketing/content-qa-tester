@@ -6,7 +6,12 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "install-browsers": "npx playwright install chromium"
+    "install-browsers": "npx playwright install chromium",
+    "desktop:install-browsers": "node desktop/install-playwright-browsers.cjs",
+    "desktop:dev": "electron desktop/main.cjs",
+    "desktop:pack": "npm run desktop:install-browsers && electron-builder --win --dir",
+    "desktop:zip": "npm run desktop:install-browsers && electron-builder --win zip",
+    "desktop:dist": "npm run desktop:install-browsers && electron-builder --win nsis"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -15,6 +20,63 @@
     "playwright": "^1.40.0",
     "ws": "^8.14.2",
     "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.melaleuca.contentqatester",
+    "productName": "Melaleuca Content QA Tester",
+    "asar": true,
+    "asarUnpack": [
+      "public/**/*",
+      "processors/**/*",
+      "report-generators/**/*",
+      "utils/**/*",
+      "node_modules/playwright-core/.local-browsers/**/*",
+      "server.js",
+      "config.js",
+      "categories.template.json",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "desktop/main.cjs"
+    },
+    "files": [
+      "desktop/**/*",
+      "public/**/*",
+      "processors/**/*",
+      "report-generators/**/*",
+      "utils/**/*",
+      "node_modules/playwright-core/.local-browsers/**/*",
+      "server.js",
+      "config.js",
+      "categories.template.json",
+      "package.json",
+      "!reports/**/*",
+      "!results/**/*",
+      "!consolelogs/**/*",
+      "!history.json",
+      "!job-state.json",
+      "!session-lanes.json",
+      "!categories.json"
+    ],
+    "win": {
+      "forceCodeSigning": true,
+      "signAndEditExecutable": true,
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName} Setup ${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "engines": {
     "node": ">=18.0.0"

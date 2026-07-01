@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+dist/
 
 # Generated reports
 reports/
@@ -16,6 +17,7 @@ server.err.log
 history.json
 job-state.json
 session-lanes.json
+natural-language-chat-state.json
 
 # Backup files
 *.backup

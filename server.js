@@ -37,6 +37,32 @@ import crypto from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+function loadLocalEnvFile() {
+  const candidates = [join(__dirname, '.env.local'), join(__dirname, '.env')];
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    raw.split(/\r?\n/).forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const separatorIndex = trimmed.indexOf('=');
+      if (separatorIndex <= 0) return;
+      const key = trimmed.slice(0, separatorIndex).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || process.env[key] !== undefined) return;
+      let value = trimmed.slice(separatorIndex + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      process.env[key] = value;
+    });
+  }
+}
+
+loadLocalEnvFile();
+
 const rawPort = process.env.TESTER_PORT || process.env.PORT || '3000';
 const PORT = Number.isNaN(Number(rawPort)) ? 3000 : Number(rawPort);
 const rawBasePath = process.env.TESTER_BASE_PATH || '/';
@@ -46,7 +72,9 @@ const DATA_DIR = process.env.TESTER_DATA_DIR || __dirname;
 const REPORTS_DIR = join(DATA_DIR, 'reports');
 const JOB_STATE_FILE = join(DATA_DIR, 'job-state.json');
 const SESSION_LANE_FILE = join(DATA_DIR, 'session-lanes.json');
-const LISTEN_HOST = process.env.TESTER_HOST || process.env.HOST || null;
+// Bind to loopback by default so the tester (no auth, drives a browser, serves reports of
+// internal content) is not exposed to the network. Set TESTER_HOST to override intentionally.
+const LISTEN_HOST = process.env.TESTER_HOST || process.env.HOST || '127.0.0.1';
 const parsePositiveInt = (value, fallback) => {
   const parsed = parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -169,6 +197,7 @@ const sessionLaneStore = new SessionLaneStore(SESSION_LANE_FILE, {
 });
 sessionLaneStore.load();
 sessionLaneStore.pruneExpired(true);
+
 initWebSocket(server, {
   resolveUserId: (req) => sessionLaneStore.resolveLaneFromRequest(req),
   allowQueryFallback: TRUST_CLIENT_USER_ID
@@ -182,24 +211,22 @@ router.use((req, res, next) => {
 
 // Global JSON body limit to prevent memory exhaustion
 router.use(express.json({
-  limit: '10mb',  // Maximum request body size
-  strict: true    // Only accept arrays and objects
+  limit: '10mb',
+  strict: true
 }));
 
 // Rate limiting to prevent abuse
-// Dashboard now uses WebSocket for real-time updates with 60s HTTP polling backup
-// Reduced from 5000 to 1000 since WebSocket handles most traffic
+// Dashboard uses WebSocket for real-time updates with HTTP polling fallback.
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Limit each user to 1000 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
   message: { error: 'Too many requests', message: 'Please try again later' },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Prefer server-issued lane ID for user scoping, fallback to IPv6-safe IP key
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Prefer server-issued lane ID for user scoping, fallback to IPv6-safe IP key.
   keyGenerator: (req) => {
     const laneId = getUserId(req);
     if (laneId) return laneId;
-    // Use library's ipKeyGenerator for proper IPv6 handling
     return ipKeyGenerator(req.ip);
   }
 });
@@ -1131,13 +1158,17 @@ router.post('/api/pslp/start', asyncHandler(async (req, res) => {
     return res.status(409).json({ error: 'PSLP capture already in progress' });
   }
 
+  const selectedComponents = Array.isArray(components) && components.length > 0
+    ? components
+    : config.pslp.defaults.components;
+
   const options = {
     testName: normalizedTestName || null,
     environment: environment || 'production',
     region: region || 'us',
     culture: normalizedCultures[0],
     cultures: normalizedCultures,
-    components: components || config.pslp.defaults.components,
+    components: selectedComponents,
     screenWidths: screenWidths || widths || config.pslp.screenWidths,
     username: username || null,
     password: password || null
