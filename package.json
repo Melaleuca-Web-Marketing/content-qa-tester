@@ -14,6 +14,7 @@
     "desktop:dist": "npm run desktop:install-browsers && electron-builder --win nsis"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.1",
     "express": "^4.18.2",
     "express-rate-limit": "^8.2.1",
     "open": "^10.0.0",

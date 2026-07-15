@@ -15,13 +15,16 @@ import { PSLPProcessor } from './processors/pslp-processor.js';
 import { MixInAdProcessor } from './processors/mixinad-processor.js';
 import { SortOrderProcessor } from './processors/sortorder-processor.js';
 import { PDPProcessor } from './processors/pdp-processor.js';
+import { PageProcessor } from './processors/page-processor.js';
 import { generateSkuReport } from './report-generators/sku-report.js';
 import { generateBannerReport } from './report-generators/banner-report.js';
 import { generatePslpReport } from './report-generators/pslp-report.js';
 import { generateMixInAdReport } from './report-generators/mixinad-report.js';
 import { generateSortOrderReport } from './report-generators/sortorder-report.js';
 import { generatePdpReport } from './report-generators/pdp-report.js';
-import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, validateSortOrderConfig, validatePdpConfig, reloadCategories, getCategoriesPath, getCategoriesTemplatePath } from './config.js';
+import { generatePageReport } from './report-generators/page-report.js';
+import { config, validateSkuConfig, validateBannerConfig, validatePslpConfig, validateMixInAdConfig, validateSortOrderConfig, validatePdpConfig, validatePageConfig, reloadCategories, getCategoriesPath, getCategoriesTemplatePath } from './config.js';
+import { isAiReviewAvailable, getAiModel } from './utils/ai-reviewer.js';
 import { asyncHandler } from './utils/async-handler.js';
 import { autoGenerateReport } from './utils/auto-generate-report.js';
 import { loadHistory, saveToHistory, getHistoryLimit, setHistoryLimit, deleteFromHistory, clearHistory, markAsRead } from './utils/history.js';
@@ -96,7 +99,8 @@ const TOOL_CONCURRENCY = {
   sortorder: parsePositiveInt(process.env.TESTER_SORTORDER_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
   pslp: parsePositiveInt(process.env.TESTER_PSLP_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
   sku: parsePositiveInt(process.env.TESTER_SKU_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
-  pdp: parsePositiveInt(process.env.TESTER_PDP_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY)
+  pdp: parsePositiveInt(process.env.TESTER_PDP_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY),
+  page: parsePositiveInt(process.env.TESTER_PAGE_CONCURRENCY, DEFAULT_TOOL_CONCURRENCY)
 };
 const LANE_TOOL_CONCURRENCY = {
   banner: parsePositiveInt(process.env.TESTER_BANNER_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
@@ -104,7 +108,8 @@ const LANE_TOOL_CONCURRENCY = {
   sortorder: parsePositiveInt(process.env.TESTER_SORTORDER_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
   pslp: parsePositiveInt(process.env.TESTER_PSLP_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
   sku: parsePositiveInt(process.env.TESTER_SKU_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
-  pdp: parsePositiveInt(process.env.TESTER_PDP_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY)
+  pdp: parsePositiveInt(process.env.TESTER_PDP_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY),
+  page: parsePositiveInt(process.env.TESTER_PAGE_LANE_CONCURRENCY, DEFAULT_LANE_TOOL_CONCURRENCY)
 };
 const STRICT_EXECUTION_USER_ID = parseBooleanFlag(process.env.TESTER_STRICT_EXECUTION_USER_ID, true);
 const JOB_STATE_MAX_ENTRIES = parsePositiveInt(process.env.TESTER_JOB_STATE_MAX_ENTRIES, 5000);
@@ -396,6 +401,7 @@ function summarizeQueueOptions(options) {
     widthsCount: Array.isArray(options.widths) ? options.widths.length : null,
     categoriesCount: Array.isArray(options.categories) ? options.categories.length : null,
     skusCount: Array.isArray(options.skus) ? options.skus.length : null,
+    pagesCount: Array.isArray(options.pages) ? options.pages.length : null,
     loginEnabled: options.loginEnabled === true
   };
   if (options.excelValidation && typeof options.excelValidation === 'object') {
@@ -420,7 +426,8 @@ const queueScheduler = new LaneJobScheduler({
     sortorder: TOOL_QUEUE_LIMIT,
     pslp: TOOL_QUEUE_LIMIT,
     sku: TOOL_QUEUE_LIMIT,
-    pdp: TOOL_QUEUE_LIMIT
+    pdp: TOOL_QUEUE_LIMIT,
+    page: TOOL_QUEUE_LIMIT
   },
   onEnqueued: (job) => {
     jobStateStore.recordEnqueued(job, {
@@ -586,6 +593,10 @@ function createProcessor(tool, userId) {
       processor = new PDPProcessor();
       reportGenerator = generatePdpReport;
       break;
+    case 'page':
+      processor = new PageProcessor();
+      reportGenerator = generatePageReport;
+      break;
     default:
       return null;
   }
@@ -672,6 +683,14 @@ router.get('/api/config', (req, res) => {
       regions: config.sortorder.regions,
       cultureLangMap: config.sortorder.cultureLangMap,
       defaults: config.sortorder.defaults
+    },
+    page: {
+      screenWidths: config.page.screenWidths,
+      authModes: config.page.authModes,
+      maxPages: config.page.maxPages,
+      defaults: config.page.defaults,
+      aiReviewAvailable: isAiReviewAvailable(),
+      aiModel: isAiReviewAvailable() ? getAiModel() : null
     }
   });
 });
@@ -1664,6 +1683,167 @@ router.post('/api/pdp/update-credentials', (req, res) => {
 router.get('/api/pdp/results', (req, res) => {
   const userId = getUserId(req);
   res.json(getProcessorResults(userId, 'pdp'));
+});
+
+// ============ Page Tester Routes ============
+
+router.get('/api/page/status', (req, res) => {
+  const userId = getUserId(req);
+  res.json(getProcessorStatus(userId, 'page'));
+});
+
+router.post('/api/page/start', asyncHandler(async (req, res) => {
+  const effectiveUserId = getExecutionLaneId(req, res);
+  if (!effectiveUserId) return;
+  console.log(`[API] POST /api/page/start | userId: ${effectiveUserId} | page count: ${req.body.pages?.length || 0}`);
+  const {
+    pages, environment, region, culture, cultures,
+    authModes, widths, aiReview,
+    username, password, testName
+  } = req.body;
+  const normalizedTestName = typeof testName === 'string' ? testName.trim() : '';
+
+  if (!pages || !Array.isArray(pages) || pages.length === 0) {
+    return res.status(400).json({ error: 'No pages provided' });
+  }
+
+  const normalizedPages = pages
+    .map(p => String(p).trim())
+    .filter(Boolean);
+
+  if (normalizedPages.length === 0) {
+    return res.status(400).json({ error: 'No pages provided' });
+  }
+
+  const invalidPage = normalizedPages.find(p =>
+    p.length > 500
+    || /[<>"'`\s]/.test(p)
+    || !(p.startsWith('/') || /^https?:\/\//i.test(p))
+  );
+  if (invalidPage) {
+    return res.status(400).json({
+      error: 'Invalid page entry',
+      message: 'Each page must be a site-relative path ("/...") or an http(s) URL, 500 characters or fewer, with no spaces or HTML/script characters.'
+    });
+  }
+
+  if (typeof testName === 'string' && normalizedTestName.length > 120) {
+    return res.status(400).json({ error: 'Test name too long', message: 'Maximum 120 characters allowed' });
+  }
+
+  const normalizedCultures = Array.isArray(cultures)
+    ? cultures.map(c => String(c).trim()).filter(Boolean)
+    : (culture ? [String(culture).trim()] : []);
+  const defaultCulture = config.page.defaults?.culture || 'en-US';
+  const selectedCultures = normalizedCultures.length > 0
+    ? normalizedCultures
+    : [defaultCulture];
+
+  const normalizedAuthModes = Array.isArray(authModes)
+    ? [...new Set(authModes.map(m => String(m).trim()).filter(Boolean))]
+    : [...config.page.defaults.authModes];
+
+  const normalizedWidths = Array.isArray(widths)
+    ? widths.map(Number).filter(w => Number.isFinite(w) && w >= 200 && w <= 3840)
+    : undefined;
+
+  const options = {
+    testName: normalizedTestName || null,
+    pages: normalizedPages,
+    environment: environment || config.page.defaults.environment,
+    region: region || config.page.defaults.region,
+    culture: selectedCultures[0],
+    cultures: selectedCultures,
+    authModes: normalizedAuthModes,
+    aiReview: aiReview === true,
+    username: username || null,
+    password: password || null
+  };
+  if (normalizedWidths !== undefined) options.widths = normalizedWidths;
+
+  const errors = validatePageConfig(options);
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join(', ') });
+  }
+
+  const pageProcessor = getProcessor(effectiveUserId, 'page');
+  if (pageProcessor.getStatus().isRunning) {
+    return res.status(409).json({ error: 'Page test already in progress' });
+  }
+
+  const queueResult = enqueueToolJob({
+    tool: 'page',
+    userId: effectiveUserId,
+    processor: pageProcessor,
+    options,
+    startFn: () => pageProcessor.start(options).catch(err => {
+      console.error('Page test error:', err);
+      broadcast({
+        type: 'error',
+        tool: 'page',
+        data: { message: getClientErrorMessage(err, 'Page test failed') }
+      }, effectiveUserId);
+      throw err;
+    })
+  });
+
+  if (queueResult.rejected) {
+    return res.status(429).json({
+      error: 'Queue is full',
+      message: 'Too many captures are queued. Please try again later.'
+    });
+  }
+
+  // Broadcast immediate status update via WebSocket
+  broadcast({ type: 'page-status', data: getProcessorStatus(effectiveUserId, 'page') }, effectiveUserId);
+
+  if (queueResult.queued) {
+    return res.json(buildQueuedStartResponse(queueResult, 'Page test queued'));
+  }
+
+  res.json(buildStartedResponse(queueResult, 'Page test started'));
+}));
+
+router.post('/api/page/stop', (req, res) => {
+  const effectiveUserId = getExecutionLaneId(req, res);
+  if (!effectiveUserId) return;
+  const pageProcessor = getProcessor(effectiveUserId, 'page');
+  const cancelledJob = cancelQueuedJob(effectiveUserId, 'page');
+  if (cancelledJob) {
+    broadcast({ type: 'page-status', data: pageProcessor.getStatus() }, effectiveUserId);
+    return res.json({ ok: true, jobId: cancelledJob.id, message: 'Removed from queue' });
+  }
+  pageProcessor.stop();
+  broadcast({ type: 'page-status', data: pageProcessor.getStatus() }, effectiveUserId);
+  res.json({ ok: true, message: 'Stop requested' });
+});
+
+router.post('/api/page/resume', (req, res) => {
+  const effectiveUserId = getExecutionLaneId(req, res);
+  if (!effectiveUserId) return;
+  const pageProcessor = getProcessor(effectiveUserId, 'page');
+  pageProcessor.resume();
+  broadcast({ type: 'page-status', data: pageProcessor.getStatus() }, effectiveUserId);
+  res.json({ ok: true, message: 'Resume requested' });
+});
+
+router.post('/api/page/update-credentials', (req, res) => {
+  const effectiveUserId = getExecutionLaneId(req, res);
+  if (!effectiveUserId) return;
+  const pageProcessor = getProcessor(effectiveUserId, 'page');
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  pageProcessor.updateCredentials(username, password);
+  res.json({ ok: true, message: 'Credentials updated' });
+});
+
+router.get('/api/page/results', (req, res) => {
+  const userId = getUserId(req);
+  res.json(getProcessorResults(userId, 'page'));
 });
 
 router.get('/api/queues/me', (req, res) => {

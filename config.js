@@ -509,6 +509,59 @@ export const config = {
     }
   },
 
+  // ============ PAGE TESTER CONFIGURATION ============
+  page: {
+    screenWidths: [320, 415, 576, 768, 992, 1210],
+
+    maxPages: 100,
+
+    authModes: ['signedOut', 'signedIn'],
+
+    // Known Melaleuca component selectors for the component inventory check
+    componentSelectors: {
+      heroCarousel: '.o-heroCarousel',
+      fullWidthBanner: '[data-testid="link-fullWidthBanner"], .m-fwBanner',
+      variableWindows: '.m-varWindow',
+      monthlySpecials: '.o-monthlySpecial__slide',
+      featuredCategories: '.o-categorySection__listItem',
+      seasonalCarousel: '.o-seasonalCarousel__slide',
+      brandCTAWindows: '.m-ctaBlock__link',
+      productCarousel: '.m-prodCard',
+      mixinAd: '.m-mixinAd, article.m-mixinAd',
+      productGrid: 'ul.p-catListing__grid > li.p-catListing__col',
+      productDetails: '.o-productDetails',
+      cartShelf: '.o-cartShelf, .o-shelf'
+    },
+
+    selectors: {
+      login: {
+        homePageSignInButton: "a.a-authorBtn",
+        username: "[data-testid='username-input']",
+        password: "[data-testid='password-input']",
+        loginButton: "[data-testid='signIn-button']",
+        errorMessage: "[data-testid='invalidCredential-container']:not(.hidden)"
+      },
+      loggedInIndicator: ".m-headerAccount__name"
+    },
+
+    timeouts: {
+      pageLoad: 45000,
+      loginWait: 10000,
+      settle: 2000,
+      screenshotDelay: 1500,
+      betweenPages: 800,
+      imageLoad: 15000
+    },
+
+    defaults: {
+      environment: 'production',
+      region: 'us',
+      culture: 'en-US',
+      authModes: ['signedOut'],
+      widths: [1210]
+    }
+  },
+
   // ============ PDP TESTER CONFIGURATION ============
   pdp: {
     screenWidths: [320, 415, 576, 768, 992, 1210],
@@ -819,6 +872,94 @@ export function validatePdpConfig(options) {
 
   return errors;
 }
+// ============ PAGE TESTER HELPER FUNCTIONS ============
+
+// Build a testable URL for the page tester.
+// Accepts a site-relative path ("/productstore/supplements") or a full URL.
+// Ensures sc_lang carries the requested culture unless the URL already sets it.
+export function buildPageTestUrl(environment, region, culture, pageEntry) {
+  const raw = String(pageEntry || '').trim();
+  if (!raw) return null;
+
+  let url;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      url = new URL(raw);
+    } catch {
+      return null;
+    }
+  } else {
+    const baseUrl = getBaseUrl(environment, region);
+    if (!baseUrl) return null;
+    const path = raw.startsWith('/') ? raw : `/${raw}`;
+    try {
+      url = new URL(`${baseUrl}${path}`);
+    } catch {
+      return null;
+    }
+  }
+
+  if (culture && !url.searchParams.has('sc_lang')) {
+    url.searchParams.set('sc_lang', culture);
+  }
+  return url.href;
+}
+
+// Validate Page Tester configuration
+export function validatePageConfig(options) {
+  const errors = [];
+
+  if (!config.environments[options.environment]) {
+    errors.push(`Invalid environment: ${options.environment}. Valid: ${Object.keys(config.environments).join(', ')}`);
+  }
+
+  if (!config.regions[options.region]) {
+    errors.push(`Invalid region: ${options.region}. Valid: ${Object.keys(config.regions).join(', ')}`);
+  }
+
+  const validCultures = getCulturesForRegion(options.region);
+  const selectedCultures = Array.isArray(options.cultures) && options.cultures.length > 0
+    ? options.cultures
+    : (options.culture ? [options.culture] : []);
+
+  if (selectedCultures.length === 0) {
+    errors.push('At least one culture must be selected');
+  } else if (validCultures.length > 0) {
+    const invalidCultures = selectedCultures.filter(culture => !validCultures.includes(culture));
+    if (invalidCultures.length > 0) {
+      errors.push(`Invalid culture(s) for region ${options.region}: ${invalidCultures.join(', ')}. Valid: ${validCultures.join(', ')}`);
+    }
+  }
+
+  if (!Array.isArray(options.pages) || options.pages.length === 0) {
+    errors.push('At least one page must be provided');
+  } else if (options.pages.length > config.page.maxPages) {
+    errors.push(`Maximum ${config.page.maxPages} pages allowed per run`);
+  }
+
+  const authModes = Array.isArray(options.authModes) ? options.authModes : [];
+  if (authModes.length === 0) {
+    errors.push('At least one auth mode (signed out / signed in) must be selected');
+  } else {
+    const invalidModes = authModes.filter(mode => !config.page.authModes.includes(mode));
+    if (invalidModes.length > 0) {
+      errors.push(`Invalid auth mode(s): ${invalidModes.join(', ')}. Valid: ${config.page.authModes.join(', ')}`);
+    }
+  }
+
+  if (authModes.includes('signedIn') && (!options.username || !options.password)) {
+    errors.push('Username and password are required for signed-in testing');
+  }
+
+  if (options.widths !== undefined && (!Array.isArray(options.widths) || options.widths.length === 0)) {
+    errors.push('At least one viewport width must be selected');
+  }
+
+  validateOptionalTestName(options, errors);
+
+  return errors;
+}
+
 // Reload categories from disk and update config
 export function reloadCategories() {
   console.log('Reloading categories from disk...');

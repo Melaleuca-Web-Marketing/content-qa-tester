@@ -347,6 +347,20 @@
       box-shadow: 0 20px 40px rgba(168, 85, 247, 0.2);
     }
 
+    .mode-card.page .mode-icon {
+      color: #14b8a6;
+    }
+
+    .mode-card.page {
+      --card-accent: #14b8a6;
+      background: linear-gradient(180deg, rgba(20, 184, 166, 0.18), rgba(20, 184, 166, 0.05)), var(--bg-item);
+    }
+
+    .mode-card.page:hover {
+      border-color: #14b8a6;
+      box-shadow: 0 20px 40px rgba(20, 184, 166, 0.2);
+    }
+
     .mode-card.sku:hover {
       border-color: #22c55e;
       box-shadow: 0 20px 40px rgba(34, 197, 94, 0.2);
@@ -484,6 +498,12 @@
       --tool-accent: #a855f7;
       --tool-accent-strong: #9333ea;
       --tool-accent-soft: rgba(168, 85, 247, 0.14);
+    }
+
+    .job-card.page {
+      --tool-accent: #14b8a6;
+      --tool-accent-strong: #0d9488;
+      --tool-accent-soft: rgba(20, 184, 166, 0.14);
     }
 
     .job-card.waiting-auth {
@@ -774,6 +794,12 @@
       --tool-accent: #a855f7;
       --tool-accent-strong: #9333ea;
       --tool-accent-soft: rgba(168, 85, 247, 0.12);
+    }
+
+    .history-item.page {
+      --tool-accent: #14b8a6;
+      --tool-accent-strong: #0d9488;
+      --tool-accent-soft: rgba(20, 184, 166, 0.12);
     }
 
     /* Unread history items */
@@ -1415,6 +1441,21 @@
               <span class="feature-tag">Login Support</span>
             </div>
           </a>
+
+          <a href="page-tester.html" class="mode-card page">
+            <div class="mode-icon">&#127760;</div>
+            <div class="mode-title">Test Any Page</div>
+            <div class="mode-description">
+              Content-test any page on the site: images, titles &amp; headings, Melaleuca components, and screenshots — with optional AI review of the results.
+            </div>
+            <div class="features">
+              <span class="feature-tag">Any URL</span>
+              <span class="feature-tag">Signed In/Out</span>
+              <span class="feature-tag">Content Checks</span>
+              <span class="feature-tag">AI Review</span>
+              <span class="feature-tag">All Environments</span>
+            </div>
+          </a>
         </div>
         <button class="mode-carousel-nav next" type="button" data-mode-next aria-label="Next testing modes">&rsaquo;</button>
         <div class="mode-carousel-dots" aria-label="Testing mode carousel pages"></div>
@@ -1644,7 +1685,8 @@
         pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp', page: 'pslp-tester.html' },
         mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad', page: 'mixinad-tester.html' },
         sortorder: { name: 'Sort Order Test', icon: '&#8645;', class: 'sortorder', page: 'sortorder-tester.html' },
-        pdp: { name: 'PDP Test', icon: '&#128196;', class: 'pdp', page: 'pdp-tester.html' }
+        pdp: { name: 'PDP Test', icon: '&#128196;', class: 'pdp', page: 'pdp-tester.html' },
+        page: { name: 'Page Test', icon: '&#127760;', class: 'page', page: 'page-tester.html' }
       };
 
       let jobStates = {
@@ -1653,7 +1695,8 @@
         pslp: null,
         mixinad: null,
         sortorder: null,
-        pdp: null
+        pdp: null,
+        page: null
       };
 
       let jobStartTimes = {
@@ -1662,7 +1705,8 @@
         pslp: null,
         mixinad: null,
         sortorder: null,
-        pdp: null
+        pdp: null,
+        page: null
       };
 
       let jobEtaCache = {
@@ -1671,7 +1715,8 @@
         pslp: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
         mixinad: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
         sortorder: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
-        pdp: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null }
+        pdp: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null },
+        page: { lastKey: null, lastEtaMs: null, lastUpdatedAt: null }
       };
 
       // Track which tools have already notified for credential errors (to avoid duplicates)
@@ -1898,7 +1943,7 @@
 
       // Fetch status for all processors
       async function updateAllStatuses() {
-        const tools = ['sku', 'banner', 'pslp', 'mixinad', 'sortorder', 'pdp'];
+        const tools = ['sku', 'banner', 'pslp', 'mixinad', 'sortorder', 'pdp', 'page'];
 
         for (const tool of tools) {
           try {
@@ -2266,7 +2311,8 @@
         pslp: { name: 'PSLP Test', icon: '&#127968;', class: 'pslp' },
         mixinad: { name: 'Mix-In Ad Test', icon: '&#128202;', class: 'mixinad' },
         sortorder: { name: 'Sort Order Test', icon: '&#8645;', class: 'sortorder' },
-        pdp: { name: 'PDP Test', icon: '&#128196;', class: 'pdp' }
+        pdp: { name: 'PDP Test', icon: '&#128196;', class: 'pdp' },
+        page: { name: 'Page Test', icon: '&#127760;', class: 'page' }
       };
 
       let history = [];
