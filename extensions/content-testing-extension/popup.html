@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Content Testing Tools</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="logo">CT</div>
+      <div>
+        <h1>Content Testing Tools</h1>
+        <div class="sub">Melaleuca Content QA</div>
+      </div>
+    </div>
+    <label class="switch" title="Turn the extension on or off">
+      <input type="checkbox" id="enabled">
+      <span class="slider"></span>
+      <span id="enabledLabel">On</span>
+    </label>
+  </header>
+
+  <section class="card">
+    <h2>Culture Links <span class="tag">Flagged on this page</span></h2>
+    <div id="flagged" class="list muted">Loading…</div>
+  </section>
+
+  <section class="card">
+    <h2>Ignore list <span id="count" class="pill"></span></h2>
+    <form id="addForm">
+      <input id="addInput" placeholder="e.g. riverbend.melaleuca.com or www.melaleuca.com/grow*" autocomplete="off">
+      <button class="primary">Add</button>
+    </form>
+    <div id="rules" class="list"></div>
+    <label class="check"><input type="checkbox" id="showIgnored"> Show ignored links on the page (dotted grey)</label>
+  </section>
+
+  <details class="card">
+    <summary>Import / export</summary>
+    <p class="muted">One rule per line. Share this list with teammates.</p>
+    <textarea id="io" rows="5"></textarea>
+    <div class="row">
+      <button id="exportBtn">Load current list</button>
+      <button id="importBtn">Merge into list</button>
+      <button id="clearBtn" class="danger">Clear all</button>
+    </div>
+  </details>
+
+  <p class="muted help">
+    Rules match the start of a link (no https://). <code>riverbend.melaleuca.com</code> ignores that host;
+    <code>www.melaleuca.com/grow</code> ignores that path; <code>*</code> is a wildcard.
+    You can also right-click any link on the page.
+  </p>
+  <script src="popup.js"></script>
+</body>
+</html>
