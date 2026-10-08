@@ -101,6 +101,31 @@ async function renderFlagged() {
   }
 }
 
+// ---- banner preview ---------------------------------------------------------
+// Opens the Banner Preview page (re-using the tab if it's already open). "#import-tab=<id>" makes the
+// page pull the banner out of that melaleuca.com tab.
+async function openBannerPreview(hash = "") {
+  const url = chrome.runtime.getURL("banner-preview/index.html");
+  let existing = null;
+  try { [existing] = await chrome.tabs.query({ url: url + "*" }); } catch {}
+  if (existing) {
+    await chrome.tabs.update(existing.id, { active: true, ...(hash ? { url: url + hash } : {}) });
+    await chrome.windows.update(existing.windowId, { focused: true });
+  } else {
+    await chrome.tabs.create({ url: url + hash });
+  }
+  window.close();
+}
+
+(async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  let onMelaleuca = false;
+  try { const h = new URL(tab.url).hostname; onMelaleuca = h === "melaleuca.com" || h.endsWith(".melaleuca.com"); } catch {}
+  $("importBp").hidden = !onMelaleuca;
+  $("importBp").addEventListener("click", () => openBannerPreview("#import-tab=" + tab.id));
+})();
+$("openBp").addEventListener("click", () => openBannerPreview());
+
 // ---- wiring -------------------------------------------------------------
 $("addForm").addEventListener("submit", async (e) => {
   e.preventDefault();

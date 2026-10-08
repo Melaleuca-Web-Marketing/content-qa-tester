@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banner Preview</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo">BP</div>
+    <div><h1>Banner Preview</h1><div class="sub">Content Testing Tools</div></div>
+  </div>
+  <div class="projbar">
+    <select id="projSel" title="Saved banners"></select>
+    <button id="projNew" title="Start a new banner">New</button>
+    <button id="projDup" title="Copy this banner (e.g. next month's version)">Duplicate</button>
+    <button id="projRename">Rename</button>
+    <button id="projDel" class="danger">Delete</button>
+    <span class="sep"></span>
+    <button id="importTab" title="Pull a banner from an open melaleuca.com tab">Import from tab…</button>
+    <button id="exportBtn" title="Save this banner (copy, images, zones) as a .json file to share">Export</button>
+    <label class="btn" title="Open a banner exported by a teammate">Import file<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+  </div>
+  <div id="saveStatus" class="status"></div>
+</header>
+
+<main>
+  <aside id="side">
+    <section class="panel">
+      <h2>Copy <span class="hint">one snippet per language</span></h2>
+      <div id="langTabs" class="langs"></div>
+      <div id="editor" class="editorBox"></div>
+      <div class="row">
+        <button id="formatHtml" title="Indent the HTML (Shift+Alt+F). Doesn't change how it renders.">Format</button>
+        <button id="classRef" title="Browse the brand classes: colors, typography, spacing…">Classes…</button>
+        <button id="copyHtml">Copy HTML</button>
+        <span id="classStatus" class="hint"></span>
+      </div>
+      <span id="fullNote" class="note" hidden>Whole banner pasted: layout comes from your snippet.</span>
+      <ul id="lint" class="issues"></ul>
+    </section>
+
+    <section class="panel" id="layoutPanel">
+      <h2>Template &amp; layout</h2>
+      <label class="field"><span>Template</span><select id="tplSel"></select></label>
+      <div id="layoutFields">
+        <div class="grid2">
+          <label class="field"><span>Banner height</span><select id="lyHeight"></select></label>
+          <label class="field"><span>Content width</span><select id="lyWidth"></select></label>
+          <label class="field"><span>Horizontal</span><select id="lyAlign"></select></label>
+          <label class="field"><span>Vertical</span><select id="lyValign"></select></label>
+        </div>
+        <label class="field"><span>Extra row classes</span><input id="lyExtra" placeholder="e.g. pt-24" autocomplete="off"></label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Background images <span class="hint">drop files or paste URLs</span></h2>
+      <div id="slots"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Design overlays <span class="hint">XD artboard exports</span></h2>
+      <p class="hint block">Add an XD export or <strong>paste a screenshot (Ctrl+V)</strong>. It's sized to the banner and shown
+        on the viewport(s) you pick. Compare with <em>Overlay</em>, <em>Swipe</em> or <em>Below</em> in the toolbar;
+        turn on <em>Move</em> to drag it into place.</p>
+      <div id="designs"></div>
+      <label class="btn">Add design image…<input type="file" id="designFile" accept="image/*" multiple hidden></label>
+    </section>
+
+    <details class="panel" id="settingsPanel">
+      <summary>Settings</summary>
+      <label class="field"><span>Viewports (one per line: name width)</span><textarea id="setDevices" rows="8" spellcheck="false"></textarea></label>
+      <label class="field"><span>Stylesheets (one URL per line)</span><textarea id="setCss" rows="5" spellcheck="false" wrap="off"></textarea></label>
+      <label class="field"><span>Base URL for relative links and images</span><input id="setBase" spellcheck="false"></label>
+      <label class="field"><span>Center copy tolerance (px off-center before the guides turn amber)</span><input id="setTolerance" type="number" min="0" max="100" style="width:90px"></label>
+      <div class="field">
+        <span>Custom page templates</span>
+        <div id="customTpls"></div>
+        <label class="btn small">Add template (.html)…<input type="file" id="tplFile" accept=".html,.htm" hidden></label>
+        <p class="hint block">Must contain <code>@@BANNER_SNIPPET@@</code>. Can use <code>@@BANNER_DESKTOP@@</code>,
+          <code>@@BANNER_MEDIUM@@</code>, <code>@@BANNER_SMALL@@</code> and <code>&lt;!-- BRAND_CSS --&gt;</code>
+          (same tokens as the VS Code extension's page-context.html).</p>
+      </div>
+      <div class="row">
+        <button id="applySettings" class="primary">Apply</button>
+        <button id="resetSettings">Reset to defaults</button>
+      </div>
+    </details>
+  </aside>
+
+  <div id="splitter" title="Drag to resize"></div>
+
+  <section id="stage">
+    <div class="toolbar">
+      <div class="seg" id="viewSeg">
+        <button data-view="viewports">Viewports</button>
+        <button data-view="compare">Compare languages</button>
+      </div>
+      <select id="compareWidth" title="Width to compare languages at"></select>
+      <label class="tb"><span>Zoom</span><input type="range" id="zoom" min="25" max="150" step="5"><output id="zoomOut"></output></label>
+      <label class="tb chk" title="Shrink wide viewports to fit the panel"><input type="checkbox" id="fit"> Fit</label>
+      <label class="tb chk" title="Add tiles 1px below each breakpoint (414, 575, 767, 991, 1023, 1209), where layouts are tightest"><input type="checkbox" id="edges"> Breakpoint edges</label>
+      <label class="tb chk" title="A tile you can drag to any width"><input type="checkbox" id="sweep"> Free width</label>
+      <span class="tbsep"></span>
+      <label class="tb" title="Lengthen the copy to see how longer translations will fit"><span>Text expansion</span>
+        <select id="expansion">
+          <option value="off">Off</option>
+          <option value="smart">Smart (by string length)</option>
+          <option value="15">+15%</option>
+          <option value="30">+30%</option>
+          <option value="50">+50%</option>
+          <option value="100">+100%</option>
+        </select>
+      </label>
+      <label class="tb chk" title="Swap letters for accented ones (Ä É Š Ž ą ę ł) to catch clipped ascenders/descenders"><input type="checkbox" id="accents"> Accents</label>
+      <span class="tbsep"></span>
+      <label class="tb chk"><input type="checkbox" id="showZones"> Zones</label>
+      <label class="tb chk"><input type="checkbox" id="showDesign"> Design</label>
+      <label class="tb" id="designCtl" title="How the design is compared with the build">
+        <select id="designMode">
+          <option value="overlay">Overlay</option>
+          <option value="swipe">Swipe (hover)</option>
+          <option value="below">Below</option>
+        </select>
+        <input type="range" id="designOpacity" min="0" max="100" title="Overlay opacity">
+        <select id="designBlend" title="Difference makes mismatches light up"><option value="normal">Normal</option><option value="difference">Difference</option></select>
+      </label>
+      <label class="tb chk" id="designMoveLabel" title="Drag the design in a tile to line it up; arrow keys nudge 1px (Shift = 10px)"><input type="checkbox" id="designMove"> Move</label>
+      <span class="spacer"></span>
+      <span id="summary" class="chip"></span>
+      <button id="checkAll" class="primary" title="Render every language at every viewport and list problems">Check all languages</button>
+    </div>
+    <nav id="jumpbar" aria-label="Jump to viewport"></nav>
+    <div id="matrix" hidden></div>
+    <div id="tiles"></div>
+  </section>
+</main>
+
+<dialog id="zoneDlg">
+  <div class="dlgHead">
+    <h3>Keep-out zones: <span id="zoneSlot"></span></h3>
+    <button id="zoneClose" class="icon" title="Close">×</button>
+  </div>
+  <div class="row" style="margin:0 0 8px">
+    <div class="seg" id="zoneModeSeg">
+      <button data-mode="zone" title="Areas copy must not cover">Keep-out zone</button>
+      <button data-mode="area" title="The space the copy should be centered in (optional)">Copy area</button>
+    </div>
+  </div>
+  <p class="hint block"><strong>Keep-out zones:</strong> drag over parts of the image copy must not cover (products, faces, logos).
+    They also mark where the objects begin for the <em>Center copy</em> check.
+    <strong>Copy area</strong> (optional, one per image): the exact space to center the copy in. Without one,
+    the space runs from the banner edges to the nearest zone. Start it at the image's edge to mean "the banner edge".
+    Everything is stored relative to the image, so it follows the crop at each width; white dashed outlines show
+    what's visible at the narrowest and widest viewports that use this image.</p>
+  <div id="zoneStage"><img id="zoneImg" alt=""><div id="zoneGuides"></div><div id="zoneLayer"></div></div>
+  <div class="row">
+    <button id="zoneClear" class="danger">Remove all</button>
+    <span class="spacer"></span>
+    <button id="zoneDone" class="primary">Done</button>
+  </div>
+</dialog>
+
+<dialog id="pickDlg">
+  <div class="dlgHead"><h3 id="pickTitle"></h3><button class="icon" id="pickClose" title="Cancel">×</button></div>
+  <form id="pickForm" method="dialog">
+    <div id="pickBody"></div>
+    <div id="pickList" class="pickList"></div>
+  </form>
+</dialog>
+
+<dialog id="classDlg">
+  <div class="dlgHead">
+    <h3>Brand classes <span id="classCount" class="hint"></span></h3>
+    <button id="classClose" class="icon" title="Close">×</button>
+  </div>
+  <div class="row" style="margin:0 0 8px">
+    <input id="classSearch" placeholder="Search: blue, padding-left, 28px, font-bold…" autocomplete="off" spellcheck="false">
+    <select id="classPrefix" title="Breakpoint / state prefix"><option value="">All widths</option></select>
+  </div>
+  <div class="seg" id="classKinds"></div>
+  <div id="classList" class="classList"></div>
+  <p class="hint block" style="margin:8px 0 0">Click to add it at the cursor when it's inside <code>class="…"</code>; otherwise it's copied.</p>
+</dialog>
+
+<div id="toast" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
