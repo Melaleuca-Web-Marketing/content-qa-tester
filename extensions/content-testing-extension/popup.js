@@ -101,13 +101,18 @@ async function renderFlagged() {
   }
 }
 
-// ---- banner preview ---------------------------------------------------------
-// Opens the Banner Preview page (re-using the tab if it's already open). "#import-tab=<id>" makes the
-// page pull the banner out of that melaleuca.com tab.
-async function openBannerPreview(hash = "") {
-  const url = chrome.runtime.getURL("banner-preview/index.html");
+// ---- Category Banner Preview / Mix-In Ad Preview -----------------------------------
+// Both tools are the same page: banner-preview/index.html, and index.html?tool=mixin for mix-ins.
+// Re-uses the tool's tab if it's already open. "#import-tab=<id>" makes the page pull the
+// banner/ad out of that melaleuca.com tab.
+async function openPreview(tool, hash = "") {
+  const base = chrome.runtime.getURL("banner-preview/index.html");
+  const url = base + (tool === "mixin" ? "?tool=mixin" : "");
   let existing = null;
-  try { [existing] = await chrome.tabs.query({ url: url + "*" }); } catch {}
+  try {
+    const tabs = await chrome.tabs.query({ url: base + "*" });
+    existing = tabs.find((t) => (new URL(t.url).searchParams.get("tool") === "mixin" ? "mixin" : "banner") === tool);
+  } catch {}
   if (existing) {
     await chrome.tabs.update(existing.id, { active: true, ...(hash ? { url: url + hash } : {}) });
     await chrome.windows.update(existing.windowId, { focused: true });
@@ -117,14 +122,30 @@ async function openBannerPreview(hash = "") {
   window.close();
 }
 
+// On a melaleuca.com page, offer to import whichever of the two the page actually has.
 (async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   let onMelaleuca = false;
   try { const h = new URL(tab.url).hostname; onMelaleuca = h === "melaleuca.com" || h.endsWith(".melaleuca.com"); } catch {}
-  $("importBp").hidden = !onMelaleuca;
-  $("importBp").addEventListener("click", () => openBannerPreview("#import-tab=" + tab.id));
+  if (!onMelaleuca) return;
+  let found = { banners: 1, mixins: 1 }; // if the page can't be read, show both and let the tool explain
+  try {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => ({
+        banners: document.querySelectorAll(".m-fwBanner .m-rte").length,
+        mixins: document.querySelectorAll(".m-mixinAd .m-mixinAd__headline").length,
+      }),
+    });
+    if (r && r.result) found = r.result;
+  } catch {}
+  $("importBp").hidden = !found.banners;
+  $("importMp").hidden = !found.mixins;
+  $("importBp").addEventListener("click", () => openPreview("banner", "#import-tab=" + tab.id));
+  $("importMp").addEventListener("click", () => openPreview("mixin", "#import-tab=" + tab.id));
 })();
-$("openBp").addEventListener("click", () => openBannerPreview());
+$("openBp").addEventListener("click", () => openPreview("banner"));
+$("openMp").addEventListener("click", () => openPreview("mixin"));
 
 // ---- wiring -------------------------------------------------------------
 $("addForm").addEventListener("submit", async (e) => {

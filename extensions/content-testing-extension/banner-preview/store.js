@@ -53,8 +53,16 @@ export const delBlob = (key) => tx("readwrite", (s) => s.delete(key));
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+// ---- tool namespace -------------------------------------------------------------
+// Category Banner Preview ("bp") and Mix-In Ad Preview ("mp") share this code but keep separate
+// saved items and settings, so a mix-in never shows up in the banner list or vice versa.
+let NS = "bp";
+let TOOL = "banner";
+export function setNamespace(ns, tool) { NS = ns; TOOL = tool; }
+export const nsKey = (name, ns = NS) => `${ns}.${name}`;
+
 // ---- settings ---------------------------------------------------------------
-const SETTINGS_KEY = "bp.settings";
+const settingsKey = () => nsKey("settings");
 
 // Widths match the Tailwind breakpoints in the live app.css (xs 415, sm 576, md 768, lg 992, xl 1210).
 export const DEFAULT_SETTINGS = {
@@ -101,25 +109,27 @@ export const DEFAULT_SETTINGS = {
 const OLD_DEFAULT_WIDTHS = "320,415,576,768,992,1024,1210,1440";
 
 export async function loadSettings() {
-  const s = await getJSON(SETTINGS_KEY, {});
+  const s = await getJSON(settingsKey(), {});
   if (Array.isArray(s.devices) && s.devices.map((d) => d.width).join(",") === OLD_DEFAULT_WIDTHS) delete s.devices;
   return { ...DEFAULT_SETTINGS, ...s };
 }
 
-export const saveSettings = (s) => setJSON(SETTINGS_KEY, s);
+export const saveSettings = (s) => setJSON(settingsKey(), s);
 
-// ---- banners (projects) -----------------------------------------------------
-const INDEX_KEY = "bp.projects";
-const LAST_KEY = "bp.lastProject";
-const pKey = (id) => "bp.project." + id;
+// ---- banners / ads (projects) -----------------------------------------------------
+const indexKey = () => nsKey("projects");
+const lastKey = () => nsKey("lastProject");
+const pKey = (id) => nsKey("project." + id);
 
-export function newProject(name = "Untitled banner") {
+export function newProject(name = "Untitled", tool = TOOL) {
   return {
     id: uid(),
     name,
+    tool,
     updated: new Date().toISOString(),
-    template: "category",
+    template: tool === "mixin" ? "mixin" : "category",
     layout: { height: "-h-sm", width: "-w-sm", align: "-left", valign: "", extra: "" },
+    mixin: { neighbors: true }, // mix-in only: show product cards beside the ad
     langs: [{ code: "en-US", html: "" }],
     activeLang: "en-US",
     images: {}, // slot -> { url } | { blob, name }
@@ -130,10 +140,10 @@ export function newProject(name = "Untitled banner") {
   };
 }
 
-export const listProjects = () => getJSON(INDEX_KEY, []);
+export const listProjects = () => getJSON(indexKey(), []);
 export const loadProject = (id) => getJSON(pKey(id), null);
-export const getLastProjectId = () => getJSON(LAST_KEY, null);
-export const setLastProjectId = (id) => setJSON(LAST_KEY, id);
+export const getLastProjectId = () => getJSON(lastKey(), null);
+export const setLastProjectId = (id) => setJSON(lastKey(), id);
 
 export async function saveProject(p) {
   p.updated = new Date().toISOString();
@@ -142,7 +152,7 @@ export async function saveProject(p) {
   const i = index.findIndex((x) => x.id === p.id);
   const row = { id: p.id, name: p.name, updated: p.updated };
   if (i >= 0) index[i] = row; else index.unshift(row);
-  await setJSON(INDEX_KEY, index);
+  await setJSON(indexKey(), index);
 }
 
 function blobKeys(p) {
@@ -155,7 +165,7 @@ export async function deleteProject(p) {
   for (const k of blobKeys(p)) await delBlob(k).catch(() => {});
   await removeKey(pKey(p.id));
   const index = (await listProjects()).filter((x) => x.id !== p.id);
-  await setJSON(INDEX_KEY, index);
+  await setJSON(indexKey(), index);
 }
 
 // Copies a banner including its image blobs (each copy owns its own blobs).
@@ -200,12 +210,17 @@ export async function exportProject(p) {
     d.data = b ? await toDataUrl(b) : null;
     delete d.blob;
   }
-  return { format: "melaleuca-banner-preview", version: 1, project: out };
+  return { format: "melaleuca-banner-preview", version: 1, tool: out.tool || TOOL, project: out };
 }
+
+export const TOOL_NAMES = { banner: "Category Banner Preview", mixin: "Mix-In Ad Preview" };
 
 export async function importProject(json) {
   const p = json && json.format === "melaleuca-banner-preview" ? json.project : null;
   if (!p || !Array.isArray(p.langs)) throw new Error("Not a Banner Preview export file.");
+  const tool = json.tool || p.tool || "banner"; // files from before Mix-In Ad Preview existed are banners
+  if (tool !== TOOL) throw new Error(`This file is from ${TOOL_NAMES[tool]}; import it there instead.`);
+  p.tool = tool;
   p.id = uid();
   for (const [slot, img] of Object.entries(p.images || {})) {
     if (img && img.data) {

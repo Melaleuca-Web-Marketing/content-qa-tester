@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Melaleuca Content Testing Tools",
-  "version": "1.4.0",
-  "description": "Companion extension for the Melaleuca Content QA Tester. Culture Links flags links whose culture doesn't match the page; Banner Preview renders category banner HTML at every breakpoint and language with overlap checks.",
+  "version": "1.5.0",
+  "description": "Companion extension for the Melaleuca Content QA Tester. Culture Links flags links whose culture doesn't match the page; Category Banner Preview and Mix-In Ad Preview render banner and ad HTML at every breakpoint and language with overlap checks.",
   "permissions": ["storage", "contextMenus", "scripting"],
   "host_permissions": ["https://*.melaleuca.com/*"],
   "background": { "service_worker": "background.js" },

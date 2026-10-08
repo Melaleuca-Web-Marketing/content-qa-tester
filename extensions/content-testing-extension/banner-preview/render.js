@@ -52,28 +52,74 @@ const CATEGORY_BODY = `
   </a>
 </div></div></div>`;
 
-const MIXIN_BODY = `
-<style>@media (max-width: 575px) { .m-mixinAd__bg { background-image: url("@@BANNER_SMALL_CSS@@") !important; } }</style>
-<ul class="p-catListing__list" style="list-style:none;padding:0;margin:0">
-  <li class="p-catListing__col">
-    <article class="m-mixinAd -variant3">
-      <div aria-hidden="true" class="m-mixinAd__bg" style="background-image: url('@@BANNER_DESKTOP@@')"></div>
-      <a href="#" aria-label="" class="m-mixinAd__row -content">
-        <div class="m-mixinAd__header"><div class="m-mixinAd__headline">@@BANNER_SNIPPET@@</div></div>
-      </a>
-    </article>
-  </li>
-</ul>`;
+// ---- Mix-In Ads ----------------------------------------------------------------
+// A mix-in ad is one card in the category page's product grid (2 per row, 3 at ≥992px, 4 at ≥1210px,
+// beside the filter sidebar from 768px), max 230px wide and 450px tall. It's rendered in that grid,
+// next to real product cards, so its width and row height match production at every viewport.
+const MIXIN_AD = `
+<article class="m-mixinAd -variant3">
+  <div aria-hidden="true" class="m-mixinAd__bg" style="background-image: url('@@BANNER_DESKTOP@@')"></div>
+  <a href="#" aria-label="" class="m-mixinAd__row -content">
+    <div class="m-mixinAd__header"><div class="m-mixinAd__headline">@@BANNER_SNIPPET@@</div></div>
+  </a>
+</article>`;
+
+const PRODUCTS = [
+  ["32995h-01-enus.png", "Revive™ Room Spray Refill", "$6.79", "$10.00", "3 Points"],
+  ["33985h-01-enus.png", "Revive™ Room Spray Refill 2-Pack", "$11.99", "$20.00", "5 Points"],
+  ["33964h-01-enus.png", "Revive™ Room Spray Starter Pack", "$16.99", "$27.00", "8 Points"],
+].map(([img, title, member, non, points]) => `
+<li class="p-catListing__col bp-neighbor"><article class="m-prodCard -grid">
+  <a href="#" class="m-prodCard__row -content">
+    <div class="m-prodCard__header">
+      <div class="m-prodCard__media"><img src="https://cdnsc1.melaleuca.com/cdn-cgi/image/width=200,height=200,quality=85/global/products/${img}" alt="" class="m-prodCard__hero"></div>
+      <div class="m-prodCard__heading"><em class="m-prodCard__title">${title}</em></div>
+      <div class="m-prodCard__shop">Shop 3 Options</div>
+    </div>
+    <div class="m-prodCard__body"><div class="m-prodCard__content -top"><div class="m-prodCard__save"></div></div>
+      <div class="m-prodCard__content -bottom">
+        <div class="m-prodCard__pricing"><div class="text-xs text-gray leading-tight">
+          <div><span class="text-gray-150 text-xl font-bold">${member}</span> <span>Member</span></div>
+          <div><span class="text-base font-bold">${non}</span> <span>Non-Member</span></div>
+        </div></div>
+        <div class="m-prodCard__points"><span class="m-prodCard__text -points">${points}</span></div>
+      </div>
+    </div>
+  </a>
+  <div class="m-prodCard__row -actions"><div class="m-prodCard__button -shelfToggle">
+    <button type="button" class="a-button justify-center -shelfToggle w-full"><span class="sr-only md:not-sr-only md:block">SELECT</span></button>
+  </div></div>
+</article></li>`).join("");
+
+function mixinGrid(cell, neighbors) {
+  return `
+<style>
+  @media (max-width: 575px) { .m-mixinAd__bg { background-image: url("@@BANNER_SMALL_CSS@@") !important; } }
+  .bp-side { display: none; }
+  @media (min-width: 768px) { .bp-side { display: block; height: 220px; border-radius: 4px; background: repeating-linear-gradient(180deg, #f1f3f6 0 18px, transparent 18px 30px); } }
+</style>
+<div class="p-catListing">
+  <div class="p-catListing__side"><div class="bp-side" title="Filter menu"></div></div>
+  <div class="p-catListing__main"><div class="p-catListing__results"><ul class="p-catListing__grid">${cell}${neighbors ? PRODUCTS : ""}</ul></div></div>
+</div>`;
+}
 
 // Used when the pasted snippet is a whole banner (<a class="m-fwBanner">…) copied from the site.
 const FULL_BODY = `<div class="p-catListing__main"><div class="p-catListing__banner">@@BANNER_SNIPPET@@</div></div>`;
 
 export const BUILTIN_TEMPLATES = [
-  { id: "category", name: "Category banner" },
-  { id: "mixin", name: "Mix-in ad" },
+  { id: "category", name: "Category banner", tool: "banner" },
+  { id: "mixin", name: "Mix-in ad in the product grid", tool: "mixin" },
 ];
 
-export const isFullBanner = (html) => /class\s*=\s*["'][^"']*\b(m-fwBanner|m-mixinAd)\b/.test(html || "");
+/** "banner" for a pasted <a class="m-fwBanner">, "mixin" for a pasted <article class="m-mixinAd">, else null. */
+export function snippetKind(html) {
+  const m = /class\s*=\s*["'][^"']*\b(m-fwBanner|m-mixinAd)\b/.exec(html || "");
+  return m ? (m[1] === "m-mixinAd" ? "mixin" : "banner") : null;
+}
+
+/** Is this a whole banner/ad (rather than just its copy)? With a tool, only that tool's kind counts. */
+export const isFullBanner = (html, tool) => (tool ? snippetKind(html) === tool : !!snippetKind(html));
 
 const BASE_STYLE = `<style id="__bp_base">
 html,body{margin:0;background:#fff;color:#000;overflow:hidden;height:auto!important;min-height:0!important}
@@ -85,8 +131,9 @@ const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").repl
 // <style> is raw text (entities aren't decoded), so percent-encode anything that could end url("…").
 const cssUrl = (u) => String(u).replace(/["'()\\\n]/g, encodeURIComponent);
 
-export function placeholderImage(label) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300"><defs><pattern id="p" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="12" height="24" fill="#eef1f5"/></pattern></defs><rect width="100%" height="100%" fill="#f7f8fa"/><rect width="100%" height="100%" fill="url(#p)"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="system-ui,sans-serif" font-size="26" fill="#8a94a6">${label}</text></svg>`;
+// Mid-gray so both white and dark copy stay readable before an image is added.
+export function placeholderImage(label, w = 1200, h = 300) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><pattern id="p" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="12" height="24" fill="#8f98a8"/></pattern></defs><rect width="100%" height="100%" fill="#9aa3b2"/><rect width="100%" height="100%" fill="url(#p)"/><text x="50%" y="${h - 40}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="${Math.round(w / 24)}" fill="#eef1f5">${label}</text></svg>`;
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
@@ -96,7 +143,7 @@ function stripScripts(html) {
 
 /**
  * Full preview document for one iframe.
- * opts: { template, customHtml, layout, full, stylesheets, baseHref, lang, images, content }
+ * opts: { template, customHtml, layout, full, neighbors, stylesheets, baseHref, lang, images, content }
  */
 export function buildPage(opts) {
   const { layout = {}, images } = opts;
@@ -115,7 +162,13 @@ export function buildPage(opts) {
       : head + page;
     page = page.replace(/<html([^>]*)>/i, (m, attrs) => "<html" + attrs.replace(/\slang=("[^"]*"|'[^']*')/i, "") + ` lang="${esc(opts.lang)}">`);
   } else {
-    const body = opts.full ? FULL_BODY : opts.template === "mixin" ? MIXIN_BODY : CATEGORY_BODY;
+    let body;
+    if (opts.template === "mixin") {
+      // A pasted whole ad may or may not include its grid cell (<li class="p-catListing__col">).
+      const cell = !opts.full ? `<li class="p-catListing__col">${MIXIN_AD}</li>`
+        : /p-catListing__col/.test(opts.content || "") ? "@@BANNER_SNIPPET@@" : `<li class="p-catListing__col">@@BANNER_SNIPPET@@</li>`;
+      body = mixinGrid(cell, opts.neighbors !== false);
+    } else body = opts.full ? FULL_BODY : CATEGORY_BODY;
     page = `<!DOCTYPE html><html lang="${esc(opts.lang)}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">${base}
 ${links}${BASE_STYLE}</head><body>${body}</body></html>`;

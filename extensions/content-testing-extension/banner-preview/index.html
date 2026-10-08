@@ -9,8 +9,11 @@
 <body>
 <header class="top">
   <div class="brand">
-    <div class="logo">BP</div>
-    <div><h1>Banner Preview</h1><div class="sub">Content Testing Tools</div></div>
+    <div class="logo" id="brandLogo"></div>
+    <div>
+      <h1><span id="brandName"></span> <span id="toolBadge" class="toolBadge"></span></h1>
+      <div class="sub">Content Testing Tools · <button type="button" id="otherTool" class="linkBtn"></button></div>
+    </div>
   </div>
   <div class="projbar">
     <select id="projSel" title="Saved banners"></select>
@@ -29,7 +32,11 @@
 <main>
   <aside id="side">
     <section class="panel">
-      <h2>Copy <span class="hint">one snippet per language</span></h2>
+      <h2>Copy <span class="hint">one snippet per language · <span id="copyHint"></span></span></h2>
+      <div id="wrongTool" class="wrongTool" hidden>
+        <span id="wrongToolText"></span>
+        <button type="button" id="moveTool" class="small"></button>
+      </div>
       <div id="langTabs" class="langs"></div>
       <div id="editor" class="editorBox"></div>
       <div class="row">
@@ -43,7 +50,7 @@
     </section>
 
     <section class="panel" id="layoutPanel">
-      <h2>Template &amp; layout</h2>
+      <h2 id="layoutTitle">Template &amp; layout</h2>
       <label class="field"><span>Template</span><select id="tplSel"></select></label>
       <div id="layoutFields">
         <div class="grid2">
@@ -53,6 +60,12 @@
           <label class="field"><span>Vertical</span><select id="lyValign"></select></label>
         </div>
         <label class="field"><span>Extra row classes</span><input id="lyExtra" placeholder="e.g. pt-24" autocomplete="off"></label>
+      </div>
+      <div id="mixinFields" hidden>
+        <p class="hint block" style="margin-top:8px">The ad is shown as the first card of the category page's product grid:
+          2 per row, 3 from 992px, 4 from 1210px, beside the filter menu from 768px. It's 230px wide at most
+          (narrower on small phones) and at least 450px tall.</p>
+        <label class="tb chk"><input type="checkbox" id="mxNeighbors"> Show product cards beside the ad</label>
       </div>
     </section>
 

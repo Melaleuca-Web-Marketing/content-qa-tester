@@ -34,6 +34,11 @@ h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .2px; }
 .switch input:checked + .slider::after { left: 18px; }
 body.off .card:not(.always) { opacity: .45; }
 .blurb { margin: 0 0 2px; font-size: 12px; }
+/* Mix-In Ad Preview card: violet, matching that tool, so it's not mistaken for the banner tool. */
+.card.mixin { border-color: rgba(168, 85, 247, .45); }
+.card.mixin .tag { color: #c084fc; }
+.card.mixin button.primary { background: linear-gradient(135deg, #a855f7, #7c3aed); color: #fff; }
+@media (prefers-color-scheme: light) { .card.mixin .tag { color: #7c3aed; } }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
   box-shadow: 0 8px 20px rgba(15, 23, 42, .25); }
 h2 { font-size: 13px; margin: 0 0 8px; font-weight: 600; display: flex; align-items: center; gap: 8px; }

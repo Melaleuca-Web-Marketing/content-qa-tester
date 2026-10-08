@@ -15,9 +15,26 @@ Hosts understood: `www.melaleuca.com` (US), `xx.melaleuca.com` and `productstore
 GB and UK are treated as the same culture. Edit ALIASES / parseHost in content.js if the UK
 site uses a different code.
 
-### Banner Preview
-Replaces the "Category Banner Live Preview" VS Code extension. Open it from the popup
-(**Open Banner Preview**); it runs in its own tab (`banner-preview/index.html`).
+### Category Banner Preview and Mix-In Ad Preview
+Replaces the "Category Banner Live Preview" VS Code extension. Two tools, opened from separate cards in
+the popup, each in its own tab:
+
+- **Category Banner Preview** (green, `banner-preview/index.html`): the full-width banner at the top of a
+  category page.
+- **Mix-In Ad Preview** (violet, `banner-preview/index.html?tool=mixin`): the ad card inside the product
+  grid. It's rendered as the first card of the real grid, beside product cards: 2 per row, 3 from 992px,
+  4 from 1210px, with the filter menu from 768px. The card is at most 230px wide (about 145px at 320 and
+  190px at 415) and at least 450px tall, and stretches to its row. The tile header shows the ad's size.
+  The background is anchored top-left (crops right/bottom); the mobile image is optional, and without one
+  the desktop image is used at every width. "Show product cards beside the ad" turns the neighbors off.
+
+They share the same engine and features (below) but keep **separate saved items, settings and custom
+templates**, and look different so they aren't confused. Pasting the other tool's markup (a whole
+`m-fwBanner` in Mix-In Ad Preview, or a `m-mixinAd` in Category Banner Preview) shows a warning with a
+button that moves the item to the right tool. Import from tab only picks up that tool's kind, and export
+files are marked with their tool so they can only be imported into it.
+
+Features (both tools):
 
 - **Copy**: paste the banner HTML, either the contents of `.m-rte` or the whole `<a class="m-fwBanner">`
   copied from the site. Every viewport updates as you type (no reloads). One tab per language;

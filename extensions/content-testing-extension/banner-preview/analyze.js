@@ -129,7 +129,8 @@ export async function analyze(doc, opts) {
   const win = doc.defaultView;
   const issues = [];
   const marks = [];
-  const res = { slot: opts.slot, issues, marks, zones: [], bannerH: 0, minH: 0 };
+  const res = { slot: opts.slot, issues, marks, zones: [], bannerH: 0, bannerW: 0, minH: 0 };
+  const noun = opts.noun || "banner"; // "ad" in Mix-In Ad Preview
 
   const banner = doc.querySelector(".m-fwBanner, .m-mixinAd");
   const items = contentItems(doc);
@@ -138,8 +139,10 @@ export async function analyze(doc, opts) {
     const br = banner.getBoundingClientRect();
     res.bannerRect = br;
     res.bannerH = Math.round(br.height);
+    res.bannerW = Math.round(br.width);
     res.minH = Math.round(parseFloat(win.getComputedStyle(banner).minHeight) || 0);
-    if (res.minH && res.bannerH > res.minH + 1) {
+    // Mix-in ads stretch to their grid row by design (and their copy is overlaid), so growth only matters for banners.
+    if (opts.growCheck !== false && res.minH && res.bannerH > res.minH + 1) {
       issues.push({ level: "warn", msg: `Banner grew to ${res.bannerH}px (set height ${res.minH}px), so the image crops differently than the design` });
     }
     const clipped = new Set();
@@ -151,7 +154,7 @@ export async function analyze(doc, opts) {
         marks.push({ rect: r, level: "clip" });
         if (!clipped.has(it.label)) {
           clipped.add(it.label);
-          issues.push({ level: "error", msg: `${it.kind === "img" ? "Image" : "Text"} runs outside the ${c && c !== banner ? "box that clips it" : "banner"}: “${it.label}”` });
+          issues.push({ level: "error", msg: `${it.kind === "img" ? "Image" : "Text"} runs outside the ${c && c !== banner ? "box that clips it" : noun}: “${it.label}”` });
         }
       }
     }
@@ -165,7 +168,7 @@ export async function analyze(doc, opts) {
   else if (geo && geo.broken) issues.push({ level: "error", msg: `The ${opts.slot} background image failed to load` });
 
   for (const im of doc.images) {
-    if (im.complete && !im.naturalWidth && !im.closest(BG_PARTS)) {
+    if (im.complete && !im.naturalWidth && !im.closest(BG_PARTS + ", .bp-neighbor")) {
       issues.push({ level: "error", msg: `Image failed to load: ${sample(im.getAttribute("src") || "")}` });
     }
   }

@@ -1,7 +1,7 @@
 import * as store from "./store.js";
 import {
   BUILTIN_TEMPLATES, LAYOUT_OPTIONS, SLOT_INFO, rulesFor, slotForWidth,
-  buildPage, setContent, prepareSnippet, isFullBanner, snippetImages, placeholderImage,
+  buildPage, setContent, prepareSnippet, isFullBanner, snippetKind, snippetImages, placeholderImage,
 } from "./render.js";
 import { analyze, drawOverlay, waitForAssets } from "./analyze.js";
 import { lint } from "./lint.js";
@@ -14,10 +14,42 @@ const IN_EXTENSION = typeof chrome !== "undefined" && !!(chrome.runtime && chrom
 const BREAKPOINTS = [415, 576, 768, 992, 1024, 1210];
 const SLOTS = ["desktop", "medium", "small"];
 const LOCALES = ["en-US", "es-US", "en-CA", "fr-CA", "es-MX", "en-GB", "en-IE", "nl-NL", "de-DE", "pl-PL", "lt-LT", "ja-JP", "ko-KR", "zh-TW", "zh-CN", "en-AU", "en-MY"];
-const TEMPLATES_KEY = "bp.templates";
+// ---- which tool this page is ----------------------------------------------------------
+// The same page runs as Category Banner Preview (index.html) or Mix-In Ad Preview (index.html?tool=mixin).
+// Each keeps its own saved items, settings and look so the two don't get mixed up.
+const TOOLS = {
+  banner: {
+    id: "banner", ns: "bp", other: "mixin", template: "category", logo: "CB", badge: "Category banner",
+    name: "Category Banner Preview", noun: "banner", nounCap: "Banner",
+    placeholder: 'Paste the banner HTML: the contents of .m-rte, or the whole <a class="m-fwBanner"> copied from the site.',
+    copyHint: "goes in the banner's .m-rte",
+  },
+  mixin: {
+    id: "mixin", ns: "mp", other: "banner", template: "mixin", logo: "MI", badge: "Mix-in ad",
+    name: "Mix-In Ad Preview", noun: "ad", nounCap: "Ad",
+    placeholder: 'Paste the mix-in ad copy (the contents of .m-mixinAd__headline), or the whole <article class="m-mixinAd"> copied from the site.',
+    copyHint: "goes in the ad's .m-mixinAd__headline (a 230×450 card in the product grid)",
+  },
+};
+const TOOL = TOOLS[new URLSearchParams(location.search).get("tool") === "mixin" ? "mixin" : "banner"];
+const OTHER = TOOLS[TOOL.other];
+store.setNamespace(TOOL.ns, TOOL.id);
+const toolUrl = (tool, hash = "") => location.pathname + (tool.id === "mixin" ? "?tool=mixin" : "") + hash;
 
-// Starter content for a first run: the Feb 2026 heart-health category banner.
-const SAMPLE = {
+// Starter content for a first run.
+const SAMPLES = {};
+SAMPLES.mixin = {
+  name: "Sample: Mix-in ad",
+  html: `<div class="text-center text-white pt-24 px-10">
+  <p class="text-sm uppercase tracking-wide">New</p>
+  <h3 class="text-2xl font-bold leading-tight pt-4">Collagen Boost with Ceramides</h3>
+  <p class="text-base pt-8">Shop Now&nbsp;❯</p>
+</div>`,
+  images: {},
+};
+// The Feb 2026 heart-health category banner.
+SAMPLES.banner = {
+  name: "Sample: Heart Health (Feb 2026)",
   html: `<div class="md:flex md:items-center md:mb-0" style="height: 112px">
   <div class="sm:text-center text-white pr-40 xs:pr-150 sm:pr-1_4 sm:mr-30 sm:pl-20 sm:pt-30 md:mr-60 md:pl-0 md:pt-20 lg:pt-15 lg:pl-60 xl:mr-0 xl:pl-75 xl:pt-15">
     <img src="https://cdnsc1.melaleuca.com/na/images/product-store/category-landing/banners/20260201/cat-supplements-hearthealthlogo--enus.png" height="auto" width="114px" alt="We love you" class="mx-auto hidden sm:block">
@@ -33,7 +65,7 @@ const SAMPLE = {
 };
 
 let S; // settings
-let P; // current banner (project)
+let P; // current banner / ad (project)
 let customTemplates = [];
 let tiles = [];
 const blobUrls = new Map();
@@ -80,7 +112,8 @@ const langHtml = (code) => langObj(code).html;
 
 const placeholders = {};
 function placeholderFor(slot) {
-  return (placeholders[slot] ||= placeholderImage(`No ${SLOT_INFO[slot].label.toLowerCase()} image set`));
+  const [w, h] = TOOL.id === "mixin" ? [460, 900] : [1200, 300]; // ad cards are portrait
+  return (placeholders[slot] ||= placeholderImage(`No ${SLOT_INFO[slot].label.toLowerCase()} image set`, w, h));
 }
 
 /** Background image per slot for a language: explicit image > image in that language's pasted banner > first language's > placeholder. */
@@ -95,7 +128,15 @@ function resolveImages(code) {
     const url = set || snip;
     out[slot] = { url: url || placeholderFor(slot), placeholder: !url, fromSnippet: !set && !!snip };
   }
+  // A mix-in ad normally has one background at every size; the mobile image is optional.
+  if (TOOL.id === "mixin" && out.small.placeholder) out.small = { ...out.desktop, sameAsDesktop: true };
   return out;
+}
+
+/** The background-image slot shown at a viewport width (a mix-in without its own mobile image uses desktop). */
+function slotAt(width) {
+  if (TOOL.id !== "mixin") return slotForWidth("category", width);
+  return width <= 575 && !resolveImages(P.activeLang).small.sameAsDesktop ? "small" : "desktop";
 }
 
 function urlsFor(code) {
@@ -103,17 +144,19 @@ function urlsFor(code) {
   return { desktop: r.desktop.url, medium: r.medium.url, small: r.small.url };
 }
 
+const isFull = (html) => isFullBanner(html, TOOL.id);
+
 function prepared(code) {
   const html = langHtml(code);
-  return prepareSnippet(html, { expansion: S.expansion, accents: S.accents, images: isFullBanner(html) ? urlsFor(code) : null });
+  return prepareSnippet(html, { expansion: S.expansion, accents: S.accents, images: isFull(html) ? urlsFor(code) : null });
 }
 
 function pageFor(code) {
   const html = langHtml(code);
-  const full = isFullBanner(html);
+  const full = isFull(html);
   const custom = customTemplates.find((t) => t.id === P.template);
   const page = buildPage({
-    template: P.template, customHtml: custom && custom.html, layout: P.layout, full,
+    template: P.template, customHtml: custom && custom.html, layout: P.layout, full, neighbors: P.mixin.neighbors,
     stylesheets: S.stylesheets, baseHref: S.baseHref, lang: code, images: urlsFor(code), content: prepared(code),
   });
   return { full, page };
@@ -199,13 +242,13 @@ function sizeTile(t, measure = true) {
 }
 
 function renderTileInfo(t) {
-  const slot = slotForWidth(P.template, t.width);
+  const slot = slotAt(t.width);
   t.nameEl.textContent = t.name;
   t.widthEl.textContent = t.width + "px";
   t.slotEl.textContent = SLOT_INFO[slot].label + " image";
   t.langEl.textContent = t.lang;
   const r = t.result;
-  t.heightEl.textContent = r && r.bannerH ? `banner ${r.bannerH}px` : "";
+  t.heightEl.textContent = !r || !r.bannerH ? "" : TOOL.id === "mixin" ? `ad ${r.bannerW}×${r.bannerH}` : `banner ${r.bannerH}px`;
   t.heightEl.hidden = !t.heightEl.textContent;
   const b = r && r.balance;
   t.balEl.hidden = !b;
@@ -254,7 +297,7 @@ function loadTile(t) {
 async function refreshTile(t) {
   if (!t.ready) return t.loading;
   const doc = t.iframe.contentDocument;
-  if (!doc || !doc.body || isFullBanner(langHtml(t.lang)) !== t.full) return loadTile(t);
+  if (!doc || !doc.body || isFull(langHtml(t.lang)) !== t.full) return loadTile(t);
   const seq = ++t.seq;
   doc.documentElement.lang = t.lang;
   if (!setContent(doc, prepared(t.lang))) return loadTile(t);
@@ -268,7 +311,7 @@ const targetWidth = (d) => (/^w:\d+$/.test(d.target) ? Number(d.target.slice(2))
 
 function designFor(t) {
   if (!S.showDesign) return null;
-  const slot = slotForWidth(P.template, t.width);
+  const slot = slotAt(t.width);
   return P.designs.find((d) => targetWidth(d) === t.width) || P.designs.find((d) => d.target === "slot:" + slot) || null;
 }
 
@@ -376,11 +419,12 @@ function designChanged() {
 async function analyzeTile(t) {
   const doc = t.ready && t.iframe.contentDocument;
   if (!doc || !doc.body) return;
-  const slot = slotForWidth(P.template, t.width);
+  const slot = slotAt(t.width);
   const img = resolveImages(t.lang)[slot];
   t.result = await analyze(doc, {
     slot, zones: P.zones[slot] || [], placeholder: img.placeholder,
     balance: P.balance[slot] || "", copyArea: P.copyAreas[slot] || null, tolerance: S.balanceTolerance,
+    noun: TOOL.noun, growCheck: TOOL.id === "banner",
   });
   drawOverlay(doc, t.result, { showZones: S.showZones });
   sizeTile(t);
@@ -559,8 +603,38 @@ function runLint() {
 }
 
 function updateFullNote() {
-  $("fullNote").hidden = !isFullBanner(langHtml(P.activeLang));
-  $("layoutFields").hidden = isFullBanner(langHtml(P.activeLang)) || P.template !== "category";
+  const html = langHtml(P.activeLang);
+  const full = isFull(html);
+  $("fullNote").hidden = !full;
+  $("layoutFields").hidden = full || P.template !== "category";
+  $("mixinFields").hidden = TOOL.id !== "mixin";
+  // Markup for the other tool (a category banner pasted into Mix-In Ad Preview, or the reverse).
+  const kind = snippetKind(html);
+  $("wrongTool").hidden = !kind || kind === TOOL.id;
+}
+
+/** Sends this item's copy and images to the other tool as a new item there, then opens it. */
+async function moveToOtherTool() {
+  await store.saveProject(P);
+  const data = await store.exportProject(P);
+  Object.assign(data.project, { tool: OTHER.id, template: OTHER.template });
+  data.tool = OTHER.id;
+  await store.setJSON(store.nsKey("handoff", OTHER.ns), data);
+  location.href = toolUrl(OTHER, "#handoff");
+}
+
+/** Picks up an item sent from the other tool. */
+async function takeHandoff() {
+  const key = store.nsKey("handoff");
+  const data = await store.getJSON(key, null);
+  if (!data) return;
+  await store.setJSON(key, null);
+  history.replaceState(null, "", toolUrl(TOOL));
+  try {
+    await store.saveProject(P);
+    await openProject(await store.importProject(data));
+    toast(`Moved here from ${OTHER.name}. The original is still there; delete it if you don't need it.`);
+  } catch (err) { toast("Couldn't move it: " + err.message); }
 }
 
 let lastSnippetImages = "";
@@ -577,8 +651,9 @@ const onCopyChanged = debounce(() => {
 function renderLayout() {
   const sel = $("tplSel");
   sel.textContent = "";
-  for (const t of BUILTIN_TEMPLATES) sel.append(option(t.id, t.name, P.template));
+  for (const t of BUILTIN_TEMPLATES) if (t.tool === TOOL.id || t.id === P.template) sel.append(option(t.id, t.name, P.template));
   for (const t of customTemplates) sel.append(option(t.id, "Custom: " + t.name, P.template));
+  $("mxNeighbors").checked = P.mixin.neighbors !== false;
   const fill = (id, opts, val) => { const s = $(id); s.textContent = ""; for (const [v, l] of opts) s.append(option(v, l, val)); };
   fill("lyHeight", LAYOUT_OPTIONS.height, P.layout.height);
   fill("lyWidth", LAYOUT_OPTIONS.width, P.layout.width);
@@ -591,6 +666,7 @@ function renderLayout() {
 function onLayoutChanged() {
   P.template = $("tplSel").value;
   P.layout = { height: $("lyHeight").value, width: $("lyWidth").value, align: $("lyAlign").value, valign: $("lyValign").value, extra: $("lyExtra").value.trim() };
+  P.mixin = { ...P.mixin, neighbors: $("mxNeighbors").checked };
   saveProjectSoon();
   updateFullNote();
   renderSlots();
@@ -602,13 +678,17 @@ function renderSlots() {
   const box = $("slots");
   box.textContent = "";
   const imgs = resolveImages(P.activeLang);
-  for (const rule of rulesFor(P.template)) {
+  for (const rule of rulesFor(TOOL.template)) {
     const slot = rule.slot;
     const cur = P.images[slot];
     const res = imgs[slot];
+    // Mix-in: the mobile image is optional; without one the desktop image is used at every width.
+    const optional = TOOL.id === "mixin" && slot === "small";
+    const hint = TOOL.id === "mixin" && slot === "desktop" && imgs.small.sameAsDesktop ? "all widths" : rule.hint + (optional ? " · optional" : "");
     const dims = el("span", { className: "dims" });
     const thumb = el("div", { className: "thumb", title: "Click to choose a file, or drop one here" });
-    if (res.placeholder) thumb.textContent = "Drop image";
+    if (res.sameAsDesktop) thumb.textContent = "Same as desktop";
+    else if (res.placeholder) thumb.textContent = "Drop image";
     else {
       const im = el("img", { src: res.url, alt: "" });
       im.onload = () => (dims.textContent = `${im.naturalWidth}×${im.naturalHeight}`);
@@ -630,14 +710,15 @@ function renderSlots() {
 
     const url = el("input", {
       className: "url", value: (cur && cur.url) || "", spellcheck: false,
-      placeholder: cur && cur.blob ? "File: " + cur.name : res.fromSnippet ? "Using the image in your snippet" : "https://…",
+      placeholder: cur && cur.blob ? "File: " + cur.name : res.fromSnippet ? "Using the image in your snippet"
+        : res.sameAsDesktop ? "Optional: only if the ad has its own mobile background" : "https://…",
     });
     url.addEventListener("change", () => setSlotUrl(slot, url.value));
     const zones = (P.zones[slot] || []).length + (P.copyAreas[slot] ? 1 : 0);
-    const zbtn = el("button", { className: "small", textContent: zones ? `Zones (${zones})` : "Zones…", disabled: res.placeholder,
+    const zbtn = el("button", { className: "small", textContent: zones ? `Zones (${zones})` : "Zones…", disabled: res.placeholder || res.sameAsDesktop,
       title: "Keep-out zones (where copy must not go) and an optional copy area" });
     zbtn.addEventListener("click", () => openZones(slot));
-    const center = el("select", { className: "small", title: "Check that the copy is centered in the empty space next to the objects in this image" });
+    const center = el("select", { className: "small", disabled: !!res.sameAsDesktop, title: "Check that the copy is centered in the empty space next to the objects in this image" });
     for (const [v, l] of [["", "Center copy: off"], ["h", "Center ↔ horizontally"], ["v", "Center ↕ vertically"], ["hv", "Center both ways"]]) center.append(option(v, l, P.balance[slot] || ""));
     center.addEventListener("change", () => {
       if (center.value) P.balance[slot] = center.value; else delete P.balance[slot];
@@ -651,7 +732,7 @@ function renderSlots() {
 
     box.append(el("div", { className: "slot" }, thumb,
       el("div", {},
-        el("div", { className: "slotHead" }, el("strong", { textContent: SLOT_INFO[slot].label }), el("span", { className: "hint", textContent: rule.hint }), dims),
+        el("div", { className: "slotHead" }, el("strong", { textContent: SLOT_INFO[slot].label }), el("span", { className: "hint", textContent: hint }), dims),
         url, file,
         el("div", { className: "row" }, zbtn, center, clear),
         note)));
@@ -794,7 +875,7 @@ function bindZoneEditor() {
 }
 
 // ---- design overlays ----------------------------------------------------------------
-const FITS = [["width", "Fit banner width"], ["height", "Fit banner height"], ["stretch", "Stretch to banner"], ["actual", "Actual pixels"]];
+const FITS = [["width", `Fit ${TOOL.noun} width`], ["height", `Fit ${TOOL.noun} height`], ["stretch", `Stretch to ${TOOL.noun}`], ["actual", "Actual pixels"]];
 
 function targetLabel(target) {
   const w = /^w:(\d+)$/.exec(target);
@@ -805,7 +886,7 @@ function targetLabel(target) {
 
 function targetOptions(current) {
   const opts = S.devices.map((d) => "w:" + d.width);
-  for (const r of rulesFor(P.template)) opts.push("slot:" + r.slot);
+  for (const r of rulesFor(TOOL.template)) opts.push("slot:" + r.slot);
   if (current && !opts.includes(current)) opts.push(current);
   return opts;
 }
@@ -828,7 +909,7 @@ function renderDesigns() {
       saveProjectSoon(); renderDesigns(); rebuildTiles(); redrawDesigns();
     });
 
-    const fit = el("select", { title: "How the design is sized against the banner" });
+    const fit = el("select", { title: `How the design is sized against the ${TOOL.noun}` });
     for (const [v, l] of FITS) fit.append(option(v, l, d.fit));
     fit.addEventListener("change", () => { d.fit = fit.value; designChanged(); });
 
@@ -1033,7 +1114,7 @@ function renderCustomTemplates() {
     const rm = el("button", { className: "small danger", textContent: "Remove" });
     rm.addEventListener("click", async () => {
       customTemplates = customTemplates.filter((x) => x !== t);
-      await store.setJSON(TEMPLATES_KEY, customTemplates);
+      await store.setJSON(store.nsKey("templates"), customTemplates);
       if (P.template === t.id) { P.template = "category"; saveProjectSoon(); reloadAll(); }
       renderCustomTemplates();
       renderLayout();
@@ -1073,10 +1154,10 @@ function bindSettings() {
     e.target.value = "";
     if (!f) return;
     const html = await f.text();
-    if (!html.includes("@@BANNER_SNIPPET@@")) toast("No @@BANNER_SNIPPET@@ token found; the banner will be added at the end of <body>.");
+    if (!html.includes("@@BANNER_SNIPPET@@")) toast(`No @@BANNER_SNIPPET@@ token found; the ${TOOL.noun} will be added at the end of <body>.`);
     const t = { id: "custom-" + store.uid(), name: f.name.replace(/\.html?$/i, ""), html };
     customTemplates.push(t);
-    await store.setJSON(TEMPLATES_KEY, customTemplates);
+    await store.setJSON(store.nsKey("templates"), customTemplates);
     renderCustomTemplates();
     P.template = t.id;
     renderLayout();
@@ -1087,10 +1168,10 @@ function bindSettings() {
 // ---- banners (projects) ----------------------------------------------------------------
 function normalizeProject(p) {
   const base = store.newProject(p.name);
-  p = { ...base, ...p, layout: { ...base.layout, ...(p.layout || {}) } };
+  p = { ...base, ...p, tool: TOOL.id, layout: { ...base.layout, ...(p.layout || {}) }, mixin: { ...base.mixin, ...(p.mixin || {}) } };
   if (!p.langs || !p.langs.length) p.langs = base.langs;
   if (!p.langs.some((l) => l.code === p.activeLang)) p.activeLang = p.langs[0].code;
-  if (!BUILTIN_TEMPLATES.some((t) => t.id === p.template) && !customTemplates.some((t) => t.id === p.template)) p.template = "category";
+  if (!BUILTIN_TEMPLATES.some((t) => t.id === p.template) && !customTemplates.some((t) => t.id === p.template)) p.template = TOOL.template;
   p.images ||= {};
   p.zones ||= {};
   p.balance ||= {}; // slot -> "h" | "v" | "hv"
@@ -1138,10 +1219,10 @@ async function switchProject(id) {
 function bindProjects() {
   $("projSel").addEventListener("change", (e) => switchProject(e.target.value));
   $("projNew").addEventListener("click", async () => {
-    const name = prompt("Name for the new banner (e.g. “Heart Health – Feb 2026”):", "");
+    const name = prompt(`Name for the new ${TOOL.noun} (e.g. “Heart Health – Feb 2026”):`, "");
     if (name == null) return;
     await store.saveProject(P);
-    const p = store.newProject(name.trim() || "Untitled banner");
+    const p = store.newProject(name.trim() || `Untitled ${TOOL.noun}`);
     await store.saveProject(p);
     await openProject(p);
   });
@@ -1152,7 +1233,7 @@ function bindProjects() {
     await openProject(await store.duplicateProject(P, name.trim() || P.name + " (copy)"));
   });
   $("projRename").addEventListener("click", async () => {
-    const name = prompt("Rename banner:", P.name);
+    const name = prompt(`Rename ${TOOL.noun}:`, P.name);
     if (!name || !name.trim()) return;
     P.name = name.trim();
     await store.saveProject(P);
@@ -1163,14 +1244,14 @@ function bindProjects() {
     await store.deleteProject(P);
     const list = await store.listProjects();
     let next = list[0] && (await store.loadProject(list[0].id));
-    if (!next) { next = store.newProject("Untitled banner"); await store.saveProject(next); }
+    if (!next) { next = store.newProject(`Untitled ${TOOL.noun}`); await store.saveProject(next); }
     await openProject(next);
   });
   $("exportBtn").addEventListener("click", async () => {
     const data = await store.exportProject(P);
     const a = el("a", {
       href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" })),
-      download: P.name.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") + ".banner.json",
+      download: P.name.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") + (TOOL.id === "mixin" ? ".mixin.json" : ".banner.json"),
     });
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -1210,29 +1291,35 @@ async function importFromTab(tabId) {
     tabId = tabs.length === 1 ? tabs[0].id : await choose("Import from which tab?", tabs.map((t) => ({ label: t.title || t.url, sub: t.url, value: t.id })));
     if (tabId == null) return;
   }
-  let banners;
+  let found;
   try {
     const [r] = await chrome.scripting.executeScript({ target: { tabId }, func: extractBanners });
-    banners = (r && r.result) || [];
+    found = (r && r.result) || [];
   } catch (err) { return toast("Couldn't read that tab: " + err.message); }
-  if (!banners.length) return toast("No category banners or mix-in ads found on that page.");
-  const idx = banners.length === 1 ? 0 : await choose("Which banner?", banners.map((b, i) => ({
-    label: b.label || "(no text)", sub: `${b.template === "mixin" ? "Mix-in ad" : "Category banner"} · ${b.url}`, value: i,
+  // Each tool only imports its own kind: category banners here, mix-in ads in Mix-In Ad Preview.
+  const banners = found.filter((b) => (b.template === "mixin" ? "mixin" : "banner") === TOOL.id);
+  if (!banners.length) {
+    return toast(found.length
+      ? `That page has no ${TOOL.badge.toLowerCase()}s, only ${OTHER.badge.toLowerCase()}s. Use ${OTHER.name} for those.`
+      : `No ${TOOL.badge.toLowerCase()}s found on that page.`);
+  }
+  const idx = banners.length === 1 ? 0 : await choose(`Which ${TOOL.noun}?`, banners.map((b, i) => ({
+    label: b.label || "(no text)", sub: b.url, value: i,
   })));
   if (idx == null) return;
   const b = banners[idx];
   const code = b.lang || "en-US";
   const existing = P.langs.find((l) => l.code.toLowerCase() === code.toLowerCase());
+  const N = TOOL.noun;
   const target = await choose("Import into…", [
-    { label: "A new banner", sub: "Copy, images and layout from the page", value: "new" },
-    { label: existing ? `This banner: replace the ${existing.code} copy` : `This banner, as a new ${code} language`, sub: "Keeps this banner's images and zones", value: "lang" },
+    { label: `A new ${N}`, sub: "Copy, images and layout from the page", value: "new" },
+    { label: existing ? `This ${N}: replace the ${existing.code} copy` : `This ${N}, as a new ${code} language`, sub: `Keeps this ${N}'s images and zones`, value: "lang" },
   ]);
   if (!target) return;
   if (target === "new") {
     await store.saveProject(P);
-    const p = store.newProject(b.label.slice(0, 50) || "Imported banner");
-    p.template = b.template;
-    p.layout = layoutFromClasses(b.bannerClasses, b.rowClasses);
+    const p = store.newProject(b.label.slice(0, 50) || `Imported ${N}`);
+    if (TOOL.id === "banner") p.layout = layoutFromClasses(b.bannerClasses, b.rowClasses);
     p.langs = [{ code, html: b.html }];
     p.activeLang = code;
     for (const [slot, url] of Object.entries(b.images)) if (url) p.images[slot] = { url };
@@ -1390,7 +1477,7 @@ function bindClassRef() {
 // ---- editor + layout bindings ------------------------------------------------------------
 function bindEditor() {
   editor = createEditor($("editor"), {
-    placeholderText: 'Paste the banner HTML: the contents of .m-rte, or the whole <a class="m-fwBanner"> copied from the site.',
+    placeholderText: TOOL.placeholder,
     onChange: (text) => { langObj(P.activeLang).html = text; onCopyChanged(); },
     onSave: (msg) => (msg ? toast(msg) : store.saveProject(P).then(() => toast("Saved."))),
   });
@@ -1402,6 +1489,7 @@ function bindEditor() {
   $("classRef").addEventListener("click", openClassRef);
   for (const id of ["tplSel", "lyHeight", "lyWidth", "lyAlign", "lyValign"]) $(id).addEventListener("change", onLayoutChanged);
   $("lyExtra").addEventListener("change", onLayoutChanged);
+  $("mxNeighbors").addEventListener("change", onLayoutChanged);
   $("designFile").addEventListener("change", (e) => { addDesigns([...e.target.files]); e.target.value = ""; });
   // Paste a screenshot (e.g. copied from XD) anywhere to add it as a design overlay.
   document.addEventListener("paste", (e) => {
@@ -1436,19 +1524,37 @@ function bindSplitter() {
 }
 
 // ---- start ---------------------------------------------------------------------------------
+/** Name, colors and wording for the tool this page is running as. */
+function applyBranding() {
+  document.title = TOOL.name;
+  document.body.classList.add("tool-" + TOOL.id);
+  $("brandLogo").textContent = TOOL.logo;
+  $("brandName").textContent = TOOL.name;
+  $("toolBadge").textContent = TOOL.badge;
+  $("copyHint").textContent = TOOL.copyHint;
+  $("otherTool").textContent = "Open " + OTHER.name;
+  $("otherTool").addEventListener("click", () => { location.href = toolUrl(OTHER); });
+  $("wrongToolText").textContent = `This is ${OTHER.badge.toLowerCase()} markup, so it won't preview correctly in ${TOOL.name}.`;
+  $("moveTool").textContent = `Move it to ${OTHER.name}`;
+  $("moveTool").addEventListener("click", moveToOtherTool);
+  $("layoutTitle").textContent = TOOL.id === "mixin" ? "Template & grid" : "Template & layout";
+}
+
 async function init() {
   S = await store.loadSettings();
-  customTemplates = await store.getJSON(TEMPLATES_KEY, []);
+  customTemplates = await store.getJSON(store.nsKey("templates"), []);
   let p = null;
   const last = await store.getLastProjectId();
   if (last) p = await store.loadProject(last);
   if (!p) { const list = await store.listProjects(); if (list[0]) p = await store.loadProject(list[0].id); }
   if (!p) {
-    p = store.newProject("Sample: Heart Health (Feb 2026)");
-    p.langs[0].html = SAMPLE.html;
-    for (const [slot, url] of Object.entries(SAMPLE.images)) p.images[slot] = { url };
+    const sample = SAMPLES[TOOL.id];
+    p = store.newProject(sample.name);
+    p.langs[0].html = sample.html;
+    for (const [slot, url] of Object.entries(sample.images)) p.images[slot] = { url };
     await store.saveProject(p);
   }
+  applyBranding();
   if (!IN_EXTENSION) $("importTab").title = "Only available inside the browser extension";
   bindProjects();
   bindEditor();
@@ -1461,6 +1567,7 @@ async function init() {
   applySettingsToUI();
   await openProject(p);
   loadClasses();
+  await takeHandoff();
   handleHash();
   window.addEventListener("hashchange", handleHash);
   window.addEventListener("beforeunload", () => { if (P) store.saveProject(P); });
