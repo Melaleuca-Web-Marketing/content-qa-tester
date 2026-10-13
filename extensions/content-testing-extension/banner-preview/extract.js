@@ -8,7 +8,20 @@ export function extractBanners() {
 
   for (const b of document.querySelectorAll(".m-fwBanner")) {
     const rte = b.querySelector(".m-rte");
-    if (!rte) continue;
+    if (!rte || b.closest(".slick-cloned")) continue; // Slick duplicates slides for looping
+    const hero = !!b.closest(".o-heroCarousel") || b.classList.contains("-slide");
+    const btn = b.querySelector(".m-fwBanner__cta .a-authorBtn");
+    const wrap = btn && btn.closest(".m-fwBanner__cta");
+    // Exact classes and inline styles, so extras added in Optimizely (e.g. margin nudges) carry over.
+    const cta = btn ? {
+      text: (btn.textContent || "").replace(/\s+/g, " ").trim(),
+      color: [...btn.classList].find((c) => /^bg-/.test(c)) || "bg-green",
+      href: b.getAttribute("href") || "",
+      classes: btn.className.trim(),
+      style: (btn.getAttribute("style") || "").trim(),
+      wrapClasses: wrap ? wrap.className.trim() : "",
+      wrapStyle: wrap ? (wrap.getAttribute("style") || "").trim() : "",
+    } : null;
     const images = {};
     const pic = b.querySelector(".m-fwBanner__row.-media picture");
     if (pic) {
@@ -25,8 +38,9 @@ export function extractBanners() {
     }
     const row = b.querySelector(".m-fwBanner__row.-columns");
     out.push({
-      template: "category",
+      template: hero ? "hero" : "category",
       html: rte.innerHTML.trim(),
+      cta,
       images,
       bannerClasses: b.className,
       rowClasses: row ? row.className : "",

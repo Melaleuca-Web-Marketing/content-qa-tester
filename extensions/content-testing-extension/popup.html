@@ -21,12 +21,27 @@
     </label>
   </header>
 
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="tools" class="on">Tools</button>
+    <button type="button" role="tab" data-tab="qa">QA Tests</button>
+  </nav>
+
+  <div id="tab-tools" class="tabPane">
   <section class="card always">
     <h2>Category Banner Preview <span class="tag">Full-width banners</span></h2>
     <p class="muted blurb">The banner at the top of a category page, at every breakpoint and language, with overlap checks and XD design overlays.</p>
     <div class="row">
       <button id="openBp" class="primary">Open Category Banner Preview</button>
       <button id="importBp" title="Pull this page's category banner into Category Banner Preview" hidden>Import banner from this tab</button>
+    </div>
+  </section>
+
+  <section class="card always hero">
+    <h2>Hero Slide Preview <span class="tag">Home page carousel</span></h2>
+    <p class="muted blurb">A home page carousel slide with its button and the carousel arrows and dots, at every breakpoint and language.</p>
+    <div class="row">
+      <button id="openHp" class="primary">Open Hero Slide Preview</button>
+      <button id="importHp" title="Pull a slide from this page's carousel into Hero Slide Preview" hidden>Import slide from this tab</button>
     </div>
   </section>
 
@@ -70,6 +85,59 @@
     <code>www.melaleuca.com/grow</code> ignores that path; <code>*</code> is a wildcard.
     You can also right-click any link on the page.
   </p>
+  </div>
+
+  <!-- QA Tests: start Content QA Tester runs for the open tab (see popup-qa.js) -->
+  <div id="tab-qa" class="tabPane" hidden>
+    <section class="card always">
+      <h2>QA Tester <span id="qaConn" class="tag">Connecting…</span></h2>
+      <div id="qaContext" class="muted">Reading this tab…</div>
+    </section>
+
+    <section class="card always" id="qaTestsCard" hidden>
+      <h2>Tests for this page</h2>
+      <div id="qaTests" class="qaTests"></div>
+      <div id="qaOptions">
+        <div class="qaField" id="qaWidthsField">
+          <span>Widths</span>
+          <div id="qaWidths" class="chips"></div>
+        </div>
+        <label class="qaField"><span>Test name</span><input id="qaName" maxlength="120" autocomplete="off"></label>
+        <label class="check" id="qaSignInRow"><input type="checkbox" id="qaSignIn"> Run signed in</label>
+        <div id="qaCreds" hidden>
+          <div class="muted qaNote" id="qaCredsNote"></div>
+          <div class="row">
+            <input id="qaUser" placeholder="Site username" autocomplete="off" spellcheck="false">
+            <input id="qaPass" type="password" placeholder="Password" autocomplete="off">
+          </div>
+          <div class="muted qaNote">Sent to the QA Tester with this run only. The password isn't saved.</div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="qaStart" class="primary">Start tests</button>
+        <span id="qaCount" class="muted"></span>
+      </div>
+      <div id="qaResult" class="list" hidden></div>
+    </section>
+
+    <section class="card always">
+      <h2>Recent jobs <button id="qaRefresh" class="small" type="button">Refresh</button></h2>
+      <div id="qaJobs" class="list muted">…</div>
+      <div class="row"><button id="qaOpenTool" type="button">Open QA Tester ↗</button></div>
+    </section>
+
+    <details class="card always">
+      <summary>QA Tester server</summary>
+      <p class="muted">Production is the default. Point this at another instance (e.g. a local one) to test against it.</p>
+      <div class="row">
+        <input id="qaServer" spellcheck="false" autocomplete="off">
+        <button id="qaServerSave" class="small" type="button">Save</button>
+        <button id="qaServerReset" class="small" type="button">Production</button>
+      </div>
+    </details>
+  </div>
+
   <script src="popup.js"></script>
+  <script type="module" src="popup-qa.js"></script>
 </body>
 </html>

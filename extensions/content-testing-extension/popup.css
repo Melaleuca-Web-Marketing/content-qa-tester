@@ -39,6 +39,11 @@ body.off .card:not(.always) { opacity: .45; }
 .card.mixin .tag { color: #c084fc; }
 .card.mixin button.primary { background: linear-gradient(135deg, #a855f7, #7c3aed); color: #fff; }
 @media (prefers-color-scheme: light) { .card.mixin .tag { color: #7c3aed; } }
+/* Hero Slide Preview card: orange, matching that tool. */
+.card.hero { border-color: rgba(249, 115, 22, .45); }
+.card.hero .tag { color: #fdba74; }
+.card.hero button.primary { background: linear-gradient(135deg, #f97316, #ea580c); color: #fff; }
+@media (prefers-color-scheme: light) { .card.hero .tag { color: #c2410c; } }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
   box-shadow: 0 8px 20px rgba(15, 23, 42, .25); }
 h2 { font-size: 13px; margin: 0 0 8px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
@@ -79,3 +84,44 @@ details p { margin: 8px 0; }
 .btns { display: flex; flex-direction: column; gap: 4px; }
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* ---- tabs (Tools / QA Tests) ---- */
+.tabs { display: flex; gap: 4px; margin: -2px 0 10px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--item); }
+.tabs button { flex: 1; border: 0; background: transparent; color: var(--text-2); padding: 6px 10px; }
+.tabs button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(15, 23, 42, .25); }
+.tabPane[hidden] { display: none; }
+
+/* ---- QA Tests tab ---- */
+.tag.ok { color: var(--green); }
+.tag.bad { color: var(--danger); }
+.ctxRow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.ctxRow code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }
+.pill.env-production { color: var(--green); background: rgba(34, 197, 94, .14); }
+.pill.env-stage { color: var(--warm); background: rgba(245, 158, 11, .14); }
+.pill.env-uat { color: #c084fc; background: rgba(168, 85, 247, .14); }
+.pill.warn { color: var(--warm); background: rgba(245, 158, 11, .14); font-size: 10px; margin-left: 6px; }
+.pill.st-queued, .pill.st-running { color: var(--sky); }
+.pill.st-completed { color: var(--green); background: rgba(34, 197, 94, .14); }
+.pill.st-failed, .pill.st-interrupted { color: var(--danger); background: rgba(239, 68, 68, .14); }
+.pill.st-cancelled { color: var(--text-2); background: var(--item); }
+.qaNote { font-size: 11px; color: var(--text-2); }
+.qaTests { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.qaTest { display: flex; align-items: flex-start; gap: 8px; padding: 5px 6px; border-radius: 8px; cursor: pointer; }
+.qaTest:hover { background: var(--hover); }
+.qaTest input { margin-top: 3px; accent-color: var(--green); }
+.qaTest.off { opacity: .5; cursor: default; }
+.qaTest.off:hover { background: none; }
+.qaTestName { font-weight: 600; }
+.qaField { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 11px; font-weight: 600; color: var(--text-2); }
+.qaField[hidden], #qaSignInRow[hidden] { display: none; }
+.qaField input, #qaCreds input, #qaServer { flex: 1; min-width: 0; background: var(--input); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 9px; font: inherit; font-weight: 400; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip { padding: 2px 9px; font-size: 12px; font-weight: 600; border-radius: 999px; background: var(--item); color: var(--text-2); }
+.chip.on { color: var(--sky); border-color: var(--sky); background: rgba(56, 189, 248, .14); }
+#qaCreds { margin-top: 6px; }
+#qaResult { margin-top: 8px; }
+#qaResult .item.ok b { color: var(--green); }
+#qaResult .item.bad { color: var(--danger); }
+#qaJobs .item .txt { display: flex; align-items: center; gap: 6px; }
+h2 .small { margin-left: auto; }

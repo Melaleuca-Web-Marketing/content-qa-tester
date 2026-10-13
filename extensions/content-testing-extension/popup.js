@@ -101,17 +101,17 @@ async function renderFlagged() {
   }
 }
 
-// ---- Category Banner Preview / Mix-In Ad Preview -----------------------------------
-// Both tools are the same page: banner-preview/index.html, and index.html?tool=mixin for mix-ins.
+// ---- Category Banner / Hero Slide / Mix-In Ad Preview -----------------------------------
+// All three tools are the same page: banner-preview/index.html, with ?tool=hero or ?tool=mixin.
 // Re-uses the tool's tab if it's already open. "#import-tab=<id>" makes the page pull the
-// banner/ad out of that melaleuca.com tab.
+// banner/slide/ad out of that melaleuca.com tab.
 async function openPreview(tool, hash = "") {
   const base = chrome.runtime.getURL("banner-preview/index.html");
-  const url = base + (tool === "mixin" ? "?tool=mixin" : "");
+  const url = base + (tool === "banner" ? "" : "?tool=" + tool);
   let existing = null;
   try {
     const tabs = await chrome.tabs.query({ url: base + "*" });
-    existing = tabs.find((t) => (new URL(t.url).searchParams.get("tool") === "mixin" ? "mixin" : "banner") === tool);
+    existing = tabs.find((t) => (new URL(t.url).searchParams.get("tool") || "banner") === tool);
   } catch {}
   if (existing) {
     await chrome.tabs.update(existing.id, { active: true, ...(hash ? { url: url + hash } : {}) });
@@ -128,23 +128,31 @@ async function openPreview(tool, hash = "") {
   let onMelaleuca = false;
   try { const h = new URL(tab.url).hostname; onMelaleuca = h === "melaleuca.com" || h.endsWith(".melaleuca.com"); } catch {}
   if (!onMelaleuca) return;
-  let found = { banners: 1, mixins: 1 }; // if the page can't be read, show both and let the tool explain
+  let found = { banners: 1, heroes: 1, mixins: 1 }; // if the page can't be read, show all and let the tool explain
   try {
     const [r] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => ({
-        banners: document.querySelectorAll(".m-fwBanner .m-rte").length,
-        mixins: document.querySelectorAll(".m-mixinAd .m-mixinAd__headline").length,
-      }),
+      func: () => {
+        const fw = [...document.querySelectorAll(".m-fwBanner")].filter((b) => b.querySelector(".m-rte") && !b.closest(".slick-cloned"));
+        const isHero = (b) => !!b.closest(".o-heroCarousel") || b.classList.contains("-slide");
+        return {
+          banners: fw.filter((b) => !isHero(b)).length,
+          heroes: fw.filter(isHero).length,
+          mixins: document.querySelectorAll(".m-mixinAd .m-mixinAd__headline").length,
+        };
+      },
     });
     if (r && r.result) found = r.result;
   } catch {}
   $("importBp").hidden = !found.banners;
+  $("importHp").hidden = !found.heroes;
   $("importMp").hidden = !found.mixins;
   $("importBp").addEventListener("click", () => openPreview("banner", "#import-tab=" + tab.id));
+  $("importHp").addEventListener("click", () => openPreview("hero", "#import-tab=" + tab.id));
   $("importMp").addEventListener("click", () => openPreview("mixin", "#import-tab=" + tab.id));
 })();
 $("openBp").addEventListener("click", () => openPreview("banner"));
+$("openHp").addEventListener("click", () => openPreview("hero"));
 $("openMp").addEventListener("click", () => openPreview("mixin"));
 
 // ---- wiring -------------------------------------------------------------

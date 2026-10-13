@@ -28,7 +28,7 @@ export const slotForWidth = (templateId, w) => rulesFor(templateId).find((r) => 
 
 export const LAYOUT_OPTIONS = {
   height: [["-h-sm", "Small (192px)"], ["-h-sm-md", "Small-medium (220px)"], ["-h-md", "Medium (272px)"], ["-h-lg", "Large (380px)"]],
-  width: [["-w-xs", "XS"], ["-w-sm", "SM"], ["-w-md", "MD"], ["-w-lg", "LG"], ["-w-xl", "XL"]],
+  width: [["", "None"], ["-w-xs", "XS"], ["-w-sm", "SM"], ["-w-md", "MD"], ["-w-lg", "LG"], ["-w-xl", "XL"]],
   align: [["-left", "Left"], ["-center", "Center"], ["-right", "Right"]],
   valign: [["", "Default"], ["-top", "Top"], ["-middle", "Middle"], ["-bottom", "Bottom"]],
 };
@@ -104,18 +104,107 @@ function mixinGrid(cell, neighbors) {
 </div>`;
 }
 
+// ---- Hero carousel slides ----------------------------------------------------------
+// A homepage hero slide is an m-fwBanner (-slide -stackMobile) inside the Slick carousel. The structure
+// below mirrors production (.o-heroCarousel) so app.css positions the arrows and the dots/pause pill
+// exactly where they sit live. The button is CMS-generated outside the authored HTML: only its color
+// class, text and link (the slide's href) are set, and it centers on the copy column.
+const HERO_CTA = `<div class="@@CTA_WRAP_CLASSES@@" style="@@CTA_WRAP_STYLE@@"><div class="@@CTA_CLASSES@@" style="@@CTA_STYLE@@">@@CTA_TEXT@@</div></div>`;
+
+// The button markup the CMS produces. Slides imported from Optimizely keep their exact classes and inline
+// styles (which can include extra margin someone added to nudge the copy); everything else uses these.
+export const CTA_DEFAULT_CLASSES = "a-authorBtn text-center -default bg-green rounded-full px-36 to-sm:px-36 md:px-36";
+export const CTA_DEFAULT_WRAP = "m-fwBanner__cta -center";
+const CTA_STANDARD = /^(a-authorBtn|text-center|-default|-tiny|-xs|-sm|-md|-lg|rounded-full|bg-[\w-]+|(?:[\w-]+:)?px-\d+|m-fwBanner__cta|-center|-left|-right)$/;
+
+/** Button class string with the chosen color. */
+export function ctaClasses(cta) {
+  const base = (cta && cta.classes) || CTA_DEFAULT_CLASSES;
+  return base.split(/\s+/).filter((c) => c && !/^bg-/.test(c)).concat((cta && cta.color) || "bg-green").join(" ");
+}
+
+/** Classes and inline styles on the button/wrapper beyond what the CMS normally outputs (e.g. Optimizely nudges). */
+export function ctaExtras(cta) {
+  if (!cta) return [];
+  const extra = (s) => (s || "").split(/\s+/).filter((c) => c && !CTA_STANDARD.test(c));
+  return [
+    ...extra(cta.classes).map((c) => ({ kind: "class", on: "button", value: c })),
+    ...extra(cta.wrapClasses).map((c) => ({ kind: "class", on: "wrapper", value: c })),
+    ...(cta.style ? [{ kind: "style", on: "button", value: cta.style }] : []),
+    ...(cta.wrapStyle ? [{ kind: "style", on: "wrapper", value: cta.wrapStyle }] : []),
+  ];
+}
+
+const HERO_SLIDE = `
+<a href="@@BANNER_HREF@@" class="m-fwBanner @@BANNER_CLASSES@@ -slide -stackMobile">
+  <div class="m-fwBanner__row -media">
+    <picture class="a-genImg">
+      <source srcset="@@BANNER_DESKTOP@@" media="(min-width: 1024px)">
+      <source srcset="@@BANNER_MEDIUM@@" media="(min-width: 768px)">
+      <source srcset="@@BANNER_MEDIUM@@" media="(min-width: 576px)">
+      <source srcset="@@BANNER_SMALL@@" media="(max-width: 575px)">
+      <img src="@@BANNER_DESKTOP@@" alt="" class="a-genImg__img">
+    </picture>
+  </div>
+  <div class="m-fwBanner__row -columns @@ROW_CLASSES@@">
+    <div class="m-fwBanner__columns"><div class="m-fwBanner__col -content">
+      <div class="m-fwBanner__rte"><div class="m-rte">@@BANNER_SNIPPET@@</div></div>
+      ${HERO_CTA}
+    </div></div>
+  </div>
+</a>`;
+
+function heroCarousel(slide) {
+  const dots = [0, 1, 2, 3, 4, 5, 6].map((i) => `<li${i ? "" : ' class="slick-active"'}><button type="button">${i + 1}</button></li>`).join("");
+  return `
+<div class="o-heroCarousel">
+  <nav class="o-heroCarousel__actions"><div class="o-heroCarousel__dots">
+    <button type="button" class="o-heroCarousel__playPause" aria-label="Stop automatic slide show."><span class="o-heroCarousel__label sr-only"></span></button>
+    <ul class="slick-dots">${dots}</ul>
+  </div></nav>
+  <div class="o-heroCarousel__slider slick-initialized slick-slider slick-dotted">
+    <!-- Slick's JS puts this transform on the track; it keeps the slide (z-index:1) below the arrows and dots. -->
+    <div class="slick-list"><div class="slick-track" style="opacity:1;transform:translate3d(0px,0px,0px);width:100%">
+      <div class="slick-slide slick-current slick-active" style="width:100%"><div><div>${slide}</div></div></div>
+    </div></div>
+  </div>
+  <div class="o-heroCarousel__arrows">
+    <button type="button" class="slick-prev slick-arrow" aria-label="Previous Slide">Previous Slide</button>
+    <button type="button" class="slick-next slick-arrow" aria-label="Next Slide">Next Slide</button>
+  </div>
+</div>`;
+}
+
+/** The carousel controls drawn over a slide (for overlap checks), with readable names. */
+export const HERO_CONTROLS = [
+  [".o-heroCarousel__arrows .slick-prev", "previous-slide arrow"],
+  [".o-heroCarousel__arrows .slick-next", "next-slide arrow"],
+  [".o-heroCarousel__dots", "dots / pause control"],
+];
+
+export const CTA_COLORS = [
+  ["bg-green", "Green"], ["bg-dark", "Dark"], ["bg-white", "White (green outline)"], ["bg-dark-secondary", "Dark outline"],
+  ["bg-white-secondary", "White outline"], ["bg-yellow", "Yellow"], ["bg-gray", "Gray"], ["bg-clear", "Clear"],
+];
+
 // Used when the pasted snippet is a whole banner (<a class="m-fwBanner">…) copied from the site.
 const FULL_BODY = `<div class="p-catListing__main"><div class="p-catListing__banner">@@BANNER_SNIPPET@@</div></div>`;
 
 export const BUILTIN_TEMPLATES = [
   { id: "category", name: "Category banner", tool: "banner" },
   { id: "mixin", name: "Mix-in ad in the product grid", tool: "mixin" },
+  { id: "hero", name: "Hero carousel slide (home page)", tool: "hero" },
 ];
 
-/** "banner" for a pasted <a class="m-fwBanner">, "mixin" for a pasted <article class="m-mixinAd">, else null. */
+/**
+ * What a pasted whole element is: "hero" for an <a class="m-fwBanner -slide">, "banner" for another
+ * m-fwBanner, "mixin" for an <article class="m-mixinAd">; null for plain copy.
+ */
 export function snippetKind(html) {
-  const m = /class\s*=\s*["'][^"']*\b(m-fwBanner|m-mixinAd)\b/.exec(html || "");
-  return m ? (m[1] === "m-mixinAd" ? "mixin" : "banner") : null;
+  const m = /class\s*=\s*["']([^"']*\b(?:m-fwBanner|m-mixinAd)\b[^"']*)["']/.exec(html || "");
+  if (!m) return null;
+  if (/\bm-mixinAd\b/.test(m[1])) return "mixin";
+  return /(^|\s)-slide(\s|$)/.test(m[1]) ? "hero" : "banner";
 }
 
 /** Is this a whole banner/ad (rather than just its copy)? With a tool, only that tool's kind counts. */
@@ -127,6 +216,7 @@ body{display:flow-root}
 </style>`;
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+const escText = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
 // <style> is raw text (entities aren't decoded), so percent-encode anything that could end url("…").
 const cssUrl = (u) => String(u).replace(/["'()\\\n]/g, encodeURIComponent);
@@ -143,7 +233,7 @@ function stripScripts(html) {
 
 /**
  * Full preview document for one iframe.
- * opts: { template, customHtml, layout, full, neighbors, stylesheets, baseHref, lang, images, content }
+ * opts: { template, customHtml, layout, full, neighbors, cta: {color, text, href}, stylesheets, baseHref, lang, images, content }
  */
 export function buildPage(opts) {
   const { layout = {}, images } = opts;
@@ -168,6 +258,8 @@ export function buildPage(opts) {
       const cell = !opts.full ? `<li class="p-catListing__col">${MIXIN_AD}</li>`
         : /p-catListing__col/.test(opts.content || "") ? "@@BANNER_SNIPPET@@" : `<li class="p-catListing__col">@@BANNER_SNIPPET@@</li>`;
       body = mixinGrid(cell, opts.neighbors !== false);
+    } else if (opts.template === "hero") {
+      body = heroCarousel(opts.full ? "@@BANNER_SNIPPET@@" : HERO_SLIDE);
     } else body = opts.full ? FULL_BODY : CATEGORY_BODY;
     page = `<!DOCTYPE html><html lang="${esc(opts.lang)}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">${base}
@@ -178,7 +270,12 @@ ${links}${BASE_STYLE}</head><body>${body}</body></html>`;
   return page
     .replace(/@@BANNER_CLASSES@@/g, esc(layout.height || "-h-sm"))
     .replace(/@@ROW_CLASSES@@/g, esc(rowClasses))
-    .replace(/@@BANNER_HREF@@/g, "#")
+    .replace(/@@BANNER_HREF@@/g, esc(opts.cta && opts.cta.href ? opts.cta.href : "#"))
+    .replace(/@@CTA_CLASSES@@/g, esc(ctaClasses(opts.cta)))
+    .replace(/@@CTA_STYLE@@/g, esc((opts.cta && opts.cta.style) || ""))
+    .replace(/@@CTA_WRAP_CLASSES@@/g, esc((opts.cta && opts.cta.wrapClasses) || CTA_DEFAULT_WRAP))
+    .replace(/@@CTA_WRAP_STYLE@@/g, esc((opts.cta && opts.cta.wrapStyle) || ""))
+    .replace(/@@CTA_TEXT@@/g, () => escText((opts.cta && opts.cta.text) || ""))
     .replace(/@@BANNER_DESKTOP@@/g, esc(images.desktop))
     .replace(/@@BANNER_MEDIUM@@/g, esc(images.medium))
     .replace(/@@BANNER_SMALL@@/g, esc(images.small))
@@ -282,16 +379,30 @@ function expandText(text, factor, blockLen, useAccents) {
   return lead + out + trail;
 }
 
+/** Expansion / accents for a plain string, e.g. a hero slide's button text. */
+export function expandPlain(text, { expansion = "off", accents = false } = {}) {
+  if ((expansion === "off" && !accents) || !text) return text;
+  return expandText(text, expansion, text.trim().length, accents);
+}
+
 /**
  * Snippet HTML as it should be rendered: images in full-banner pastes swapped for the configured
  * ones, and text optionally expanded / accented.
  */
 export function prepareSnippet(html, { expansion = "off", accents = false, images = null } = {}) {
   const needsText = expansion !== "off" || accents;
-  if (!needsText && !(images && isFullBanner(html))) return html;
+  const lazy = /\sdata-src(set)?\s*=/.test(html);
+  if (!needsText && !lazy && !(images && isFullBanner(html))) return html;
   const t = document.createElement("template");
   t.innerHTML = html;
   const root = t.content;
+
+  // The site's lazy loader copies data-src into src. Do the same so lazy images render and size like
+  // production, e.g. the transparent 1210×1 "width-extender" that stretches the copy column on phones.
+  for (const el of root.querySelectorAll("[data-src], [data-srcset]")) {
+    if (el.dataset.src && !el.getAttribute("src")) el.setAttribute("src", el.dataset.src);
+    if (el.dataset.srcset && !el.getAttribute("srcset")) el.setAttribute("srcset", el.dataset.srcset);
+  }
 
   if (images) {
     const pic = root.querySelector(".m-fwBanner__row.-media picture, picture.a-genImg");

@@ -8,7 +8,7 @@
 import { contentNodes } from "./render.js";
 
 const BG_PARTS = ".m-fwBanner__row.-media, .m-mixinAd__bg, .m-fwBanner__bgImage, picture.a-genImg";
-const OURS = "#__bp_ov, #__bp_design";
+const OURS = "#__bp_ov, #__bp_design, #__bp_grid";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -89,7 +89,7 @@ const sample = (s) => { s = s.replace(/\s+/g, " ").trim(); return s.length > 40 
 function contentItems(doc) {
   const items = [];
   const range = doc.createRange();
-  const filter = { acceptNode: (n) => (n.nodeType === 1 && n.matches(BG_PARTS + "," + OURS + ",style,script,template,noscript") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) };
+  const filter = { acceptNode: (n) => (n.nodeType === 1 && n.matches(BG_PARTS + "," + OURS + ",.m-fwBanner__cta,style,script,template,noscript") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) };
   for (const top of contentNodes(doc)) {
     if (top.nodeType === 1 && filter.acceptNode(top) === NodeFilter.FILTER_REJECT) continue;
     const walker = doc.createTreeWalker(top, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, filter);
@@ -109,6 +109,39 @@ function contentItems(doc) {
   return items;
 }
 
+const kindName = (it) => (it.kind === "img" ? "Image" : it.kind === "button" ? "Button" : "Text");
+
+function buttonItem(doc, selector) {
+  const el = doc.querySelector(selector);
+  const r = el && el.getBoundingClientRect();
+  return r && r.width > 1 && r.height > 1 ? { kind: "button", rect: r, el, label: sample(el.textContent || "button") } : null;
+}
+
+// ---- contrast (WCAG relative luminance) ----
+function rgba(color) {
+  const m = /rgba?\(([^)]+)\)/.exec(color || "");
+  if (!m) return [255, 255, 255, 1];
+  const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+  return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
+}
+function luminance([r, g, b]) {
+  const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+function contrast(fg, bg) {
+  const a = luminance(rgba(fg)), b = luminance(rgba(bg));
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+/** The first non-transparent background behind an element (white if none, like the page). */
+function backgroundOf(el) {
+  const win = el.ownerDocument.defaultView;
+  for (let p = el; p && p.nodeType === 1; p = p.parentElement) {
+    const c = win.getComputedStyle(p).backgroundColor;
+    if (rgba(c)[3] > 0.5) return c;
+  }
+  return "rgb(255, 255, 255)";
+}
+
 /** The closest ancestor (up to the banner) that clips overflow. */
 function clipper(el, stop) {
   const win = el.ownerDocument.defaultView;
@@ -126,14 +159,18 @@ function clipper(el, stop) {
 export async function analyze(doc, opts) {
   doc.getElementById("__bp_ov")?.remove();
   doc.getElementById("__bp_design")?.remove();
+  doc.getElementById("__bp_grid")?.remove();
   const win = doc.defaultView;
   const issues = [];
   const marks = [];
-  const res = { slot: opts.slot, issues, marks, zones: [], bannerH: 0, bannerW: 0, minH: 0 };
-  const noun = opts.noun || "banner"; // "ad" in Mix-In Ad Preview
+  const res = { slot: opts.slot, issues, marks, zones: [], controls: [], bannerH: 0, bannerW: 0, minH: 0 };
+  const noun = opts.noun || "banner"; // "ad" in Mix-In Ad Preview, "slide" in Hero Slide Preview
 
   const banner = doc.querySelector(".m-fwBanner, .m-mixinAd");
-  const items = contentItems(doc);
+  const copy = contentItems(doc);
+  // Hero slides: the CMS button sits outside the authored HTML but is checked like the copy.
+  const button = opts.buttonSelector ? buttonItem(doc, opts.buttonSelector) : null;
+  const items = button ? copy.concat(button) : copy;
 
   if (banner) {
     const br = banner.getBoundingClientRect();
@@ -143,7 +180,7 @@ export async function analyze(doc, opts) {
     res.minH = Math.round(parseFloat(win.getComputedStyle(banner).minHeight) || 0);
     // Mix-in ads stretch to their grid row by design (and their copy is overlaid), so growth only matters for banners.
     if (opts.growCheck !== false && res.minH && res.bannerH > res.minH + 1) {
-      issues.push({ level: "warn", msg: `Banner grew to ${res.bannerH}px (set height ${res.minH}px), so the image crops differently than the design` });
+      issues.push({ level: "warn", msg: `${noun[0].toUpperCase() + noun.slice(1)} grew to ${res.bannerH}px (set height ${res.minH}px), so the image crops differently than the design` });
     }
     const clipped = new Set();
     for (const it of items) {
@@ -154,7 +191,7 @@ export async function analyze(doc, opts) {
         marks.push({ rect: r, level: "clip" });
         if (!clipped.has(it.label)) {
           clipped.add(it.label);
-          issues.push({ level: "error", msg: `${it.kind === "img" ? "Image" : "Text"} runs outside the ${c && c !== banner ? "box that clips it" : noun}: “${it.label}”` });
+          issues.push({ level: "error", msg: `${kindName(it)} runs outside the ${c && c !== banner ? "box that clips it" : noun}: “${it.label}”` });
         }
       }
     }
@@ -168,7 +205,8 @@ export async function analyze(doc, opts) {
   else if (geo && geo.broken) issues.push({ level: "error", msg: `The ${opts.slot} background image failed to load` });
 
   for (const im of doc.images) {
-    if (im.complete && !im.naturalWidth && !im.closest(BG_PARTS + ", .bp-neighbor")) {
+    // An <img> with no src at all isn't a failed load (lazy images get their src from data-src first).
+    if (im.getAttribute("src") && im.complete && !im.naturalWidth && !im.closest(BG_PARTS + ", .bp-neighbor")) {
       issues.push({ level: "error", msg: `Image failed to load: ${sample(im.getAttribute("src") || "")}` });
     }
   }
@@ -200,9 +238,82 @@ export async function analyze(doc, opts) {
         marks.push({ rect: it.rect, level: "hit" });
         if (!hitLabels.has(it.label)) {
           hitLabels.add(it.label);
-          issues.push({ level: "error", msg: `${it.kind === "img" ? "Image" : "Text"} overlaps a keep-out zone: “${it.label}”` });
+          issues.push({ level: "error", msg: `${kindName(it)} overlaps a keep-out zone: “${it.label}”` });
         }
       }
+    }
+  }
+
+  // Hero carousel controls (arrows, dots/pause pill) are drawn over the slide.
+  for (const [sel, name] of opts.controls || []) {
+    const el = doc.querySelector(sel);
+    const r = el && el.getBoundingClientRect();
+    if (!r || r.width < 2 || r.height < 2) continue;
+    const ctl = { rect: r, hit: false, name };
+    res.controls.push(ctl);
+    for (const it of items) {
+      if (!intersect(it.rect, r)) continue;
+      ctl.hit = true;
+      marks.push({ rect: it.rect, level: "hit" });
+      issues.push({ level: "error", msg: `${kindName(it)} is under the carousel's ${name}: “${it.label}”` });
+      break;
+    }
+  }
+
+  // Hero slides: the button centers on the copy column, not on the text, so padding or margins on the
+  // copy can leave the button off-center under it.
+  const textItems = copy.filter((i) => i.kind === "text");
+
+  // Extra margin on the button or its wrapper (sometimes added in Optimizely to nudge the copy). Measured
+  // from the live CSS, so responsive classes only count at the widths they apply. The wrapper's standard
+  // 20px top margin (.m-fwBanner__rte + *) isn't extra.
+  if (button) {
+    const px = (v) => Math.round(parseFloat(v) || 0);
+    const bcs = win.getComputedStyle(button.el);
+    const wrap = button.el.closest(".m-fwBanner__cta");
+    const wcs = wrap && win.getComputedStyle(wrap);
+    const m = {
+      left: px(bcs.marginLeft) + (wcs ? px(wcs.marginLeft) : 0),
+      right: px(bcs.marginRight) + (wcs ? px(wcs.marginRight) : 0),
+      top: px(bcs.marginTop) + (wcs ? px(wcs.marginTop) - 20 : 0),
+      bottom: px(bcs.marginBottom) + (wcs ? px(wcs.marginBottom) : 0),
+    };
+    if (m.left || m.right || m.top || m.bottom) res.btnMargin = m;
+  }
+  const marginNote = () => {
+    const m = res.btnMargin;
+    if (!m) return "";
+    const parts = Object.entries(m).filter(([, v]) => v).map(([k, v]) => `margin-${k} ${v}px`);
+    return ` (it has extra ${parts.join(", ")})`;
+  };
+
+  if (button && textItems.length) {
+    const L = Math.min(...textItems.map((i) => i.rect.left)), R = Math.max(...textItems.map((i) => i.rect.right));
+    const T = Math.min(...textItems.map((i) => i.rect.top)), B = Math.max(...textItems.map((i) => i.rect.bottom));
+    const btnC = (button.rect.left + button.rect.right) / 2, copyC = (L + R) / 2;
+    res.cta = { offset: Math.round(btnC - copyC), gap: Math.round(button.rect.top - B), btnC, copyC, top: T, bottom: button.rect.bottom };
+    const off = res.cta.offset;
+    res.cta.ok = Math.abs(off) <= (opts.ctaTolerance ?? 3);
+    if (!res.cta.ok) {
+      issues.push({ level: "warn", msg: res.btnMargin
+        ? `Button is ${Math.abs(off)}px ${off > 0 ? "right" : "left"} of the copy's center${marginNote()}`
+        : `Button is ${Math.abs(off)}px ${off > 0 ? "right" : "left"} of the copy's center. It centers on the copy column, so padding or margins on the copy move the text but not the button` });
+    }
+    if (res.cta.gap < 0) issues.push({ level: "error", msg: "Button overlaps the copy above it" });
+  }
+
+  // Stacked (phone) layout: text below the image sits on the page background, so white copy disappears.
+  if (opts.contrastCheck) {
+    const media = doc.querySelector(".m-fwBanner__row.-media");
+    const mr = media && media.getBoundingClientRect();
+    const seen = new Set();
+    for (const it of textItems) {
+      if (mr && intersect(it.rect, mr)) continue;
+      const ratio = contrast(win.getComputedStyle(it.el).color, backgroundOf(it.el));
+      if (ratio >= 1.6 || seen.has(it.label)) continue;
+      seen.add(it.label);
+      marks.push({ rect: it.rect, level: "clip" });
+      issues.push({ level: "error", msg: `Text is nearly invisible on the background below the image (contrast ${ratio.toFixed(1)}:1): “${it.label}”. Use md:text-white so it's only white on larger screens` });
     }
   }
 
@@ -321,6 +432,31 @@ export function drawOverlay(doc, res, opts = {}) {
     ov.appendChild(box(m.rect, m.level === "hit"
       ? "outline:2px solid #ff0033;background:rgba(255,0,51,.15)"
       : "outline:2px solid #f59e0b;background:rgba(245,158,11,.15)"));
+  }
+  if (opts.showZones) {
+    // Carousel controls: purple dashed, red when copy or the button is under them.
+    for (const c of res.controls || []) {
+      ov.appendChild(box(c.rect, `border:2px dashed ${c.hit ? "#ff0033" : "#a855f7"};border-radius:999px;background:${c.hit ? "rgba(255,0,51,.18)" : "rgba(168,85,247,.12)"}`));
+    }
+  }
+  if (res.btnMargin) {
+    // The button's extra margin, hatched in blue on each side it applies.
+    const b = doc.querySelector(".m-fwBanner__cta .a-authorBtn");
+    const r = b && b.getBoundingClientRect();
+    const m = res.btnMargin;
+    const hatch = "background:repeating-linear-gradient(45deg,rgba(56,189,248,.35) 0 4px,rgba(56,189,248,.1) 4px 8px);outline:1px dashed #0ea5e9";
+    if (r) {
+      if (m.left > 0) ov.appendChild(box({ left: r.left - m.left, top: r.top, width: m.left, height: r.height }, hatch));
+      if (m.right > 0) ov.appendChild(box({ left: r.right, top: r.top, width: m.right, height: r.height }, hatch));
+      if (m.top > 0) ov.appendChild(box({ left: r.left, top: r.top - m.top, width: r.width, height: m.top }, hatch));
+      if (m.bottom > 0) ov.appendChild(box({ left: r.left, top: r.bottom, width: r.width, height: m.bottom }, hatch));
+    }
+  }
+  if (res.cta && !res.cta.ok) {
+    // Copy center (sky) vs button center (amber) when they don't line up.
+    const line = (x, color) => ov.appendChild(box({ left: x - 1, top: res.cta.top, width: 2, height: res.cta.bottom - res.cta.top }, `background:${color}`));
+    line(res.cta.copyC, "#38bdf8");
+    line(res.cta.btnC, "#f59e0b");
   }
   if (res.balance && opts.showBalance !== false) ov.appendChild(drawBalance(doc, res.balance, sx, sy));
   doc.body.appendChild(ov);

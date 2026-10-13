@@ -43,8 +43,9 @@ export function lint(html, { lang, isSource, source }) {
   const t = document.createElement("template");
   t.innerHTML = html;
   for (const img of t.content.querySelectorAll("img")) {
-    const src = img.getAttribute("src") || "";
-    if (!img.hasAttribute("alt") || !img.getAttribute("alt").trim()) out.push({ level: "warn", msg: `Image has no alt text: ${src.split("/").pop()}` });
+    const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
+    const spacer = /width-extender/i.test(src); // transparent layout spacer, decorative by design
+    if (!spacer && (!img.hasAttribute("alt") || !img.getAttribute("alt").trim())) out.push({ level: "warn", msg: `Image has no alt text: ${src.split("/").pop()}` });
     if (/^http:\/\//i.test(src)) out.push({ level: "warn", msg: `Image uses http:// (will be blocked on the https site): ${src.split("/").pop()}` });
   }
 

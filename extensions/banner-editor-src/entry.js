@@ -1,5 +1,5 @@
 // Everything banner-preview/editor.js needs from CodeMirror, bundled into one ES module.
-export { EditorState, Compartment, StateEffect } from "@codemirror/state";
+export { EditorState, Compartment, StateEffect, Transaction } from "@codemirror/state";
 export {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection,
   dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, hoverTooltip, placeholder,

@@ -89,6 +89,57 @@ export async function loadClassIndex(urls) {
   return index;
 }
 
+// ---- scales: classes that set the same thing at the same breakpoint ---------------------------------
+// e.g. pl-20 → every class that only sets padding-left (pl-0 … pl-150, pl-1_4 …), text-2xl → every
+// font-size class, md:pl-20 → the md: padding-left classes. Used for the editor's right-click menu and
+// Ctrl+Alt+↑/↓ nudging.
+const declProps = (decl) => decl.split(";").map((s) => s.trim()).filter(Boolean)
+  .map((s) => { const i = s.indexOf(":"); return [s.slice(0, i).trim(), s.slice(i + 1).trim()]; });
+
+const WEIGHTS = { thin: 100, hairline: 100, extralight: 200, light: 300, normal: 400, medium: 500, semibold: 600, bold: 700, extrabold: 800, black: 900 };
+
+/** Sort key: px/rem first by size, then %, then keywords (auto, normal, …). */
+function valueKey(v) {
+  const m = /^(-?[\d.]+)(px|rem|em|%)?$/.exec(v);
+  if (!m) return [2, WEIGHTS[v] ?? 0, v];
+  let n = parseFloat(m[1]);
+  if (m[2] === "rem" || m[2] === "em") n *= 16;
+  return [m[2] === "%" ? 1 : 0, n, v];
+}
+const compareKeys = (a, b) => a[0] - b[0] || a[1] - b[1] || String(a[2]).localeCompare(String(b[2]));
+
+let familyIndex = null;
+let families = null;
+let familyByName = null;
+
+function buildFamilies(index) {
+  families = new Map();
+  familyByName = new Map();
+  for (const e of index.values()) {
+    if (e.kind === "comp") continue;
+    const rule = e.rules.find((r) => !r.pseudo);
+    const props = rule && declProps(rule.decl);
+    if (!props || !props.length) continue;
+    const prefix = /^((?:[\w-]+:)*)/.exec(e.name)[1];
+    const key = prefix + "\n" + props.map((p) => p[0]).sort().join(";");
+    if (!families.has(key)) families.set(key, []);
+    families.get(key).push({ name: e.name, value: props[0][1], label: props.map((p) => p[0]).join(", "), swatch: e.swatch, key: valueKey(props[0][1]) });
+    familyByName.set(e.name, key);
+  }
+  for (const list of families.values()) list.sort((a, b) => compareKeys(a.key, b.key) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  familyIndex = index;
+}
+
+/** The scale a class belongs to: { prop, members: [{name, value, swatch}], at } or null if it has no siblings. */
+export function familyOf(index, name) {
+  if (!index) return null;
+  if (familyIndex !== index) buildFamilies(index);
+  const list = families.get(familyByName.get(name));
+  if (!list || list.length < 2) return null;
+  const at = list.findIndex((m) => m.name === name);
+  return { prop: list[at].label, members: list, at };
+}
+
 /** "md:" -> "≥768px" etc., read from the media queries the prefixed classes live in. */
 export function prefixInfo(index) {
   const out = new Map();

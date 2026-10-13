@@ -26,8 +26,10 @@
    Status colors (--green ok, --warm warning, --danger problem) stay the same in both. */
 :root { --accent: var(--green); --accent-2: var(--sky); --accent-dark: #16a34a; --accent-ink: #04130a; }
 body.tool-mixin { --accent: #a855f7; --accent-2: #d8b4fe; --accent-dark: #7c3aed; --accent-ink: #fff; --bg-end: #261b3d; }
+body.tool-hero { --accent: #f97316; --accent-2: #fdba74; --accent-dark: #ea580c; --accent-ink: #fff; --bg-end: #2d2015; }
 @media (prefers-color-scheme: light) {
   body.tool-mixin { --accent-2: #7c3aed; --bg-end: #efe7fb; }
+  body.tool-hero { --accent-2: #c2410c; --bg-end: #fbeee3; }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -80,6 +82,9 @@ input[type="checkbox"] { accent-color: var(--green); }
 .field > span { font-size: 11px; font-weight: 600; color: var(--text-2); }
 .field textarea { font: 12px/1.5 Consolas, monospace; resize: vertical; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+/* Fields fill their column and may shrink (grid items otherwise refuse to go below an input's default width). */
+.grid2 > * { min-width: 0; }
+.field > input, .field > select { width: 100%; min-width: 0; }
 .note { font-size: 11px; color: var(--sky); }
 
 /* ---- layout ---- */
@@ -118,6 +123,31 @@ details.panel > summary { cursor: pointer; font-weight: 600; }
 .cm-completionIcon-bp-other::after { content: "·"; color: var(--text-2); }
 .cm-completionIcon-bp-comp::after { content: "◇"; color: var(--muted); }
 .cm-completionIcon-bp-prefix::after { content: "@"; color: var(--sky); font-weight: 700; }
+
+/* layout grid settings popover */
+.floatPanel { position: fixed; z-index: 25; width: 380px; padding: 12px 14px; background: var(--bg-end); color: var(--text);
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 16px 44px rgba(0, 0, 0, .45); }
+.floatPanel[hidden] { display: none; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.grid3 .mini { flex-direction: column; align-items: stretch; }
+.grid3 .mini input { width: 100%; }
+.tileHead .tag.grid { color: #f472b6; border-color: rgba(236, 72, 153, .5); font-variant-numeric: tabular-nums; }
+
+/* scale menu (right-click a class in the editor) */
+.bp-scaleMenu { position: fixed; z-index: 30; width: 300px; max-height: min(420px, 70vh); display: flex; flex-direction: column;
+  background: var(--bg-end); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 14px 40px rgba(0, 0, 0, .45); outline: none; }
+.bp-scaleHead { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.bp-scaleHead span { font-size: 11px; color: var(--text-2); }
+.bp-scaleList { overflow-y: auto; padding: 4px; }
+.bp-scaleRow { display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: none; font-weight: 400; text-align: left; }
+.bp-scaleRow:hover { filter: none; }
+.bp-scaleRow code { background: none; border: 0; padding: 0; font-size: 12px; color: var(--text); }
+.bp-scaleRow span:last-child { margin-left: auto; font: 11px Consolas, monospace; color: var(--text-2); }
+.bp-scaleRow.active { background: color-mix(in srgb, var(--accent-2) 20%, transparent); border-color: var(--accent-2); }
+.bp-scaleRow.current code { font-weight: 700; }
+.bp-scaleRow.current code::after { content: "  current"; font: 10px "Segoe UI", sans-serif; color: var(--accent-2); }
+.cm-bp-tip { margin-top: 6px; font-size: 11px; color: var(--text-2); }
 
 /* class reference (non-modal, floats over the preview) */
 #classDlg { position: fixed; inset: 70px 16px auto auto; margin: 0; width: min(560px, 60vw); max-height: calc(100vh - 90px); display: none; flex-direction: column; z-index: 20; }
@@ -212,6 +242,11 @@ details.panel > summary { cursor: pointer; font-weight: 600; }
 .tileHead .tag.bal.ok { color: var(--green); border-color: rgba(34, 197, 94, .45); }
 .tileHead .tag.bal.off { color: var(--warm); border-color: rgba(245, 158, 11, .5); }
 .slot select.small { font-size: 11px; padding: 2px 4px; }
+.tileHead .tag.margin { color: var(--sky); border-color: rgba(56, 189, 248, .5); font-variant-numeric: tabular-nums; }
+.ctaExtras { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: rgba(56, 189, 248, .1); border: 1px solid rgba(56, 189, 248, .45); }
+.ctaExtras[hidden] { display: none; }
+.ctaExtras .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.ctaExtras code { font-size: 11px; }
 .tileHead input[type="range"] { width: 220px; }
 .badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
 .badge.ok { color: var(--green); background: rgba(34, 197, 94, .12); }

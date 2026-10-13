@@ -54,7 +54,7 @@ export const delBlob = (key) => tx("readwrite", (s) => s.delete(key));
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 // ---- tool namespace -------------------------------------------------------------
-// Category Banner Preview ("bp") and Mix-In Ad Preview ("mp") share this code but keep separate
+// Category Banner Preview ("bp"), Mix-In Ad Preview ("mp") and Hero Slide Preview ("hp") share this code but keep separate
 // saved items and settings, so a mix-in never shows up in the banner list or vice versa.
 let NS = "bp";
 let TOOL = "banner";
@@ -99,6 +99,9 @@ export const DEFAULT_SETTINGS = {
   designMode: "overlay", // overlay | swipe | below
   designMove: false,
   balanceTolerance: 6, // px the copy may sit off-center before the balance check warns
+  // Layout grid overlay: columns per screen size (<768 / 768–1023 / ≥1024), gutter and outer margin in px,
+  // fitted to the whole banner or its content area; rows = baseline spacing in px (0 = off).
+  grid: { on: false, cols: [4, 8, 12], gutter: 20, margin: 0, fit: "content", rows: 0 },
   sweep: true,
   sweepWidth: 700,
   sideWidth: 420,
@@ -108,10 +111,18 @@ export const DEFAULT_SETTINGS = {
 // customized, so they move to the current default; edited lists are left alone.
 const OLD_DEFAULT_WIDTHS = "320,415,576,768,992,1024,1210,1440";
 
+/** Defaults for the current tool. A mix-in ad is always a ~230px card, so its grid is 4 narrow columns at every size. */
+export function defaultSettings() {
+  const d = { ...DEFAULT_SETTINGS };
+  if (TOOL === "mixin") d.grid = { ...d.grid, cols: [4, 4, 4], gutter: 10 };
+  return d;
+}
+
 export async function loadSettings() {
   const s = await getJSON(settingsKey(), {});
   if (Array.isArray(s.devices) && s.devices.map((d) => d.width).join(",") === OLD_DEFAULT_WIDTHS) delete s.devices;
-  return { ...DEFAULT_SETTINGS, ...s };
+  const d = defaultSettings();
+  return { ...d, ...s, grid: { ...d.grid, ...(s.grid || {}) } };
 }
 
 export const saveSettings = (s) => setJSON(settingsKey(), s);
@@ -127,10 +138,11 @@ export function newProject(name = "Untitled", tool = TOOL) {
     name,
     tool,
     updated: new Date().toISOString(),
-    template: tool === "mixin" ? "mixin" : "category",
-    layout: { height: "-h-sm", width: "-w-sm", align: "-left", valign: "", extra: "" },
+    template: { mixin: "mixin", hero: "hero" }[tool] || "category",
+    layout: { height: tool === "hero" ? "-h-lg" : "-h-sm", width: "-w-sm", align: "-left", valign: "", extra: "" },
     mixin: { neighbors: true }, // mix-in only: show product cards beside the ad
-    langs: [{ code: "en-US", html: "" }],
+    cta: { color: "bg-green", href: "" }, // hero only: the slide's button color class and link (text is per language)
+    langs: [{ code: "en-US", html: "", cta: tool === "hero" ? "LEARN MORE" : "" }],
     activeLang: "en-US",
     images: {}, // slot -> { url } | { blob, name }
     zones: {}, // slot -> [{ x, y, w, h }] as fractions of the image
@@ -213,7 +225,7 @@ export async function exportProject(p) {
   return { format: "melaleuca-banner-preview", version: 1, tool: out.tool || TOOL, project: out };
 }
 
-export const TOOL_NAMES = { banner: "Category Banner Preview", mixin: "Mix-In Ad Preview" };
+export const TOOL_NAMES = { banner: "Category Banner Preview", mixin: "Mix-In Ad Preview", hero: "Hero Slide Preview" };
 
 export async function importProject(json) {
   const p = json && json.format === "melaleuca-banner-preview" ? json.project : null;

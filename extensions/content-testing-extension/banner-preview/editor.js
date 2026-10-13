@@ -6,11 +6,11 @@ import {
   drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, hoverTooltip, placeholder,
   defaultKeymap, history, historyKeymap, indentWithTab, html, syntaxHighlighting, HighlightStyle, indentOnInput,
   bracketMatching, foldGutter, foldKeymap, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap,
-  startCompletion, linter, lintGutter, forceLinting, searchKeymap, highlightSelectionMatches, tags,
+  startCompletion, linter, lintGutter, forceLinting, searchKeymap, highlightSelectionMatches, tags, Transaction,
 } from "./vendor/codemirror.js";
 import { tagBalance } from "./lint.js";
 import { formatHtml } from "./format.js";
-import { RUNTIME_CLASSES, KIND_LABELS, prefixInfo } from "./classes.js";
+import { RUNTIME_CLASSES, KIND_LABELS, prefixInfo, familyOf } from "./classes.js";
 
 // ---- class index ------------------------------------------------------------------
 let classIndex = null;
@@ -44,8 +44,131 @@ function ruleInfo(e) {
     pre.textContent = (at ? at + "\n" : "") + r.decl.replace(/;\s*/g, ";\n").trim();
     box.append(pre);
   }
+  if (familyOf(classIndex, e.name)) {
+    box.append(Object.assign(document.createElement("div"), { className: "cm-bp-tip", textContent: "Right-click for larger / smaller values · Ctrl+Alt+↑/↓ to step" }));
+  }
   return box;
 }
+
+// ---- scale menu (right-click a class) and Ctrl+Alt+↑/↓ stepping ---------------------------------
+const tokenAt = (state, pos) => {
+  for (const t of classTokens(state.doc.toString())) if (pos >= t.from && pos <= t.to) return t;
+  return null;
+};
+
+/** Swaps the class under the cursor for the next larger (dir 1) or smaller (dir -1) one in its scale. */
+function stepClass(view, dir) {
+  const pos = view.state.selection.main.head;
+  const t = classIndex && tokenAt(view.state, pos);
+  const fam = t && familyOf(classIndex, t.name);
+  const next = fam && fam.members[fam.at + dir];
+  if (!next) return !!fam; // at the end of the scale: swallow the key, nothing to do
+  view.dispatch({ changes: { from: t.from, to: t.to, insert: next.name }, selection: { anchor: t.from + Math.min(pos - t.from, next.name.length) } });
+  return true;
+}
+
+let scaleMenu = null;
+
+function closeScaleMenu() {
+  if (scaleMenu) scaleMenu.close();
+}
+
+/**
+ * Lists every value in the class's scale. Hovering previews the class (outside undo history) so the
+ * viewports update live; click keeps it as one undo step; Esc or clicking away restores the original.
+ */
+function openScaleMenu(view, token, x, y) {
+  const fam = familyOf(classIndex, token.name);
+  if (!fam) return false;
+  closeScaleMenu();
+  const original = token.name;
+  let span = { from: token.from, to: token.to };
+  let shown = original;
+  const put = (name, history) => {
+    if (name === shown && !history) return;
+    view.dispatch({ changes: { from: span.from, to: span.to, insert: name }, annotations: history ? [] : [Transaction.addToHistory.of(false)] });
+    span = { from: span.from, to: span.from + name.length };
+    shown = name;
+  };
+
+  const menu = document.createElement("div");
+  menu.className = "bp-scaleMenu";
+  menu.tabIndex = -1;
+  const head = document.createElement("div");
+  head.className = "bp-scaleHead";
+  head.innerHTML = `<b></b><span>Hover to preview · click to use · Esc to cancel</span>`;
+  head.firstChild.textContent = fam.prop;
+  const list = document.createElement("div");
+  list.className = "bp-scaleList";
+  menu.append(head, list);
+
+  let active = fam.at;
+  const rows = fam.members.map((m, i) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "bp-scaleRow" + (i === fam.at ? " current" : "");
+    if (m.swatch) row.append(swatch(m.swatch));
+    const name = document.createElement("code");
+    name.textContent = m.name;
+    const val = document.createElement("span");
+    val.textContent = m.value;
+    row.append(name, val);
+    row.addEventListener("mouseenter", () => highlight(i));
+    row.addEventListener("click", () => finish(m.name));
+    list.append(row);
+    return row;
+  });
+
+  function highlight(i) {
+    active = Math.max(0, Math.min(rows.length - 1, i));
+    rows.forEach((r, j) => r.classList.toggle("active", j === active));
+    rows[active].scrollIntoView({ block: "nearest" });
+    put(fam.members[active].name, false);
+  }
+  function finish(name) {
+    put(original, false);
+    if (name && name !== original) put(name, true);
+    cleanup();
+    view.focus();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); finish(null); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); highlight(active + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); highlight(active - 1); }
+    else if (e.key === "Enter") { e.preventDefault(); finish(fam.members[active].name); }
+  }
+  const onOutside = (e) => { if (!menu.contains(e.target)) finish(null); };
+  list.addEventListener("mouseleave", () => put(original, false)); // leaving the list shows the original again
+  menu.addEventListener("keydown", onKey);
+  function cleanup() {
+    document.removeEventListener("mousedown", onOutside, true);
+    menu.remove();
+    scaleMenu = null;
+  }
+  scaleMenu = { close: () => finish(null) };
+
+  document.body.append(menu);
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  menu.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + "px";
+  menu.style.top = Math.max(8, Math.min(y, innerHeight - h - 8)) + "px";
+  rows[fam.at].classList.add("active");
+  // Show the current value in the middle of the list.
+  list.scrollTop = rows[fam.at].offsetTop - list.clientHeight / 2 + rows[fam.at].offsetHeight / 2;
+  menu.focus();
+  setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
+  return true;
+}
+
+const scaleHandlers = EditorView.domEventHandlers({
+  contextmenu(e, view) {
+    if (!classIndex) return false;
+    const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+    const t = pos != null && tokenAt(view.state, pos);
+    if (!t || !openScaleMenu(view, t, e.clientX, e.clientY)) return false; // normal browser menu elsewhere
+    e.preventDefault();
+    return true;
+  },
+});
 
 function swatch(color) {
   const s = document.createElement("span");
@@ -231,9 +354,12 @@ export function createEditor(parent, { onChange, onSave, placeholderText }) {
       addToOptions: [{ render: (c) => (c.swatch ? swatch(c.swatch) : null), position: 20 }],
     }),
     classHover,
+    scaleHandlers,
     linter(diagnostics, { delay: 300 }),
     keymap.of([
       { key: "Mod-s", run: () => { onSave(); return true; } },
+      { key: "Ctrl-Alt-ArrowUp", run: (v) => stepClass(v, 1) },
+      { key: "Ctrl-Alt-ArrowDown", run: (v) => stepClass(v, -1) },
       { key: "Shift-Alt-f", run: () => { const err = format(); if (err) onSave(err); return true; } },
       indentWithTab,
       ...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...defaultKeymap,
@@ -256,6 +382,7 @@ export function createEditor(parent, { onChange, onSave, placeholderText }) {
     format,
     getValue: () => view.state.doc.toString(),
     setValue(text, nextKey) {
+      closeScaleMenu(); // restores any previewed class before the document is swapped out
       if (key) states.set(key, view.state);
       const cached = nextKey && states.get(nextKey);
       view.setState(cached && cached.doc.toString() === text ? cached : EditorState.create({ doc: text, extensions }));

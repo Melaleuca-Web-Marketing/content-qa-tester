@@ -1,22 +1,42 @@
 {
   "manifest_version": 3,
   "name": "Melaleuca Content Testing Tools",
-  "version": "1.5.0",
-  "description": "Companion extension for the Melaleuca Content QA Tester. Culture Links flags links whose culture doesn't match the page; Category Banner Preview and Mix-In Ad Preview render banner and ad HTML at every breakpoint and language with overlap checks.",
-  "permissions": ["storage", "contextMenus", "scripting"],
-  "host_permissions": ["https://*.melaleuca.com/*"],
-  "background": { "service_worker": "background.js" },
+  "version": "1.7.0",
+  "description": "Melaleuca content QA: Culture Links, Banner, Hero Slide and Mix-In Ad previews, and QA Tester runs for the open page.",
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.melaleuca.com/*",
+    "https://usifhqpsagqat01.melaleuca.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Content Testing Tools",
     "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["https://*.melaleuca.com/*"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://*.melaleuca.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "all_frames": true,
       "run_at": "document_idle"
     }
+  ],
+  "optional_host_permissions": [
+    "https://*.melaleuca.net/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ]
 }

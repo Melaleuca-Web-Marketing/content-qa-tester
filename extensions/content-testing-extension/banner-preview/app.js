@@ -2,6 +2,7 @@ import * as store from "./store.js";
 import {
   BUILTIN_TEMPLATES, LAYOUT_OPTIONS, SLOT_INFO, rulesFor, slotForWidth,
   buildPage, setContent, prepareSnippet, isFullBanner, snippetKind, snippetImages, placeholderImage,
+  expandPlain, HERO_CONTROLS, CTA_COLORS, ctaClasses, ctaExtras, CTA_DEFAULT_WRAP,
 } from "./render.js";
 import { analyze, drawOverlay, waitForAssets } from "./analyze.js";
 import { lint } from "./lint.js";
@@ -15,29 +16,50 @@ const BREAKPOINTS = [415, 576, 768, 992, 1024, 1210];
 const SLOTS = ["desktop", "medium", "small"];
 const LOCALES = ["en-US", "es-US", "en-CA", "fr-CA", "es-MX", "en-GB", "en-IE", "nl-NL", "de-DE", "pl-PL", "lt-LT", "ja-JP", "ko-KR", "zh-TW", "zh-CN", "en-AU", "en-MY"];
 // ---- which tool this page is ----------------------------------------------------------
-// The same page runs as Category Banner Preview (index.html) or Mix-In Ad Preview (index.html?tool=mixin).
-// Each keeps its own saved items, settings and look so the two don't get mixed up.
+// The same page runs as Category Banner Preview (index.html), Mix-In Ad Preview (?tool=mixin) or
+// Hero Slide Preview (?tool=hero). Each keeps its own saved items, settings and look so they don't get mixed up.
 const TOOLS = {
   banner: {
-    id: "banner", ns: "bp", other: "mixin", template: "category", logo: "CB", badge: "Category banner",
-    name: "Category Banner Preview", noun: "banner", nounCap: "Banner",
+    id: "banner", ns: "bp", template: "category", logo: "CB", badge: "Category banner",
+    name: "Category Banner Preview", noun: "banner",
     placeholder: 'Paste the banner HTML: the contents of .m-rte, or the whole <a class="m-fwBanner"> copied from the site.',
     copyHint: "goes in the banner's .m-rte",
   },
   mixin: {
-    id: "mixin", ns: "mp", other: "banner", template: "mixin", logo: "MI", badge: "Mix-in ad",
-    name: "Mix-In Ad Preview", noun: "ad", nounCap: "Ad",
+    id: "mixin", ns: "mp", template: "mixin", logo: "MI", badge: "Mix-in ad",
+    name: "Mix-In Ad Preview", noun: "ad",
     placeholder: 'Paste the mix-in ad copy (the contents of .m-mixinAd__headline), or the whole <article class="m-mixinAd"> copied from the site.',
     copyHint: "goes in the ad's .m-mixinAd__headline (a 230×450 card in the product grid)",
   },
+  hero: {
+    id: "hero", ns: "hp", template: "hero", logo: "HS", badge: "Hero slide",
+    name: "Hero Slide Preview", noun: "slide",
+    placeholder: 'Paste the slide copy (the contents of .m-rte). The button is set below, under "Slide & button". Or paste the whole <a class="m-fwBanner -slide"> from the home page.',
+    copyHint: "goes in the slide's .m-rte; the button is set separately",
+  },
 };
-const TOOL = TOOLS[new URLSearchParams(location.search).get("tool") === "mixin" ? "mixin" : "banner"];
-const OTHER = TOOLS[TOOL.other];
+const toolParam = new URLSearchParams(location.search).get("tool");
+const TOOL = TOOLS[toolParam === "mixin" || toolParam === "hero" ? toolParam : "banner"];
+const OTHERS = Object.values(TOOLS).filter((t) => t !== TOOL);
 store.setNamespace(TOOL.ns, TOOL.id);
-const toolUrl = (tool, hash = "") => location.pathname + (tool.id === "mixin" ? "?tool=mixin" : "") + hash;
+const toolUrl = (tool, hash = "") => location.pathname + (tool.id === "banner" ? "" : "?tool=" + tool.id) + hash;
 
 // Starter content for a first run.
 const SAMPLES = {};
+// The Oct 2026 Riverbend Ranch home page slide (images from production; copy written for the sample).
+SAMPLES.hero = {
+  name: "Sample: Riverbend Roaster (Oct 2026)",
+  html: `<div class="text-center">
+  <h2 class="font-bold text-2xl sm:text-3xl md:text-5xl leading-tight">The Riverbend Roaster</h2>
+  <p class="text-xl md:text-2xl pt-4">Premium ranch beef for the holidays</p>
+</div>`,
+  images: {
+    desktop: "https://cdnsc1.melaleuca.com/na/images/product-store/20261001/hero-3-rbr-full-enus.jpg",
+    medium: "https://cdnsc1.melaleuca.com/na/images/product-store/20261001/hero-3-rbr-medium-enus.jpg",
+    small: "https://cdnsc1.melaleuca.com/na/images/product-store/20261001/hero-3-rbrsmalll-enus.jpg",
+  },
+  cta: { color: "bg-white", href: "/riverbendranch/productstore/bulk-beef/riverbend-roaster", text: "DON’T WAIT—ORDER TODAY" },
+};
 SAMPLES.mixin = {
   name: "Sample: Mix-in ad",
   html: `<div class="text-center text-white pt-24 px-10">
@@ -151,12 +173,32 @@ function prepared(code) {
   return prepareSnippet(html, { expansion: S.expansion, accents: S.accents, images: isFull(html) ? urlsFor(code) : null });
 }
 
+/** Hero slide button for a language: shared color and link, per-language text (with expansion/accents). */
+function ctaFor(code) {
+  return { ...P.cta, text: expandPlain(langObj(code).cta || "", { expansion: S.expansion, accents: S.accents }) };
+}
+
+/** Updates the hero button in an already-loaded frame. */
+function setCta(doc, code) {
+  const btn = doc.querySelector(".m-fwBanner__cta .a-authorBtn");
+  if (!btn || TOOL.id !== "hero" || isFull(langHtml(code))) return;
+  const cta = ctaFor(code);
+  btn.textContent = cta.text;
+  btn.className = ctaClasses(cta);
+  btn.setAttribute("style", cta.style || "");
+  const wrap = btn.parentElement;
+  wrap.className = cta.wrapClasses || CTA_DEFAULT_WRAP;
+  wrap.setAttribute("style", cta.wrapStyle || "");
+  const a = doc.querySelector("a.m-fwBanner");
+  if (a) a.setAttribute("href", cta.href || "#");
+}
+
 function pageFor(code) {
   const html = langHtml(code);
   const full = isFull(html);
   const custom = customTemplates.find((t) => t.id === P.template);
   const page = buildPage({
-    template: P.template, customHtml: custom && custom.html, layout: P.layout, full, neighbors: P.mixin.neighbors,
+    template: P.template, customHtml: custom && custom.html, layout: P.layout, full, neighbors: P.mixin.neighbors, cta: ctaFor(code),
     stylesheets: S.stylesheets, baseHref: S.baseHref, lang: code, images: urlsFor(code), content: prepared(code),
   });
   return { full, page };
@@ -204,6 +246,8 @@ function makeTile(spec) {
   t.heightEl = el("span", { className: "tag" });
   t.langEl = el("span", { className: "tag lang" });
   t.balEl = el("span", { className: "tag bal", hidden: true });
+  t.marginEl = el("span", { className: "tag margin", hidden: true });
+  t.gridEl = el("span", { className: "tag grid", hidden: true });
   t.scaleEl = el("span", { className: "hint" });
   t.badge = el("span", { className: "badge wait", textContent: "…" });
   const head = el("div", { className: "tileHead" }, t.nameEl, t.widthEl);
@@ -219,7 +263,7 @@ function makeTile(spec) {
     });
     head.append(range);
   }
-  head.append(t.slotEl, t.heightEl, t.langEl, t.balEl, t.scaleEl, t.badge);
+  head.append(t.slotEl, t.heightEl, t.langEl, t.balEl, t.marginEl, t.gridEl, t.scaleEl, t.badge);
   t.el.append(head, t.wrap, t.list);
   return t;
 }
@@ -248,8 +292,16 @@ function renderTileInfo(t) {
   t.slotEl.textContent = SLOT_INFO[slot].label + " image";
   t.langEl.textContent = t.lang;
   const r = t.result;
-  t.heightEl.textContent = !r || !r.bannerH ? "" : TOOL.id === "mixin" ? `ad ${r.bannerW}×${r.bannerH}` : `banner ${r.bannerH}px`;
+  t.heightEl.textContent = !r || !r.bannerH ? "" : TOOL.id === "mixin" ? `ad ${r.bannerW}×${r.bannerH}` : `${TOOL.noun} ${r.bannerH}px`;
   t.heightEl.hidden = !t.heightEl.textContent;
+  // Hero: extra margin on the button (e.g. an Optimizely nudge) at this width.
+  const m = r && r.btnMargin;
+  t.marginEl.hidden = !m;
+  if (m) {
+    const arrows = { left: "←", right: "→", top: "↑", bottom: "↓" };
+    t.marginEl.textContent = "button margin " + Object.entries(m).filter(([, v]) => v).map(([k, v]) => `${arrows[k]}${v}`).join(" ") + "px";
+    t.marginEl.title = "Extra margin on the button at this width (not part of the standard CMS button). It shifts the button and widens the copy column.";
+  }
   const b = r && r.balance;
   t.balEl.hidden = !b;
   if (b) {
@@ -301,6 +353,7 @@ async function refreshTile(t) {
   const seq = ++t.seq;
   doc.documentElement.lang = t.lang;
   if (!setContent(doc, prepared(t.lang))) return loadTile(t);
+  setCta(doc, t.lang);
   await waitForAssets(doc);
   if (seq === t.seq) await analyzeTile(t);
 }
@@ -409,6 +462,106 @@ document.addEventListener("keydown", nudgeDesign);
 
 const redrawDesigns = () => tiles.forEach(drawDesign);
 
+// ---- layout grid overlay ------------------------------------------------------------------
+/** Columns for a viewport width: phone (<768), tablet (768–1023) or desktop (≥1024). */
+const gridCols = (width) => S.grid.cols[width < 768 ? 0 : width < 1024 ? 1 : 2];
+
+/** The box the grid covers: the whole banner/ad, or its content area (inside the copy container's padding). */
+function gridBox(doc) {
+  const banner = doc.querySelector(".m-fwBanner, .m-mixinAd");
+  if (!banner) return null;
+  const el = S.grid.fit === "content" ? doc.querySelector(".m-fwBanner__columns, .m-mixinAd__row.-content") || banner : banner;
+  const r = el.getBoundingClientRect();
+  const cs = doc.defaultView.getComputedStyle(el);
+  const pad = (p) => (S.grid.fit === "content" && el !== banner ? parseFloat(cs[p]) || 0 : 0);
+  return { left: r.left + pad("paddingLeft"), top: r.top + pad("paddingTop"), width: r.width - pad("paddingLeft") - pad("paddingRight"), height: r.height - pad("paddingTop") - pad("paddingBottom") };
+}
+
+function drawGrid(t) {
+  const doc = t.ready && t.iframe.contentDocument;
+  if (!doc || !doc.body) return;
+  doc.getElementById("__bp_grid")?.remove();
+  t.gridInfo = null;
+  const g = S.grid;
+  const box = g.on && gridBox(doc);
+  if (!box) { renderGridTag(t); return; }
+  const cols = Math.max(1, Math.min(24, gridCols(t.width) || 12));
+  const inner = box.width - 2 * g.margin;
+  const colW = (inner - (cols - 1) * g.gutter) / cols;
+  t.gridInfo = { cols, colW };
+  if (colW < 2) { renderGridTag(t); return; } // too many columns/gutter for this box: say so instead of drawing
+  const sx = doc.defaultView.scrollX, sy = doc.defaultView.scrollY;
+  const wrap = doc.createElement("div");
+  wrap.id = "__bp_grid";
+  wrap.style.cssText = `position:absolute;left:${box.left + g.margin + sx}px;top:${box.top + sy}px;width:${Math.max(0, inner)}px;height:${box.height}px;` +
+    `display:flex;gap:${g.gutter}px;pointer-events:none;z-index:2147483645` +
+    (g.rows > 0 ? `;background:repeating-linear-gradient(180deg,transparent 0 ${g.rows - 1}px,rgba(236,72,153,.35) ${g.rows - 1}px ${g.rows}px)` : "");
+  for (let i = 0; i < cols; i++) {
+    const c = doc.createElement("div");
+    c.style.cssText = "flex:1 1 0;min-width:0;background:rgba(236,72,153,.13);box-shadow:inset 1px 0 rgba(236,72,153,.55),inset -1px 0 rgba(236,72,153,.55)";
+    wrap.append(c);
+  }
+  doc.body.appendChild(wrap);
+  renderGridTag(t);
+}
+
+function renderGridTag(t) {
+  t.gridEl.hidden = !t.gridInfo;
+  if (t.gridInfo && t.gridInfo.colW < 2) {
+    t.gridEl.textContent = `grid doesn't fit (${t.gridInfo.cols} cols)`;
+    t.gridEl.title = "Too many columns or too wide a gutter/margin for this width. Lower them in the grid settings.";
+  } else if (t.gridInfo) {
+    t.gridEl.textContent = `grid ${t.gridInfo.cols} × ${Math.round(t.gridInfo.colW)}px`;
+    t.gridEl.title = `${t.gridInfo.cols} columns of ${t.gridInfo.colW.toFixed(1)}px, ${S.grid.gutter}px gutters` + (S.grid.margin ? `, ${S.grid.margin}px margins` : "");
+  }
+}
+
+const redrawGrids = () => tiles.forEach(drawGrid);
+
+function fillGridPanel() {
+  const g = S.grid;
+  $("showGrid").checked = g.on;
+  $("gridColsPhone").value = g.cols[0];
+  $("gridColsTablet").value = g.cols[1];
+  $("gridColsDesktop").value = g.cols[2];
+  $("gridGutter").value = g.gutter;
+  $("gridMargin").value = g.margin;
+  $("gridFit").value = g.fit;
+  $("gridRows").value = g.rows;
+}
+
+function bindGrid() {
+  const num = (id, min, max, fallback) => { const v = Math.round(Number($(id).value)); return Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback; };
+  const update = () => {
+    const g = S.grid;
+    S.grid = {
+      ...g,
+      cols: [num("gridColsPhone", 1, 24, g.cols[0]), num("gridColsTablet", 1, 24, g.cols[1]), num("gridColsDesktop", 1, 24, g.cols[2])],
+      gutter: num("gridGutter", 0, 200, g.gutter), margin: num("gridMargin", 0, 400, g.margin),
+      fit: $("gridFit").value, rows: num("gridRows", 0, 200, g.rows),
+    };
+    saveSettingsSoon();
+    redrawGrids();
+  };
+  for (const id of ["gridColsPhone", "gridColsTablet", "gridColsDesktop", "gridGutter", "gridMargin", "gridRows"]) $(id).addEventListener("input", update);
+  $("gridFit").addEventListener("change", update);
+  $("showGrid").addEventListener("change", (e) => { S.grid = { ...S.grid, on: e.target.checked }; saveSettingsSoon(); redrawGrids(); });
+
+  const panel = $("gridPanel");
+  const close = () => { panel.hidden = true; };
+  $("gridOpts").addEventListener("click", () => {
+    if (!panel.hidden) return close();
+    panel.hidden = false;
+    const b = $("gridOpts").getBoundingClientRect();
+    panel.style.top = b.bottom + 6 + "px";
+    panel.style.left = Math.max(8, Math.min(b.left, innerWidth - panel.offsetWidth - 8)) + "px"; // opens over the previews
+    if (!S.grid.on) { S.grid = { ...S.grid, on: true }; $("showGrid").checked = true; saveSettingsSoon(); redrawGrids(); } // opening settings turns it on
+  });
+  $("gridClose").addEventListener("click", close);
+  document.addEventListener("mousedown", (e) => { if (!panel.hidden && !panel.contains(e.target) && e.target !== $("gridOpts")) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+}
+
 /** After a design's position/fit changes: persist, refresh its panel row, and redraw every tile. */
 const saveDesignsSoon = debounce(() => { saveProjectSoon(); renderDesigns(); }, 250);
 function designChanged() {
@@ -424,11 +577,17 @@ async function analyzeTile(t) {
   t.result = await analyze(doc, {
     slot, zones: P.zones[slot] || [], placeholder: img.placeholder,
     balance: P.balance[slot] || "", copyArea: P.copyAreas[slot] || null, tolerance: S.balanceTolerance,
-    noun: TOOL.noun, growCheck: TOOL.id === "banner",
+    noun: TOOL.noun,
+    // Banners keep their set height; a hero slide only from 768px (below that it stacks and grows by design).
+    growCheck: TOOL.id === "banner" || (TOOL.id === "hero" && t.width >= 768),
+    ...(TOOL.id === "hero" ? {
+      buttonSelector: ".m-fwBanner__cta .a-authorBtn", controls: HERO_CONTROLS, contrastCheck: t.width < 768,
+    } : {}),
   });
   drawOverlay(doc, t.result, { showZones: S.showZones });
   sizeTile(t);
   drawDesign(t);
+  drawGrid(t);
   renderTileInfo(t);
   updateSummary();
 }
@@ -438,6 +597,7 @@ function redrawOverlays() {
     const doc = t.ready && t.iframe.contentDocument;
     if (doc && t.result) drawOverlay(doc, t.result, { showZones: S.showZones });
     drawDesign(t);
+    drawGrid(t);
   }
 }
 
@@ -555,6 +715,7 @@ function setActiveLang(code) {
   P.activeLang = code;
   editor.setValue(langHtml(code), P.id + "|" + code);
   renderLangs();
+  renderCta();
   runLint();
   updateFullNote();
   renderSlots();
@@ -581,7 +742,7 @@ async function addLang() {
   const code = input.value.trim();
   if (!ok || !code) return;
   if (P.langs.some((l) => l.code.toLowerCase() === code.toLowerCase())) return toast(code + " is already there.");
-  P.langs.push({ code, html: copy.checked ? P.langs[0].html : "" });
+  P.langs.push({ code, html: copy.checked ? P.langs[0].html : "", cta: copy.checked ? P.langs[0].cta || "" : "" });
   if (S.view === "compare") rebuildTiles();
   setActiveLang(code);
 }
@@ -596,7 +757,13 @@ function removeLang(code) {
 
 function runLint() {
   const code = P.activeLang;
-  const issues = lint(langHtml(code), { lang: code, isSource: code === P.langs[0].code, source: P.langs[0].html });
+  const isSource = code === P.langs[0].code;
+  const issues = lint(langHtml(code), { lang: code, isSource, source: P.langs[0].html });
+  if (TOOL.id === "hero" && !isFull(langHtml(code))) {
+    const text = (langObj(code).cta || "").trim(), ref = (P.langs[0].cta || "").trim();
+    if (!text) issues.push({ level: "warn", msg: "The button has no text (set it under Slide & button)" });
+    else if (!isSource && text === ref) issues.push({ level: "warn", msg: `Button text is the same as ${P.langs[0].code}: not translated yet?` });
+  }
   const ul = $("lint");
   ul.textContent = "";
   for (const i of issues) ul.append(el("li", { className: i.level, textContent: i.msg }));
@@ -606,34 +773,43 @@ function updateFullNote() {
   const html = langHtml(P.activeLang);
   const full = isFull(html);
   $("fullNote").hidden = !full;
-  $("layoutFields").hidden = full || P.template !== "category";
+  $("layoutFields").hidden = full || !["category", "hero"].includes(P.template);
   $("mixinFields").hidden = TOOL.id !== "mixin";
-  // Markup for the other tool (a category banner pasted into Mix-In Ad Preview, or the reverse).
+  $("heroFields").hidden = TOOL.id !== "hero" || full;
+  // Markup for another tool (e.g. a category banner pasted into Mix-In Ad Preview).
   const kind = snippetKind(html);
-  $("wrongTool").hidden = !kind || kind === TOOL.id;
+  const wrong = kind && kind !== TOOL.id ? TOOLS[kind] : null;
+  $("wrongTool").hidden = !wrong;
+  if (wrong) {
+    $("wrongToolText").textContent = `This is ${wrong.badge.toLowerCase()} markup, so it won't preview correctly in ${TOOL.name}.`;
+    $("moveTool").textContent = `Move it to ${wrong.name}`;
+    $("moveTool").onclick = () => moveToTool(wrong);
+  }
 }
 
-/** Sends this item's copy and images to the other tool as a new item there, then opens it. */
-async function moveToOtherTool() {
+/** Sends this item's copy and images to another tool as a new item there, then opens it. */
+async function moveToTool(target) {
   await store.saveProject(P);
   const data = await store.exportProject(P);
-  Object.assign(data.project, { tool: OTHER.id, template: OTHER.template });
-  data.tool = OTHER.id;
-  await store.setJSON(store.nsKey("handoff", OTHER.ns), data);
-  location.href = toolUrl(OTHER, "#handoff");
+  Object.assign(data.project, { tool: target.id, template: target.template });
+  data.tool = target.id;
+  data.from = TOOL.id;
+  await store.setJSON(store.nsKey("handoff", target.ns), data);
+  location.href = toolUrl(target, "#handoff");
 }
 
-/** Picks up an item sent from the other tool. */
+/** Picks up an item sent from another tool. */
 async function takeHandoff() {
   const key = store.nsKey("handoff");
   const data = await store.getJSON(key, null);
   if (!data) return;
   await store.setJSON(key, null);
   history.replaceState(null, "", toolUrl(TOOL));
+  const from = TOOLS[data.from] ? TOOLS[data.from].name : "the other tool";
   try {
     await store.saveProject(P);
     await openProject(await store.importProject(data));
-    toast(`Moved here from ${OTHER.name}. The original is still there; delete it if you don't need it.`);
+    toast(`Moved here from ${from}. The original is still there; delete it if you don't need it.`);
   } catch (err) { toast("Couldn't move it: " + err.message); }
 }
 
@@ -654,6 +830,11 @@ function renderLayout() {
   for (const t of BUILTIN_TEMPLATES) if (t.tool === TOOL.id || t.id === P.template) sel.append(option(t.id, t.name, P.template));
   for (const t of customTemplates) sel.append(option(t.id, "Custom: " + t.name, P.template));
   $("mxNeighbors").checked = P.mixin.neighbors !== false;
+  const color = $("ctaColor");
+  color.textContent = "";
+  for (const [v, l] of CTA_COLORS) color.append(option(v, `${l}  (${v})`, P.cta.color));
+  $("ctaHref").value = P.cta.href || "";
+  renderCta();
   const fill = (id, opts, val) => { const s = $(id); s.textContent = ""; for (const [v, l] of opts) s.append(option(v, l, val)); };
   fill("lyHeight", LAYOUT_OPTIONS.height, P.layout.height);
   fill("lyWidth", LAYOUT_OPTIONS.width, P.layout.width);
@@ -661,6 +842,47 @@ function renderLayout() {
   fill("lyValign", LAYOUT_OPTIONS.valign, P.layout.valign);
   $("lyExtra").value = P.layout.extra || "";
   updateFullNote();
+}
+
+/** The button-text field shows the active language's text. */
+function renderCta() {
+  $("ctaTextLabel").textContent = `Button text (${P.activeLang})`;
+  $("ctaText").value = langObj(P.activeLang).cta || "";
+  renderCtaExtras();
+}
+
+/**
+ * Button markup that came in with an imported Optimizely slide beyond the standard CMS button (e.g. a
+ * margin nudge). Shown read-only so the preview matches live; it can be removed but not added or edited.
+ */
+function renderCtaExtras() {
+  const box = $("ctaExtras");
+  const extras = ctaExtras(P.cta);
+  box.hidden = !extras.length;
+  box.textContent = "";
+  if (!extras.length) return;
+  const show = (x) => (x.on === "wrapper" ? "wrapper: " : "") + (x.kind === "style" ? `style="${x.value}"` : x.value);
+  const rm = el("button", { type: "button", className: "small", textContent: "Remove extras" });
+  rm.addEventListener("click", () => {
+    const keep = (s) => (s || "").split(/\s+/).filter((c) => c && !extras.some((x) => x.kind === "class" && x.value === c)).join(" ");
+    Object.assign(P.cta, { classes: keep(P.cta.classes), wrapClasses: keep(P.cta.wrapClasses), style: "", wrapStyle: "" });
+    saveProjectSoon();
+    renderCtaExtras();
+    refreshAll();
+  });
+  box.append(
+    el("div", {}, el("strong", { textContent: "From Optimizely: extra button markup" }),
+      el("span", { className: "hint", textContent: " Kept so the preview matches the live slide. It can't be added or edited here." })),
+    el("div", { className: "chips" }, ...extras.map((x) => el("code", { textContent: show(x) }))),
+    rm);
+}
+
+const onCtaChanged = debounce(() => { saveProjectSoon(); runLint(); refreshAll(); }, 150);
+
+function bindCta() {
+  $("ctaColor").addEventListener("change", (e) => { P.cta.color = e.target.value; onCtaChanged(); });
+  $("ctaHref").addEventListener("change", (e) => { P.cta.href = e.target.value.trim(); onCtaChanged(); });
+  $("ctaText").addEventListener("input", (e) => { langObj(P.activeLang).cta = e.target.value; onCtaChanged(); });
 }
 
 function onLayoutChanged() {
@@ -1094,6 +1316,7 @@ function applySettingsToUI() {
   $("showDesign").checked = S.showDesign;
   $("designOpacity").value = S.designOpacity;
   $("designBlend").value = S.designBlend;
+  fillGridPanel();
   $("designMode").value = S.designMode;
   $("designMove").checked = S.designMove;
   syncDesignControls();
@@ -1144,7 +1367,7 @@ function bindSettings() {
   });
   $("resetSettings").addEventListener("click", () => {
     if (!confirm("Reset viewports, stylesheets and toolbar options to defaults?")) return;
-    S = { ...store.DEFAULT_SETTINGS };
+    S = store.defaultSettings();
     saveSettingsSoon();
     applySettingsToUI();
     rebuildTiles(true);
@@ -1173,6 +1396,7 @@ function normalizeProject(p) {
   if (!p.langs.some((l) => l.code === p.activeLang)) p.activeLang = p.langs[0].code;
   if (!BUILTIN_TEMPLATES.some((t) => t.id === p.template) && !customTemplates.some((t) => t.id === p.template)) p.template = TOOL.template;
   p.images ||= {};
+  p.cta = { ...base.cta, ...(p.cta || {}) };
   p.zones ||= {};
   p.balance ||= {}; // slot -> "h" | "v" | "hv"
   p.copyAreas ||= {}; // slot -> { x, y, w, h } as fractions of the image
@@ -1275,8 +1499,8 @@ function layoutFromClasses(bannerClasses, rowClasses) {
   const known = new Set(Object.values(LAYOUT_OPTIONS).flat().map(([v]) => v).filter(Boolean));
   const pick = (list, opts) => list.find((c) => opts.some(([v]) => v && v === c));
   return {
-    height: pick(bc, LAYOUT_OPTIONS.height) || "-h-sm",
-    width: pick(rc, LAYOUT_OPTIONS.width) || "-w-sm",
+    height: pick(bc, LAYOUT_OPTIONS.height) || (TOOL.id === "hero" ? "-h-lg" : "-h-sm"),
+    width: pick(rc, LAYOUT_OPTIONS.width) || "", // no -w-* class on the page means none
     align: pick(rc, LAYOUT_OPTIONS.align) || "-left",
     valign: pick(rc, LAYOUT_OPTIONS.valign) || "",
     extra: rc.filter((c) => c && c !== "m-fwBanner__row" && c !== "-columns" && !known.has(c)).join(" "),
@@ -1297,10 +1521,12 @@ async function importFromTab(tabId) {
     found = (r && r.result) || [];
   } catch (err) { return toast("Couldn't read that tab: " + err.message); }
   // Each tool only imports its own kind: category banners here, mix-in ads in Mix-In Ad Preview.
-  const banners = found.filter((b) => (b.template === "mixin" ? "mixin" : "banner") === TOOL.id);
+  const toolOf = (b) => ({ mixin: "mixin", hero: "hero" }[b.template] || "banner");
+  const banners = found.filter((b) => toolOf(b) === TOOL.id);
   if (!banners.length) {
-    return toast(found.length
-      ? `That page has no ${TOOL.badge.toLowerCase()}s, only ${OTHER.badge.toLowerCase()}s. Use ${OTHER.name} for those.`
+    const others = [...new Set(found.map(toolOf))].map((id) => TOOLS[id]);
+    return toast(others.length
+      ? `That page has no ${TOOL.badge.toLowerCase()}s, only ${others.map((t) => t.badge.toLowerCase() + "s").join(" and ")}. Use ${others.map((t) => t.name).join(" or ")} for those.`
       : `No ${TOOL.badge.toLowerCase()}s found on that page.`);
   }
   const idx = banners.length === 1 ? 0 : await choose(`Which ${TOOL.noun}?`, banners.map((b, i) => ({
@@ -1319,15 +1545,21 @@ async function importFromTab(tabId) {
   if (target === "new") {
     await store.saveProject(P);
     const p = store.newProject(b.label.slice(0, 50) || `Imported ${N}`);
-    if (TOOL.id === "banner") p.layout = layoutFromClasses(b.bannerClasses, b.rowClasses);
-    p.langs = [{ code, html: b.html }];
+    if (TOOL.id !== "mixin") p.layout = layoutFromClasses(b.bannerClasses, b.rowClasses);
+    if (b.cta) {
+      // Keeps the button's exact markup from Optimizely (read-only in the panel; it can be removed, not added to).
+      const { color, href, classes, style, wrapClasses, wrapStyle } = b.cta;
+      p.cta = { color: color || "bg-green", href: href || "", classes, style, wrapClasses, wrapStyle };
+    }
+    p.langs = [{ code, html: b.html, cta: b.cta ? b.cta.text : "" }];
     p.activeLang = code;
     for (const [slot, url] of Object.entries(b.images)) if (url) p.images[slot] = { url };
     await store.saveProject(p);
     await openProject(p);
   } else {
-    if (existing) existing.html = b.html;
-    else P.langs.push({ code, html: b.html });
+    const cta = b.cta ? b.cta.text : "";
+    if (existing) Object.assign(existing, { html: b.html, cta });
+    else P.langs.push({ code, html: b.html, cta });
     for (const [slot, url] of Object.entries(b.images)) if (url && !P.images[slot]) P.images[slot] = { url };
     renderSlots();
     if (S.view === "compare") rebuildTiles();
@@ -1532,12 +1764,14 @@ function applyBranding() {
   $("brandName").textContent = TOOL.name;
   $("toolBadge").textContent = TOOL.badge;
   $("copyHint").textContent = TOOL.copyHint;
-  $("otherTool").textContent = "Open " + OTHER.name;
-  $("otherTool").addEventListener("click", () => { location.href = toolUrl(OTHER); });
-  $("wrongToolText").textContent = `This is ${OTHER.badge.toLowerCase()} markup, so it won't preview correctly in ${TOOL.name}.`;
-  $("moveTool").textContent = `Move it to ${OTHER.name}`;
-  $("moveTool").addEventListener("click", moveToOtherTool);
-  $("layoutTitle").textContent = TOOL.id === "mixin" ? "Template & grid" : "Template & layout";
+  const links = $("otherTools");
+  links.textContent = "";
+  OTHERS.forEach((t, i) => {
+    const b = el("button", { type: "button", className: "linkBtn", textContent: t.name });
+    b.addEventListener("click", () => { location.href = toolUrl(t); });
+    links.append(i ? " · " : "", b);
+  });
+  $("layoutTitle").textContent = { mixin: "Template & grid", hero: "Slide & button" }[TOOL.id] || "Template & layout";
 }
 
 async function init() {
@@ -1552,6 +1786,7 @@ async function init() {
     p = store.newProject(sample.name);
     p.langs[0].html = sample.html;
     for (const [slot, url] of Object.entries(sample.images)) p.images[slot] = { url };
+    if (sample.cta) { p.cta = { color: sample.cta.color, href: sample.cta.href }; p.langs[0].cta = sample.cta.text; }
     await store.saveProject(p);
   }
   applyBranding();
@@ -1564,6 +1799,8 @@ async function init() {
   bindSplitter();
   bindClassRef();
   bindJumpbar();
+  bindCta();
+  bindGrid();
   applySettingsToUI();
   await openProject(p);
   loadClasses();
