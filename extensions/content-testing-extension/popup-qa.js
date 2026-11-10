@@ -34,11 +34,11 @@ const ago = (iso) => {
   return new Date(iso).toLocaleDateString();
 };
 
-// ---- tabs (Tools / QA Tests) ----------------------------------------------------------------------
+// ---- tabs (Tools / QA Tests / New Stamp) ----------------------------------------------------------
 function showTab(name) {
+  if (!$("tab-" + name)) name = "tools";
   for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.tab === name);
-  $("tab-tools").hidden = name !== "tools";
-  $("tab-qa").hidden = name !== "qa";
+  for (const pane of document.querySelectorAll(".tabPane")) pane.hidden = pane.id !== "tab-" + name;
   store.set({ popupTab: name });
   if (name === "qa" && !loaded) loadQa();
   if (name !== "qa") stopPolling();

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Melaleuca Content Testing Tools",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Melaleuca content QA: Culture Links, Banner, Hero Slide and Mix-In Ad previews, and QA Tester runs for the open page.",
   "permissions": [
     "storage",

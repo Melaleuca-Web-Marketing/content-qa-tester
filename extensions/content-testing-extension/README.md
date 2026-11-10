@@ -6,6 +6,7 @@ Load: chrome://extensions -> Developer mode -> Load unpacked -> pick this folder
 ## Popup tabs
 - **Tools**: the preview tools and Culture Links (below).
 - **QA Tests**: starts Content QA Tester runs for the open tab (see *QA Tests* below).
+- **New Stamp**: summary of the last New Stamp Audit and a button that opens it (see below).
 
 ## Tools
 
@@ -150,6 +151,36 @@ change it under *QA Tester server*, e.g. to a local instance, which Chrome asks 
   is remembered per environment/culture.
 - **Recent jobs** shows your latest QA Tester jobs (queued / running / done) and refreshes while any are running.
   Finished ones get *Open report*. *Open QA Tester* opens the full tool.
+
+### New Stamp Audit (`new-stamp/index.html`)
+Finds SKUs whose "New" stamp should come off because they've been on the website for more than 90 days.
+
+- **Input.** Paste the results of the New-stamp SQL script, header row included.
+  - `SKU` + `CountryID` columns (1 = US, 2 = CA, 26 = MX): one row per SKU and country, each checked against that
+    country's Web availability only (the *Countries* checkboxes don't apply). An unmapped CountryID is marked
+    *Unknown country* instead of being checked.
+  - Just a `SKU` column: only that column is used (other number columns are ignored), checked against the selected
+    countries.
+  - No header: every 3–8 digit number counts as a SKU.
+  - Duplicate rows are skipped.
+- **Lookup.** ProductService `GlobalProductInformation`
+  (`https://apincde.melaleuca.net/ProductService.API/v1`, `SoftwareSystem: NorthAmerica`; both editable under
+  *Product service*). Each SKU is fetched once however many country rows it has: 10 SKUs per request (repeated
+  `skus=` parameters), 3 requests at a time. A request that gets no response in 60 s, a network error, or a 5xx/429
+  is retried once automatically after 2 s; whatever still fails is marked *Error*.
+- **Rule.** Uses `channelAvailability` rows with `salesChannel: "Web"`. Per country, the current Web window counts
+  (else the most recent one that started), so a relaunched SKU counts from its relaunch. A SKU is flagged
+  **Remove stamp** when its Web start in any selected country is more than N days before the *As of* date
+  (N = 90 by default; countries US / CA / MX selectable).
+- **Statuses.** *Remove stamp* (noting "No longer on the web" when no Web window is live), *Keep* (with the date
+  it reaches 90 days), *Not on the web yet*, *No Web channel*, *Not found*, *Unknown country*, *Error* (with
+  *Retry failed*).
+- **Output.** Status counts (click to filter), search, sortable columns (a Country column with SKU + CountryID input,
+  else web start and days per country), *Export CSV*, and copy buttons:
+  - *Copy SKU + CountryID to remove* (tab-separated, with a header) or *Copy SKUs to remove* (one per line)
+  - *Copy as comma list* (unique SKUs)
+
+  The last audit and input are kept.
 
 ## Adding more tools
 The popup is organised into tool cards (`<section class="card">` in popup.html) under a shared

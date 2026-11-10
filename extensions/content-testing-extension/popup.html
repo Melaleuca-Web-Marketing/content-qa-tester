@@ -24,6 +24,7 @@
   <nav class="tabs" role="tablist">
     <button type="button" role="tab" data-tab="tools" class="on">Tools</button>
     <button type="button" role="tab" data-tab="qa">QA Tests</button>
+    <button type="button" role="tab" data-tab="stamp">New Stamp</button>
   </nav>
 
   <div id="tab-tools" class="tabPane">
@@ -137,7 +138,19 @@
     </details>
   </div>
 
+  <!-- New Stamp: opens the New Stamp Audit page (new-stamp/index.html) -->
+  <div id="tab-stamp" class="tabPane" hidden>
+    <section class="card always stamp">
+      <h2>New Stamp Audit <span class="tag">90-day check</span></h2>
+      <p class="muted blurb">Paste the SKUs that have the New stamp (from the SQL script). The audit looks up each SKU's
+        Web availability and flags the ones that have been on the site longer than 90 days, so their stamp can come off.</p>
+      <div id="stampLast" class="stampLast muted">No audit run yet.</div>
+      <div class="row"><button id="openStamp" class="primary">Open New Stamp Audit</button></div>
+    </section>
+  </div>
+
   <script src="popup.js"></script>
   <script type="module" src="popup-qa.js"></script>
+  <script type="module" src="popup-stamp.js"></script>
 </body>
 </html>

@@ -125,3 +125,12 @@ details p { margin: 8px 0; }
 #qaResult .item.bad { color: var(--danger); }
 #qaJobs .item .txt { display: flex; align-items: center; gap: 6px; }
 h2 .small { margin-left: auto; }
+
+/* ---- New Stamp tab (teal, matching the audit page) ---- */
+.card.stamp { border-color: rgba(20, 184, 166, .45); }
+.card.stamp .tag { color: #5eead4; }
+.card.stamp button.primary { background: linear-gradient(135deg, #14b8a6, #0d9488); color: #fff; }
+.stampLast { margin: 8px 0 2px; padding: 8px 10px; border-radius: 8px; background: var(--item); border: 1px solid var(--border); font-size: 12px; }
+.stampBig { color: var(--text); font-size: 13px; }
+.stampBig b { color: var(--danger); font-size: 18px; }
+@media (prefers-color-scheme: light) { .card.stamp .tag { color: #0f766e; } }

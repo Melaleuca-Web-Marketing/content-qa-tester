@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New Stamp Audit</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo">NS</div>
+    <div><h1>New Stamp Audit <span class="badge">90-day check</span></h1><div class="sub">Content Testing Tools</div></div>
+  </div>
+  <div id="lastRun" class="status"></div>
+</header>
+
+<main>
+  <aside class="side">
+    <section class="panel">
+      <h2>SKUs with the New stamp</h2>
+      <p class="hint">Paste the results of the SQL script, header row included. With <code>SKU</code> and <code>CountryID</code>
+        columns, each row is checked against its own country (1 US, 2 CA, 26 MX). With just a <code>SKU</code> column, only that
+        column is used; without a header, every 3–8 digit number counts.</p>
+      <textarea id="skuInput" spellcheck="false" placeholder="SKU&#9;CountryID&#10;10699&#9;1&#10;10699&#9;2&#10;10704&#9;1"></textarea>
+      <div id="parseInfo" class="hint"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Rule</h2>
+      <div class="grid2">
+        <label class="field"><span>Remove after (days on the web)</span><input id="days" type="number" min="1" max="3650"></label>
+        <label class="field"><span>As of</span><input id="asOf" type="date"></label>
+      </div>
+      <div class="field"><span>Countries (Web availability)</span>
+        <div id="countries" class="checks">
+          <label><input type="checkbox" value="UnitedStates"> United States</label>
+          <label><input type="checkbox" value="Canada"> Canada</label>
+          <label><input type="checkbox" value="Mexico"> Mexico</label>
+        </div>
+        <div id="countriesNote" class="hint"></div>
+      </div>
+      <p class="hint">A SKU is flagged when its Web availability in any selected country started more than this many days
+        ago. Per country, the current Web window counts (else the most recent one), so a relaunch counts from the relaunch.</p>
+      <details>
+        <summary>Product service</summary>
+        <label class="field"><span>API base URL</span><input id="apiBase" spellcheck="false"></label>
+        <label class="field"><span>SoftwareSystem header</span><input id="softwareSystem" spellcheck="false"></label>
+      </details>
+    </section>
+
+    <div class="runRow">
+      <button id="run" class="primary">Run audit</button>
+      <button id="stop" hidden>Stop</button>
+    </div>
+  </aside>
+
+  <section class="results">
+    <div id="progress" class="progress" hidden><div class="bar"><div id="bar"></div></div><span id="progressText"></span></div>
+    <div id="empty" class="empty">Paste SKUs and run the audit to see which New stamps are due to come off.</div>
+    <div id="summary" class="summary" hidden></div>
+    <div id="actions" class="actions" hidden>
+      <button id="copyLines">Copy SKUs to remove</button>
+      <button id="copyComma">Copy as comma list</button>
+      <button id="exportCsv">Export CSV</button>
+      <button id="retry" hidden>Retry failed</button>
+      <span class="spacer"></span>
+      <input id="search" placeholder="Filter by SKU or name" spellcheck="false">
+    </div>
+    <div class="tableWrap" id="tableWrap" hidden>
+      <table>
+        <thead><tr id="headRow"></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
